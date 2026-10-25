@@ -79,10 +79,10 @@ export default function (r) {
       const [members, visitors, regulars, absentQs] = await Promise.all([
         P().where('status', '==', 'member').count().get(),
         P().where('status', '==', 'visitor').count().get(),
-        P().where('status', '==', 'member').where('last_seen_at', '>=', cutoff).count().get(),
+        C('people').where('status', '==', 'member').where('last_seen_at', '>=', cutoff).orderBy('last_seen_at', 'desc').limit(20000).get(),
         C('people').where('status', '==', 'member').where('last_seen_at', '<', cutoff).orderBy('last_seen_at', 'desc').limit(5000).get(),
       ])
-      out.people = { members: members.data().count, visitors: visitors.data().count, regulars: regulars.data().count }
+      out.people = { members: members.data().count, visitors: visitors.data().count, regulars: regulars.docs.map(d => d.data()).filter(inBranches(branches)).length }
       out.absent = absentQs.docs.map(d => d.data()).filter(inBranches(branches)).filter(p => !(p.open_reasons || []).includes('absence')).length
     }
 
