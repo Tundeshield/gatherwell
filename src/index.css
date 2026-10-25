@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-ivory text-ink antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  ::selection { background: theme('colors.brand.100'); }
+  :focus-visible { outline: 2px solid theme('colors.brand.500'); outline-offset: 2px; }
+  input, select, textarea, button { font: inherit; }
+  h1, h2, h3 { letter-spacing: -0.015em; }
+}
+
+@layer components {
+  .tabular { font-variant-numeric: tabular-nums; }
+  .field {
+    @apply w-full rounded-lg border border-mist-200 bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors
+      placeholder:text-mist-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-mist-50 disabled:text-mist-400;
+  }
+  .field-error { @apply border-red-400 focus:border-red-500 focus:ring-red-100; }
+  .label { @apply mb-1.5 block text-sm font-medium text-ink; }
+  .hint { @apply mt-1 text-xs text-mist-400; }
+  .panel { @apply rounded-card border border-mist-200 bg-white shadow-card; }
+  .link { @apply font-medium text-brand-700 underline-offset-2 hover:underline; }
+}
+
+@layer utilities {
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { scrollbar-width: none; }
+  .animate-in { animation: gw-in .16s ease-out; }
+  @keyframes gw-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .animate-pop { animation: gw-pop .35s cubic-bezier(.2,.9,.3,1.3); }
+  @keyframes gw-pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  }
+}
