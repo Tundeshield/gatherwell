@@ -28,6 +28,7 @@ Multi-branch church operations: QR attendance, visitor follow-up, events with ti
 | `FIREBASE_SERVICE_ACCOUNT` | **Secret.** Whole service-account JSON (Firebase console → Project settings → Service accounts) |
 | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase web app settings (public) |
 | `PLATFORM_ADMIN_EMAILS` | Comma-separated emails allowed into `/platform` |
+| `AWS_LAMBDA_JS_RUNTIME` | `nodejs22.x` — firebase-admin needs Node 22 in functions |
 | `SMS_PROVIDER`, `EMAIL_PROVIDER`, `WHATSAPP_PROVIDER` | Reserved — messaging stays draft-only until a provider is integrated |
 
 ## Develop
