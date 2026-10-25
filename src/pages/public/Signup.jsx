@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { Button, Input, Select, Notice } from '../../components/ui'
+import { signInWithPassword } from '../../lib/firebase'
 import AuthLayout from './AuthLayout'
 
 export const COUNTRIES = [
@@ -39,6 +40,7 @@ export default function Signup() {
     const c = COUNTRIES.find(x => x.name === form.country) || COUNTRIES.at(-1)
     try {
       await api.post('/auth/signup', { ...form, timezone: c.tz, defaultCountryCode: c.cc })
+      await signInWithPassword(form.email, form.password)
       await refresh()
       navigate('/app?welcome=1', { replace: true })
     } catch (err) { setError(err.message) }

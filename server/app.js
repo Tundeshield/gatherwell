@@ -56,9 +56,11 @@ export async function handle(req) {
     return json(result ?? { ok: true })
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message, details: e.details }, e.status)
-    // Postgres unique violation → friendly conflict
-    if (e?.code === '23505') return json({ error: 'That record already exists.' }, 409)
-    if (e?.code === '22P02') return json({ error: 'Invalid value.' }, 400)
+    // Firestore: a composite index is missing or still building (first deploys).
+    if (e?.code === 9 && /index/i.test(e.message || '')) {
+      console.error('Firestore index needed', e.message)
+      return json({ error: 'Gatherwell is finishing its database setup. Please try again in a few minutes.' }, 503)
+    }
     console.error('API error', method, path, e)
     return json({ error: 'Something went wrong on our side. Please try again.' }, 500)
   }

@@ -6,6 +6,7 @@ import { useSession } from '../../lib/session'
 import { useLoad, PageHeader, Button, Badge, Modal, Input, Select, Notice, Toggle, Checkbox, EmptyState, ErrorState, Skeleton, useToast, useConfirm, Table, Th, Td, IconButton, Textarea } from '../../components/ui'
 import { fmtDate, relative } from '../../lib/format'
 import { COUNTRIES } from '../public/Signup'
+import { changePassword } from '../../lib/firebase'
 
 const ROLE_HELP = {
   owner: 'Everything, including church settings and billing.',
@@ -323,7 +324,11 @@ function AccountTab() {
   const [busy, setBusy] = useState('')
   async function save(kind) {
     setBusy(kind); setErr('')
-    try { await api.patch('/me', kind === 'name' ? { name } : pw); toast(kind === 'name' ? 'Name updated' : 'Password changed. Other devices were signed out.'); setPw({ currentPassword: '', newPassword: '' }); refresh() }
+    try {
+      if (kind === 'name') await api.patch('/me', { name })
+      else await changePassword(me.user.email, pw.currentPassword, pw.newPassword)
+      toast(kind === 'name' ? 'Name updated' : 'Password changed. Other devices were signed out.'); setPw({ currentPassword: '', newPassword: '' }); refresh()
+    }
     catch (e) { setErr(e.message) } finally { setBusy('') }
   }
   return (

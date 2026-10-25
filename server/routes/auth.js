@@ -1,7 +1,9 @@
-import { q, one, tx } from '../db.js'
+import { fb, plain } from '../firebase.js'
 import { bad, conflict, unauthorized, str, email as emailV, json, clientIp, notFound, forbidden } from '../http.js'
-import { hashPassword, verifyPassword, rateLimit, slugify, shortId, sha256, audit } from '../util.js'
-import { createSession, sessionCookie, SESSION_COOKIE, capsFor, ROLE_LABELS } from '../access.js'
+import { rateLimit, slugify, shortId, sha256, audit } from '../util.js'
+import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches } from '../access.js'
+
+const DEFAULT_SETTINGS = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }
 
 function password(v) {
   const s = String(v || '')
@@ -10,36 +12,78 @@ function password(v) {
   return s
 }
 
-async function uniqueSlug(client, base) {
-  let slug = slugify(base)
-  for (let i = 0; i < 5; i++) {
-    const exists = await client.one(`SELECT 1 FROM organisations WHERE slug = $1`, [slug])
-    if (!exists) return slug
-    slug = `${slugify(base).slice(0, 32)}-${shortId(5).toLowerCase()}`
+// Creates org + first branch + owner membership, reserving a unique slug.
+async function createOrganisation(db, { orgName, branchName, timezone, country, contactEmail, settings, owner }) {
+  const orgRef = db.collection('orgs').doc()
+  const branchRef = orgRef.collection('branches').doc()
+  const now = new Date()
+  let slug = slugify(orgName)
+  for (let i = 0; i < 6; i++) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const slugRef = db.collection('orgSlugs').doc(slug)
+        const s = await tx.get(slugRef)
+        if (s.exists) throw Object.assign(new Error('slug taken'), { slugTaken: true })
+        tx.set(slugRef, { org_id: orgRef.id })
+        tx.set(orgRef, {
+          name: orgName, slug, timezone, country: country || null, contact_email: contactEmail || null, contact_phone: null,
+          status: 'active', plan: 'trial', trial_ends_at: new Date(now.getTime() + 30 * 86400e3), settings, created_at: now, updated_at: now,
+        })
+        tx.set(branchRef, { name: branchName, address: null, phone: null, timezone, status: 'active', created_at: now, updated_at: now })
+        tx.set(db.collection('memberships').doc(membershipId(orgRef.id, owner.id)), {
+          org_id: orgRef.id, user_id: owner.id, role: 'owner', branch_ids: null, can_export: true, status: 'active', created_at: now,
+          user_name: owner.name, user_email: owner.email,
+        })
+        tx.set(db.collection('users').doc(owner.id), { active_org_id: orgRef.id }, { merge: true })
+      })
+      return { id: orgRef.id, name: orgName }
+    } catch (e) {
+      if (!e.slugTaken) throw e
+      slug = `${slugify(orgName).slice(0, 32)}-${shortId(5).toLowerCase()}`
+    }
   }
-  return `${slugify(base).slice(0, 30)}-${shortId(8).toLowerCase()}`
+  throw new Error('Could not reserve a unique church address.')
 }
 
 export async function mePayload(ctx) {
-  const orgs = await q(`SELECT o.id, o.name, m.role FROM memberships m JOIN organisations o ON o.id = m.org_id
-                         WHERE m.user_id = $1 AND m.status = 'active' AND o.status <> 'closed' ORDER BY o.name`, [ctx.user.id])
+  const { db } = await fb()
+  const ms = await db.collection('memberships').where('user_id', '==', ctx.user.id).where('status', '==', 'active').get()
+  const orgSnaps = ms.empty ? [] : await db.getAll(...ms.docs.map(d => db.collection('orgs').doc(d.data().org_id)))
+  const orgs = orgSnaps.map((o, i) => (o.exists && o.data().status !== 'closed' ? { id: o.id, name: o.data().name, role: ms.docs[i].data().role } : null)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name))
   let branches = []
   if (ctx.org) {
-    branches = await q(`SELECT id, name, status, address, timezone FROM branches WHERE org_id = $1
-                          AND ($2::uuid[] IS NULL OR id = ANY($2)) ORDER BY status, name`, [ctx.org.id, ctx.branchScope])
+    branches = (await orgBranches(ctx)).filter(b => !ctx.branchScope || ctx.branchScope.includes(b.id))
+      .map(b => ({ id: b.id, name: b.name, status: b.status, address: b.address || null, timezone: b.timezone || null }))
+      .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1))
   }
+  const o = ctx.org
   return {
     user: ctx.user,
-    org: ctx.org && {
-      id: ctx.org.id, name: ctx.org.name, slug: ctx.org.slug, timezone: ctx.org.timezone, country: ctx.org.country,
-      status: ctx.org.status, plan: ctx.org.plan, trialEndsAt: ctx.org.trial_ends_at, settings: ctx.org.settings,
-      contactEmail: ctx.org.contact_email, contactPhone: ctx.org.contact_phone,
+    org: o && {
+      id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
+      trialEndsAt: plain(o.trial_ends_at), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
-    membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids, canExport: ctx.membership.can_export },
+    membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,
     branches,
     orgs,
   }
+}
+
+async function accept(db, inv, invRef, user) {
+  const now = new Date()
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(invRef)
+    const d = fresh.data()
+    if (!d || d.revoked_at || d.accepted_at) throw bad('This invitation is no longer valid.')
+    tx.set(db.collection('memberships').doc(membershipId(d.org_id, user.id)), {
+      org_id: d.org_id, user_id: user.id, role: d.role, branch_ids: d.branch_ids || null, can_export: !!d.can_export, status: 'active',
+      created_at: now, user_name: user.name, user_email: user.email,
+    })
+    tx.update(invRef, { accepted_at: now })
+    tx.set(db.collection('users').doc(user.id), { active_org_id: d.org_id }, { merge: true })
+  })
+  await audit({ org: { id: inv.org_id }, user }, 'team.invite_accepted', 'user', user.id, { role: inv.role })
 }
 
 export default function (r) {
@@ -51,116 +95,110 @@ export default function (r) {
     const email = emailV(body.email, { required: true })
     const pw = password(body.password)
     const timezone = str(body.timezone, { max: 64 }) || 'Africa/Lagos'
-    const country = str(body.country, { max: 64 })
     const cc = String(body.defaultCountryCode || '').replace(/\D/g, '').slice(0, 4) || '234'
-
-    const existing = await one(`SELECT id FROM users WHERE email = $1`, [email])
-    if (existing) throw conflict('An account with this email already exists. Sign in instead, then create a new church from your account.')
-
-    const hash = await hashPassword(pw)
-    const { user, org } = await tx(async (c) => {
-      const user = await c.one(`INSERT INTO users (email, name, password_hash, last_login_at) VALUES ($1,$2,$3,NOW()) RETURNING id, email, name`, [email, name, hash])
-      const slug = await uniqueSlug(c, orgName)
-      const settings = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: cc }
-      const org = await c.one(`INSERT INTO organisations (name, slug, timezone, country, contact_email, trial_ends_at, settings)
-                               VALUES ($1,$2,$3,$4,$5, NOW() + INTERVAL '30 days', $6) RETURNING *`, [orgName, slug, timezone, country, email, settings])
-      await c.q(`INSERT INTO branches (org_id, name, timezone) VALUES ($1,$2,$3)`, [org.id, branchName, timezone])
-      await c.q(`INSERT INTO memberships (org_id, user_id, role, can_export) VALUES ($1,$2,'owner',TRUE)`, [org.id, user.id])
-      return { user, org }
-    })
-    await audit({ org, user }, 'org.created', 'organisation', org.id)
-    const token = await createSession(user.id, org.id)
-    return json({ ok: true }, 201, { 'set-cookie': sessionCookie(token) })
+    const { db, auth } = await fb()
+    let created
+    try { created = await auth.createUser({ email, password: pw, displayName: name }) }
+    catch (e) {
+      if (e.code === 'auth/email-already-exists') throw conflict('An account with this email already exists. Sign in instead, then create a new church from your account.')
+      if (e.code === 'auth/configuration-not-found' || e.code === 'auth/operation-not-allowed') throw bad('Email sign-in is not enabled for this Firebase project yet.')
+      throw e
+    }
+    const user = { id: created.uid, email, name }
+    await db.collection('users').doc(user.id).set({ email, name, is_platform_admin: false, created_at: new Date(), last_login_at: null, active_org_id: null })
+    const org = await createOrganisation(db, { orgName, branchName, timezone, country: str(body.country, { max: 64 }), contactEmail: email, settings: { ...DEFAULT_SETTINGS, defaultCountryCode: cc }, owner: user })
+    await audit({ org, user }, 'org.created', 'organisation', org.id, { name: orgName })
+    return json({ ok: true, signIn: true }, 201)
   })
 
-  r.post('/auth/login', { auth: 'public' }, async ({ req, body }) => {
-    const email = emailV(body.email, { required: true })
-    await rateLimit(`login:${clientIp(req)}:${email}`, 8, 900)
-    await rateLimit(`login-ip:${clientIp(req)}`, 40, 900)
-    const user = await one(`SELECT id, password_hash FROM users WHERE email = $1`, [email])
-    const ok = user ? await verifyPassword(String(body.password || ''), user.password_hash) : await verifyPassword('x', 'scrypt$AAAA$AAAA').catch(() => false)
-    if (!user || !ok) throw unauthorized('Incorrect email or password.')
-    await q(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [user.id])
-    const token = await createSession(user.id, null)
-    return json({ ok: true }, 200, { 'set-cookie': sessionCookie(token) })
+  // Exchanges a fresh Firebase ID token for an HttpOnly session cookie.
+  r.post('/auth/session', { auth: 'public' }, async ({ req, body }) => {
+    await rateLimit(`session:${clientIp(req)}`, 30, 900)
+    const { db, auth } = await fb()
+    let decoded
+    try { decoded = await auth.verifyIdToken(String(body.idToken || '')) } catch { throw unauthorized('Your sign-in expired. Please sign in again.') }
+    if (Date.now() / 1000 - decoded.auth_time > 5 * 60) throw unauthorized('Please sign in again.')
+    const cookie = await auth.createSessionCookie(String(body.idToken), { expiresIn: SESSION_DAYS * 86400 * 1000 })
+    const ref = db.collection('users').doc(decoded.uid)
+    const snap = await ref.get()
+    if (!snap.exists) await ref.set({ email: String(decoded.email || '').toLowerCase(), name: decoded.name || String(decoded.email || 'User').split('@')[0], is_platform_admin: false, created_at: new Date(), active_org_id: null })
+    await ref.set({ last_login_at: new Date() }, { merge: true })
+    return json({ ok: true }, 200, { 'set-cookie': sessionCookie(cookie) })
   })
 
-  r.post('/auth/logout', { auth: 'public', optionalUser: true }, async ({ ctx }) => {
-    if (ctx?.sessionId) await q(`DELETE FROM auth_sessions WHERE id = $1`, [ctx.sessionId])
-    return json({ ok: true }, 200, { 'set-cookie': `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` })
-  })
+  r.post('/auth/logout', { auth: 'public' }, async () => json({ ok: true }, 200, { 'set-cookie': clearCookie() }))
 
   r.get('/me', { auth: 'user' }, async ({ ctx }) => mePayload(ctx))
 
   r.post('/me/switch-org', { auth: 'user' }, async ({ ctx, body }) => {
-    const m = await one(`SELECT m.org_id FROM memberships m JOIN organisations o ON o.id = m.org_id
-                          WHERE m.user_id = $1 AND m.org_id = $2 AND m.status = 'active' AND o.status <> 'closed'`, [ctx.user.id, body.orgId])
-    if (!m) throw forbidden()
-    await q(`UPDATE auth_sessions SET active_org_id = $1 WHERE id = $2`, [m.org_id, ctx.sessionId])
+    const { db } = await fb()
+    const id = String(body.orgId || '')
+    if (!/^[A-Za-z0-9_-]{6,64}$/.test(id)) throw forbidden()
+    const [m, o] = await db.getAll(db.collection('memberships').doc(membershipId(id, ctx.user.id)), db.collection('orgs').doc(id))
+    if (!m.exists || m.data().status !== 'active' || !o.exists || o.data().status === 'closed') throw forbidden()
+    await db.collection('users').doc(ctx.user.id).update({ active_org_id: id })
     return { ok: true }
   })
 
-  // A signed-in user (e.g. invited to one church) can start another organisation.
   r.post('/me/orgs', { auth: 'user' }, async ({ ctx, body }) => {
+    const { db } = await fb()
     const orgName = str(body.orgName, { required: true, max: 120, name: 'Church name' })
-    const branchName = str(body.branchName, { max: 120 }) || 'Main campus'
-    const timezone = str(body.timezone, { max: 64 }) || 'Africa/Lagos'
-    const org = await tx(async (c) => {
-      const slug = await uniqueSlug(c, orgName)
-      const org = await c.one(`INSERT INTO organisations (name, slug, timezone, trial_ends_at, settings) VALUES ($1,$2,$3, NOW() + INTERVAL '30 days', $4) RETURNING *`,
-        [orgName, slug, timezone, { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }])
-      await c.q(`INSERT INTO branches (org_id, name, timezone) VALUES ($1,$2,$3)`, [org.id, branchName, timezone])
-      await c.q(`INSERT INTO memberships (org_id, user_id, role, can_export) VALUES ($1,$2,'owner',TRUE)`, [org.id, ctx.user.id])
-      return org
-    })
-    await q(`UPDATE auth_sessions SET active_org_id = $1 WHERE id = $2`, [org.id, ctx.sessionId])
-    await audit({ org, user: ctx.user }, 'org.created', 'organisation', org.id)
+    const org = await createOrganisation(db, { orgName, branchName: str(body.branchName, { max: 120 }) || 'Main campus', timezone: str(body.timezone, { max: 64 }) || 'Africa/Lagos', settings: DEFAULT_SETTINGS, owner: ctx.user })
+    await audit({ org, user: ctx.user }, 'org.created', 'organisation', org.id, { name: orgName })
     return { ok: true, orgId: org.id }
   })
 
+  // Name changes only — passwords are changed through Firebase Auth in the browser.
   r.patch('/me', { auth: 'user' }, async ({ ctx, body }) => {
-    const name = str(body.name, { max: 120, name: 'Name' })
-    if (name) await q(`UPDATE users SET name = $1 WHERE id = $2`, [name, ctx.user.id])
-    if (body.newPassword) {
-      const u = await one(`SELECT password_hash FROM users WHERE id = $1`, [ctx.user.id])
-      if (!(await verifyPassword(String(body.currentPassword || ''), u.password_hash))) throw bad('Your current password is incorrect.')
-      await q(`UPDATE users SET password_hash = $1 WHERE id = $2`, [await hashPassword(password(body.newPassword)), ctx.user.id])
-      // Sign out other devices.
-      await q(`DELETE FROM auth_sessions WHERE user_id = $1 AND id <> $2`, [ctx.user.id, ctx.sessionId])
-    }
+    const name = str(body.name, { required: true, max: 120, name: 'Name' })
+    const { db, auth } = await fb()
+    await db.collection('users').doc(ctx.user.id).update({ name })
+    await auth.updateUser(ctx.user.id, { displayName: name }).catch(() => {})
+    const ms = await db.collection('memberships').where('user_id', '==', ctx.user.id).get()
+    const batch = db.batch()
+    ms.docs.forEach(d => batch.update(d.ref, { user_name: name }))
+    await batch.commit()
     return { ok: true }
   })
 
   // --- invitations --------------------------------------------------------------
+  async function findInvite(db, token) {
+    const qs = await db.collection('invites').where('token_hash', '==', sha256(String(token || ''))).limit(1).get()
+    return qs.empty ? [null, null] : [qs.docs[0].data(), qs.docs[0].ref]
+  }
+
   r.get('/public/invite/:token', { auth: 'public' }, async ({ params }) => {
-    const inv = await one(`SELECT i.email, i.role, i.expires_at, i.accepted_at, i.revoked_at, o.name AS org_name,
-                                  EXISTS (SELECT 1 FROM users u WHERE u.email = i.email) AS has_account
-                             FROM invites i JOIN organisations o ON o.id = i.org_id WHERE i.token_hash = $1`, [sha256(params.token)])
+    const { db, auth } = await fb()
+    const [inv] = await findInvite(db, params.token)
     if (!inv || inv.revoked_at) throw notFound('This invitation is not valid. Ask your church admin for a new link.')
     if (inv.accepted_at) throw bad('This invitation has already been used. Sign in instead.')
-    if (new Date(inv.expires_at) < new Date()) throw bad('This invitation has expired. Ask your church admin for a new link.')
-    return { email: inv.email, role: inv.role, roleLabel: ROLE_LABELS[inv.role], orgName: inv.org_name, hasAccount: inv.has_account }
+    if (inv.expires_at.toDate() < new Date()) throw bad('This invitation has expired. Ask your church admin for a new link.')
+    const o = await db.collection('orgs').doc(inv.org_id).get()
+    let hasAccount = true
+    try { await auth.getUserByEmail(inv.email) } catch { hasAccount = false }
+    return { email: inv.email, role: inv.role, roleLabel: ROLE_LABELS[inv.role], orgName: o.data()?.name, hasAccount }
   })
 
-  r.post('/auth/accept-invite', { auth: 'public' }, async ({ req, body }) => {
+  // New account: creates the Firebase user (client then signs in).
+  // Existing account: the user signs in first, then calls this with their session.
+  r.post('/auth/accept-invite', { auth: 'public', optionalUser: true }, async ({ req, body, ctx }) => {
     await rateLimit(`invite:${clientIp(req)}`, 20, 900)
-    const inv = await one(`SELECT * FROM invites WHERE token_hash = $1`, [sha256(String(body.token || ''))])
-    if (!inv || inv.revoked_at || inv.accepted_at || new Date(inv.expires_at) < new Date()) throw bad('This invitation is no longer valid.')
-    let user = await one(`SELECT id, password_hash FROM users WHERE email = $1`, [inv.email])
-    if (user) {
-      if (!(await verifyPassword(String(body.password || ''), user.password_hash))) throw unauthorized('Incorrect password for this account.')
-    } else {
-      const name = str(body.name, { required: true, max: 120, name: 'Your name' })
-      user = await one(`INSERT INTO users (email, name, password_hash) VALUES ($1,$2,$3) RETURNING id`, [inv.email, name, await hashPassword(password(body.password))])
+    const { db, auth } = await fb()
+    const [inv, invRef] = await findInvite(db, body.token)
+    if (!inv || inv.revoked_at || inv.accepted_at || inv.expires_at.toDate() < new Date()) throw bad('This invitation is no longer valid.')
+    if (ctx?.user) {
+      if (ctx.user.email.toLowerCase() !== inv.email) throw forbidden(`This invitation is for ${inv.email}. Sign out and sign in with that email.`)
+      await accept(db, inv, invRef, ctx.user)
+      return { ok: true }
     }
-    await tx(async (c) => {
-      await c.q(`INSERT INTO memberships (org_id, user_id, role, branch_ids, can_export) VALUES ($1,$2,$3,$4,$5)
-                 ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role, branch_ids = EXCLUDED.branch_ids, can_export = EXCLUDED.can_export, status = 'active'`,
-        [inv.org_id, user.id, inv.role, inv.branch_ids, inv.can_export])
-      await c.q(`UPDATE invites SET accepted_at = NOW() WHERE id = $1`, [inv.id])
-    })
-    await audit({ org: { id: inv.org_id }, user }, 'team.invite_accepted', 'user', user.id, { role: inv.role })
-    const token = await createSession(user.id, inv.org_id)
-    return json({ ok: true }, 200, { 'set-cookie': sessionCookie(token) })
+    let existing = null
+    try { existing = await auth.getUserByEmail(inv.email) } catch {}
+    if (existing) throw unauthorized('You already have an account. Sign in to accept this invitation.')
+    const name = str(body.name, { required: true, max: 120, name: 'Your name' })
+    const created = await auth.createUser({ email: inv.email, password: password(body.password), displayName: name })
+    const user = { id: created.uid, email: inv.email, name }
+    await db.collection('users').doc(user.id).set({ email: inv.email, name, is_platform_admin: false, created_at: new Date(), active_org_id: inv.org_id })
+    await accept(db, inv, invRef, user)
+    return { ok: true, signIn: true }
   })
 }

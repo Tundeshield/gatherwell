@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { Button, Input, Notice, PageLoader } from '../../components/ui'
 import AuthLayout from './AuthLayout'
+import { signInWithPassword } from '../../lib/firebase'
 
 export default function AcceptInvite() {
   const { token } = useParams()
@@ -22,7 +23,14 @@ export default function AcceptInvite() {
     e.preventDefault()
     setLoading(true); setError('')
     try {
-      await api.post('/auth/accept-invite', { token, name, password })
+      if (invite.hasAccount) {
+        // Prove it's them, then accept with their new session.
+        await signInWithPassword(invite.email, password)
+        await api.post('/auth/accept-invite', { token })
+      } else {
+        await api.post('/auth/accept-invite', { token, name, password })
+        await signInWithPassword(invite.email, password)
+      }
       await refresh()
       navigate('/app', { replace: true })
     } catch (err) { setError(err.message) }

@@ -1,21 +1,28 @@
-import { q, one } from '../db.js'
+import { fb, col, plain, ms } from '../firebase.js'
 import { bad, date } from '../http.js'
-import { requireCap, branchFilter, can } from '../access.js'
+import { requireCap, branchFilter, can, orgBranches } from '../access.js'
+import { startOfDayInTz, weekKey, monthKey } from '../util.js'
 
 function range(query, defaultDays = 84) {
   const to = query.to ? new Date(date(query.to)) : new Date()
   const from = query.from ? new Date(date(query.from)) : new Date(to.getTime() - defaultDays * 86400000)
   if (from >= to) throw bad('The start date must be before the end date.')
   if (to - from > 731 * 86400000) throw bad('Choose a range of two years or less.')
-  return { from: from.toISOString(), to: to.toISOString() }
+  return { from, to }
 }
+
+const inBranches = (branches) => (x) => !branches || branches.includes(x.branch_id)
+const countable = (g) => !['draft', 'archived'].includes(g.status)
 
 export default function (r) {
   r.get('/overview', async ({ ctx, query }) => {
+    const { db } = await fb()
+    const C = (n) => col(db, ctx.org.id, n)
     const branches = await branchFilter(ctx, query.branch)
-    const org = ctx.org.id
     const tz = ctx.org.timezone || 'UTC'
     const weeks = Number(ctx.org.settings?.absenceWeeks || 3)
+    const now = new Date()
+    const names = new Map((await orgBranches(ctx)).map(b => [b.id, b.name]))
     const out = { definitions: {
       today: 'Check-ins recorded today across all sessions',
       latest: 'Most recent session that has started',
@@ -26,151 +33,178 @@ export default function (r) {
     } }
 
     if (can(ctx, 'attendance.view')) {
-      const [today, latest, firstTimers, returning, upcoming, trend] = await Promise.all([
-        one(`SELECT COUNT(*)::int AS n FROM checkins c WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2))
-               AND (c.created_at AT TIME ZONE $3)::date = (NOW() AT TIME ZONE $3)::date`, [org, branches, tz]),
-        one(`SELECT g.id, g.name, g.kind, g.starts_at, g.branch_id, b.name AS branch_name,
-                    (SELECT COUNT(*)::int FROM checkins c WHERE c.gathering_id = g.id) AS attendance,
-                    (SELECT COUNT(*)::int FROM checkins c WHERE c.gathering_id = g.id AND c.first_time) AS first_timers
-               FROM gatherings g JOIN branches b ON b.id = g.branch_id
-              WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at <= NOW() AND g.status IN ('open','closed')
-              ORDER BY g.starts_at DESC LIMIT 1`, [org, branches]),
-        one(`SELECT COUNT(*)::int AS n FROM checkins c WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2))
-               AND c.first_time AND c.created_at >= NOW() - INTERVAL '7 days'`, [org, branches]),
-        one(`SELECT COUNT(DISTINCT c.person_id)::int AS n FROM checkins c JOIN people p ON p.id = c.person_id
-              WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2)) AND NOT c.first_time
-                AND p.status = 'visitor' AND c.created_at >= NOW() - INTERVAL '7 days'`, [org, branches]),
-        q(`SELECT g.id, g.name, g.starts_at, g.status, b.name AS branch_name FROM gatherings g JOIN branches b ON b.id = g.branch_id
-            WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at > NOW() AND g.status IN ('scheduled','open')
-            ORDER BY g.starts_at LIMIT 4`, [org, branches]),
-        q(`SELECT to_char(date_trunc('week', g.starts_at AT TIME ZONE $3), 'YYYY-MM-DD') AS week, COUNT(c.id)::int AS attendance,
-                  COUNT(c.id) FILTER (WHERE c.first_time)::int AS first_timers
-             FROM gatherings g LEFT JOIN checkins c ON c.gathering_id = g.id
-            WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at >= NOW() - INTERVAL '12 weeks' AND g.starts_at <= NOW()
-            GROUP BY 1 ORDER BY 1`, [org, branches, tz]),
+      const [week, past, future, trendQs] = await Promise.all([
+        C('checkins').where('created_at', '>=', new Date(now.getTime() - 7 * 86400e3)).limit(20000).get(),
+        C('gatherings').where('starts_at', '<=', now).orderBy('starts_at', 'desc').limit(40).get(),
+        C('gatherings').where('starts_at', '>', now).orderBy('starts_at', 'asc').limit(40).get(),
+        C('gatherings').where('starts_at', '>=', new Date(now.getTime() - 84 * 86400e3)).orderBy('starts_at', 'asc').limit(2000).get(),
       ])
+      const checkins = week.docs.map(d => d.data()).filter(inBranches(branches))
+      const sod = startOfDayInTz(tz).getTime()
+      const latest = past.docs.map(d => ({ id: d.id, ...plain(d.data()) })).filter(inBranches(branches)).find(g => ['open', 'closed'].includes(g.status))
       let previous = null
       if (latest) {
-        previous = await one(`SELECT g.name, g.starts_at, (SELECT COUNT(*)::int FROM checkins c WHERE c.gathering_id = g.id) AS attendance
-                                FROM gatherings g WHERE g.org_id = $1 AND g.branch_id = $2 AND g.kind = $3 AND g.starts_at < $4 AND g.status IN ('open','closed')
-                               ORDER BY g.starts_at DESC LIMIT 1`, [org, latest.branch_id, latest.kind, latest.starts_at])
+        const pq = await C('gatherings').where('branch_id', '==', latest.branch_id).where('starts_at', '<', new Date(latest.starts_at)).orderBy('starts_at', 'desc').limit(20).get()
+        const p = pq.docs.map(d => ({ id: d.id, ...plain(d.data()) })).find(g => g.kind === latest.kind && ['open', 'closed'].includes(g.status))
+        if (p) previous = { name: p.name, starts_at: p.starts_at, attendance: p.attendance || 0 }
       }
-      Object.assign(out, { today: today.n, latest, previous, firstTimers: firstTimers.n, returning: returning.n, upcomingSessions: upcoming, trend })
+      const trend = new Map()
+      for (const d of trendQs.docs) {
+        const g = d.data()
+        if (!inBranches(branches)(g) || !countable(g) || ms(g.starts_at) > now.getTime()) continue
+        const k = weekKey(g.starts_at.toDate ? g.starts_at.toDate() : new Date(g.starts_at), tz)
+        const t = trend.get(k) || { week: k, attendance: 0, first_timers: 0 }
+        t.attendance += g.attendance || 0; t.first_timers += g.first_timers || 0
+        trend.set(k, t)
+      }
+      Object.assign(out, {
+        today: checkins.filter(c => ms(c.created_at) >= sod).length,
+        latest: latest ? { id: latest.id, name: latest.name, kind: latest.kind, starts_at: latest.starts_at, branch_id: latest.branch_id, branch_name: names.get(latest.branch_id) || null, attendance: latest.attendance || 0, first_timers: latest.first_timers || 0 } : null,
+        previous,
+        firstTimers: checkins.filter(c => c.first_time).length,
+        returning: new Set(checkins.filter(c => !c.first_time && c.person_status === 'visitor').map(c => c.person_id)).size,
+        upcomingSessions: future.docs.map(d => ({ id: d.id, ...plain(d.data()) })).filter(inBranches(branches)).filter(g => ['scheduled', 'open'].includes(g.status)).slice(0, 4)
+          .map(g => ({ id: g.id, name: g.name, starts_at: g.starts_at, status: g.status, branch_name: names.get(g.branch_id) || null })),
+        trend: [...trend.values()].sort((a, b) => a.week.localeCompare(b.week)),
+      })
     }
 
     if (can(ctx, 'people.view') || can(ctx, 'reports.view')) {
-      const people = await one(`SELECT COUNT(*) FILTER (WHERE status = 'member')::int AS members,
-                                       COUNT(*) FILTER (WHERE status = 'visitor')::int AS visitors,
-                                       COUNT(*) FILTER (WHERE status = 'member' AND last_seen_at >= NOW() - make_interval(days => $3))::int AS regulars
-                                  FROM people WHERE org_id = $1 AND ($2::uuid[] IS NULL OR branch_id = ANY($2))`, [org, branches, weeks * 7])
-      const absent = await one(`SELECT COUNT(*)::int AS n FROM people p WHERE p.org_id = $1 AND ($2::uuid[] IS NULL OR p.branch_id = ANY($2))
-                                  AND p.status = 'member' AND p.last_seen_at < NOW() - make_interval(days => $3)
-                                  AND NOT EXISTS (SELECT 1 FROM followups f WHERE f.person_id = p.id AND f.reason = 'absence' AND f.status IN ('pending','in_progress'))`,
-        [org, branches, weeks * 7])
-      Object.assign(out, { people, absent: absent.n })
+      const P = () => {
+        let q = C('people')
+        if (branches) q = branches.length === 1 ? q.where('branch_id', '==', branches[0]) : q.where('branch_id', 'in', branches.slice(0, 30))
+        return q
+      }
+      const cutoff = new Date(now.getTime() - weeks * 7 * 86400e3)
+      const [members, visitors, regulars, absentQs] = await Promise.all([
+        P().where('status', '==', 'member').count().get(),
+        P().where('status', '==', 'visitor').count().get(),
+        P().where('status', '==', 'member').where('last_seen_at', '>=', cutoff).count().get(),
+        C('people').where('status', '==', 'member').where('last_seen_at', '<', cutoff).orderBy('last_seen_at', 'desc').limit(5000).get(),
+      ])
+      out.people = { members: members.data().count, visitors: visitors.data().count, regulars: regulars.data().count }
+      out.absent = absentQs.docs.map(d => d.data()).filter(inBranches(branches)).filter(p => !(p.open_reasons || []).includes('absence')).length
     }
 
     if (can(ctx, 'followups.view')) {
-      out.followups = await one(`SELECT COUNT(*) FILTER (WHERE due_at < (date_trunc('day', NOW() AT TIME ZONE $3) AT TIME ZONE $3))::int AS overdue,
-                                        COUNT(*) FILTER (WHERE due_at < ((date_trunc('day', NOW() AT TIME ZONE $3) + INTERVAL '1 day') AT TIME ZONE $3))::int AS due,
-                                        COUNT(*) FILTER (WHERE assignee_user_id = $4)::int AS mine,
-                                        COUNT(*)::int AS open
-                                   FROM followups WHERE org_id = $1 AND ($2::uuid[] IS NULL OR branch_id = ANY($2)) AND status IN ('pending','in_progress')`,
-        [org, branches, tz, ctx.user.id])
+      const qs = await C('followups').where('status', 'in', ['pending', 'in_progress']).limit(5000).get()
+      const open = qs.docs.map(d => d.data()).filter(inBranches(branches))
+      const sod = startOfDayInTz(tz).getTime()
+      out.followups = {
+        overdue: open.filter(f => ms(f.due_at) < sod).length,
+        due: open.filter(f => ms(f.due_at) < sod + 86400e3).length,
+        mine: open.filter(f => f.assignee_user_id === ctx.user.id).length,
+        open: open.length,
+      }
     }
 
     if (can(ctx, 'events.view')) {
-      out.upcomingEvents = await q(`SELECT e.id, e.name, e.starts_at, e.location, e.capacity, e.status,
-                                           (SELECT COUNT(*)::int FROM registrations r WHERE r.event_id = e.id AND r.status = 'registered') AS registered
-                                      FROM events e WHERE e.org_id = $1 AND ($2::uuid[] IS NULL OR e.branch_id IS NULL OR e.branch_id = ANY($2))
-                                       AND COALESCE(e.ends_at, e.starts_at) >= NOW() AND e.status IN ('published','postponed')
-                                     ORDER BY e.starts_at LIMIT 4`, [org, branches])
+      const qs = await C('events').where('starts_at', '>=', new Date(now.getTime() - 3 * 86400e3)).orderBy('starts_at', 'asc').limit(40).get()
+      out.upcomingEvents = qs.docs.map(d => ({ id: d.id, ...plain(d.data()) }))
+        .filter(e => !branches || !e.branch_id || branches.includes(e.branch_id))
+        .filter(e => new Date(e.ends_at || e.starts_at) >= now && ['published', 'postponed'].includes(e.status)).slice(0, 4)
+        .map(e => ({ id: e.id, name: e.name, starts_at: e.starts_at, location: e.location, capacity: e.capacity, status: e.status, registered: e.registered || 0 }))
     }
 
-    out.activity = await q(`SELECT a.action, a.entity, a.created_at, a.meta, u.name AS user_name FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
-                             WHERE a.org_id = $1 AND a.action NOT LIKE '%exported' ORDER BY a.created_at DESC LIMIT 8`, [org])
+    const act = await C('audit').orderBy('created_at', 'desc').limit(20).get()
+    out.activity = act.docs.map(d => plain(d.data())).filter(a => !a.action.endsWith('exported')).slice(0, 8)
     return out
   })
 
   // --- reports ---------------------------------------------------------------------
   r.get('/reports/attendance', async ({ ctx, query }) => {
     requireCap(ctx, 'reports.view')
+    const { db } = await fb()
+    const C = (n) => col(db, ctx.org.id, n)
     const branches = await branchFilter(ctx, query.branch)
     const { from, to } = range(query)
     const tz = ctx.org.timezone || 'UTC'
-    const [weekly, byBranch, sessions, byKind] = await Promise.all([
-      q(`SELECT to_char(date_trunc('week', g.starts_at AT TIME ZONE $4), 'YYYY-MM-DD') AS week, COUNT(c.id)::int AS attendance,
-                COUNT(c.id) FILTER (WHERE c.first_time)::int AS first_timers, COUNT(DISTINCT g.id)::int AS sessions
-           FROM gatherings g LEFT JOIN checkins c ON c.gathering_id = g.id
-          WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $5 AND g.status <> 'draft'
-          GROUP BY 1 ORDER BY 1`, [ctx.org.id, branches, from, tz, to]),
-      q(`SELECT b.id, b.name, COUNT(c.id)::int AS attendance, COUNT(DISTINCT g.id)::int AS sessions,
-                COUNT(c.id) FILTER (WHERE c.first_time)::int AS first_timers
-           FROM branches b LEFT JOIN gatherings g ON g.branch_id = b.id AND g.starts_at BETWEEN $3 AND $4 AND g.status <> 'draft'
-           LEFT JOIN checkins c ON c.gathering_id = g.id
-          WHERE b.org_id = $1 AND ($2::uuid[] IS NULL OR b.id = ANY($2)) GROUP BY b.id, b.name ORDER BY attendance DESC`, [ctx.org.id, branches, from, to]),
-      q(`SELECT g.id, g.name, g.kind, g.starts_at, b.name AS branch_name, COUNT(c.id)::int AS attendance, COUNT(c.id) FILTER (WHERE c.first_time)::int AS first_timers
-           FROM gatherings g JOIN branches b ON b.id = g.branch_id LEFT JOIN checkins c ON c.gathering_id = g.id
-          WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $4 AND g.status <> 'draft'
-          GROUP BY g.id, b.name ORDER BY g.starts_at DESC LIMIT 200`, [ctx.org.id, branches, from, to]),
-      q(`SELECT g.kind, COUNT(DISTINCT g.id)::int AS sessions, COUNT(c.id)::int AS attendance
-           FROM gatherings g LEFT JOIN checkins c ON c.gathering_id = g.id
-          WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $4 AND g.status <> 'draft'
-          GROUP BY g.kind ORDER BY attendance DESC`, [ctx.org.id, branches, from, to]),
+    const prevFrom = new Date(from.getTime() - (to - from))
+    const [gq, cq] = await Promise.all([
+      C('gatherings').where('starts_at', '>=', prevFrom).where('starts_at', '<=', to).orderBy('starts_at', 'asc').limit(5000).get(),
+      C('checkins').where('created_at', '>=', from).where('created_at', '<=', to).limit(30000).get(),
     ])
-    // Comparable previous period of equal length.
-    const span = new Date(to) - new Date(from)
-    const prevFrom = new Date(new Date(from) - span).toISOString()
-    const totals = await one(`SELECT
-        (SELECT COUNT(*)::int FROM checkins c JOIN gatherings g ON g.id = c.gathering_id WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $4) AS current,
-        (SELECT COUNT(*)::int FROM checkins c JOIN gatherings g ON g.id = c.gathering_id WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2)) AND g.starts_at BETWEEN $5 AND $3) AS previous,
-        (SELECT COUNT(DISTINCT c.person_id)::int FROM checkins c JOIN gatherings g ON g.id = c.gathering_id WHERE c.org_id = $1 AND ($2::uuid[] IS NULL OR c.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $4) AS unique_people,
-        (SELECT COUNT(*)::int FROM gatherings g WHERE g.org_id = $1 AND ($2::uuid[] IS NULL OR g.branch_id = ANY($2)) AND g.starts_at BETWEEN $3 AND $4 AND g.status <> 'draft') AS sessions`,
-      [ctx.org.id, branches, from, to, prevFrom])
-    return { from, to, previousFrom: prevFrom, totals, weekly, byBranch, sessions, byKind }
+    const all = gq.docs.map(d => ({ id: d.id, ...plain(d.data()) })).filter(inBranches(branches)).filter(countable)
+    const cur = all.filter(g => ms(g.starts_at) >= from.getTime())
+    const prev = all.filter(g => ms(g.starts_at) < from.getTime())
+    const sum = (list, k) => list.reduce((a, g) => a + (g[k] || 0), 0)
+    const weekly = new Map()
+    for (const g of cur) {
+      const k = weekKey(new Date(g.starts_at), tz)
+      const w = weekly.get(k) || { week: k, attendance: 0, first_timers: 0, sessions: 0 }
+      w.attendance += g.attendance || 0; w.first_timers += g.first_timers || 0; w.sessions++
+      weekly.set(k, w)
+    }
+    const allBranches = (await orgBranches(ctx)).filter(b => !branches || branches.includes(b.id))
+    const byBranch = allBranches.map(b => {
+      const list = cur.filter(g => g.branch_id === b.id)
+      return { id: b.id, name: b.name, attendance: sum(list, 'attendance'), sessions: list.length, first_timers: sum(list, 'first_timers') }
+    }).sort((a, b) => b.attendance - a.attendance)
+    const kinds = new Map()
+    for (const g of cur) { const k = kinds.get(g.kind) || { kind: g.kind, sessions: 0, attendance: 0 }; k.sessions++; k.attendance += g.attendance || 0; kinds.set(g.kind, k) }
+    const names = new Map(allBranches.map(b => [b.id, b.name]))
+    const unique = new Set(cq.docs.map(d => d.data()).filter(inBranches(branches)).map(c => c.person_id))
+    return {
+      from: from.toISOString(), to: to.toISOString(), previousFrom: prevFrom.toISOString(),
+      totals: { current: sum(cur, 'attendance'), previous: sum(prev, 'attendance'), unique_people: unique.size, sessions: cur.length },
+      weekly: [...weekly.values()].sort((a, b) => a.week.localeCompare(b.week)),
+      byBranch,
+      sessions: [...cur].reverse().slice(0, 200).map(g => ({ id: g.id, name: g.name, kind: g.kind, starts_at: g.starts_at, branch_name: names.get(g.branch_id) || null, attendance: g.attendance || 0, first_timers: g.first_timers || 0 })),
+      byKind: [...kinds.values()].sort((a, b) => b.attendance - a.attendance),
+    }
   })
 
-  // Visitor journey: of people whose first visit fell in the period, how many came back and how many became members.
+  // Visitor journey: genuine first-time visitors in the period, and what has happened since.
   r.get('/reports/visitors', async ({ ctx, query }) => {
     requireCap(ctx, 'reports.view')
+    const { db } = await fb()
+    const C = (n) => col(db, ctx.org.id, n)
     const branches = await branchFilter(ctx, query.branch)
     const { from, to } = range(query)
     const tz = ctx.org.timezone || 'UTC'
-    // Only genuine first visits (a visitor's first ever check-in) — not members' first recorded check-in.
-    const firstVisitors = `SELECT p.* FROM people p WHERE p.org_id = $1 AND ($2::uuid[] IS NULL OR p.branch_id = ANY($2))
-      AND EXISTS (SELECT 1 FROM checkins c WHERE c.person_id = p.id AND c.first_time AND c.created_at BETWEEN $3 AND $4)`
-    const funnel = await one(`SELECT COUNT(*)::int AS first_visits,
-                                     COUNT(*) FILTER (WHERE visit_count >= 2)::int AS returned,
-                                     COUNT(*) FILTER (WHERE visit_count >= 3)::int AS returned_3,
-                                     COUNT(*) FILTER (WHERE status = 'member')::int AS became_members
-                                FROM (${firstVisitors}) fv`, [ctx.org.id, branches, from, to])
-    const monthly = await q(`SELECT to_char(date_trunc('month', first_visit_at AT TIME ZONE $5), 'YYYY-MM') AS month, COUNT(*)::int AS first_visits,
-                                    COUNT(*) FILTER (WHERE visit_count >= 2)::int AS returned
-                               FROM (${firstVisitors}) fv GROUP BY 1 ORDER BY 1`, [ctx.org.id, branches, from, to, tz])
-    const followups = await one(`SELECT COUNT(*)::int AS created, COUNT(*) FILTER (WHERE status = 'done')::int AS completed,
-                                        COUNT(*) FILTER (WHERE status IN ('pending','in_progress') AND due_at < NOW())::int AS overdue,
-                                        ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - created_at)) / 3600) FILTER (WHERE status = 'done'))::int AS avg_hours_to_close
-                                   FROM followups WHERE org_id = $1 AND ($2::uuid[] IS NULL OR branch_id = ANY($2)) AND created_at BETWEEN $3 AND $4`,
-      [ctx.org.id, branches, from, to])
-    return { from, to, funnel, monthly, followups }
+    const [pq, fq] = await Promise.all([
+      C('people').where('first_time_at', '>=', from).where('first_time_at', '<=', to).limit(20000).get(),
+      C('followups').where('created_at', '>=', from).where('created_at', '<=', to).limit(20000).get(),
+    ])
+    const ppl = pq.docs.map(d => d.data()).filter(inBranches(branches))
+    const funnel = {
+      first_visits: ppl.length, returned: ppl.filter(p => (p.visit_count || 0) >= 2).length,
+      returned_3: ppl.filter(p => (p.visit_count || 0) >= 3).length, became_members: ppl.filter(p => p.status === 'member').length,
+    }
+    const monthly = new Map()
+    for (const p of ppl) {
+      const k = monthKey(p.first_time_at.toDate ? p.first_time_at.toDate() : new Date(p.first_time_at), tz)
+      const m = monthly.get(k) || { month: k, first_visits: 0, returned: 0 }
+      m.first_visits++; if ((p.visit_count || 0) >= 2) m.returned++
+      monthly.set(k, m)
+    }
+    const fus = fq.docs.map(d => d.data()).filter(inBranches(branches))
+    const doneList = fus.filter(f => f.status === 'done' && f.closed_at)
+    const avg = doneList.length ? Math.round(doneList.reduce((a, f) => a + (ms(f.closed_at) - ms(f.created_at)) / 3600e3, 0) / doneList.length) : null
+    return {
+      from: from.toISOString(), to: to.toISOString(), funnel, monthly: [...monthly.values()].sort((a, b) => a.month.localeCompare(b.month)),
+      followups: { created: fus.length, completed: doneList.length, overdue: fus.filter(f => ['pending', 'in_progress'].includes(f.status) && ms(f.due_at) < Date.now()).length, avg_hours_to_close: avg },
+    }
   })
 
   r.get('/reports/data-quality', async ({ ctx, query }) => {
     requireCap(ctx, 'reports.view')
+    const { db } = await fb()
     const branches = await branchFilter(ctx, query.branch)
-    const counts = await one(`SELECT COUNT(*)::int AS total,
-                                     COUNT(*) FILTER (WHERE phone_norm IS NULL)::int AS no_phone,
-                                     COUNT(*) FILTER (WHERE email IS NULL)::int AS no_email,
-                                     COUNT(*) FILTER (WHERE branch_id IS NULL)::int AS no_branch,
-                                     COUNT(*) FILTER (WHERE last_name IS NULL)::int AS no_last_name
-                                FROM people WHERE org_id = $1 AND status <> 'archived' AND ($2::uuid[] IS NULL OR branch_id = ANY($2))`, [ctx.org.id, branches])
-    const dupNames = await q(`SELECT lower(first_name) AS first, lower(COALESCE(last_name,'')) AS last, COUNT(*)::int AS n,
-                                     array_agg(id) AS ids
-                                FROM people WHERE org_id = $1 AND status <> 'archived' AND ($2::uuid[] IS NULL OR branch_id = ANY($2))
-                               GROUP BY 1, 2 HAVING COUNT(*) > 1 ORDER BY n DESC LIMIT 50`, [ctx.org.id, branches])
-    const dupEmails = await q(`SELECT lower(email) AS email, COUNT(*)::int AS n, array_agg(id) AS ids FROM people
-                                WHERE org_id = $1 AND email IS NOT NULL AND status <> 'archived' AND ($2::uuid[] IS NULL OR branch_id = ANY($2))
-                                GROUP BY 1 HAVING COUNT(*) > 1 ORDER BY n DESC LIMIT 50`, [ctx.org.id, branches])
-    return { counts, possibleDuplicates: { byName: dupNames, byEmail: dupEmails } }
+    const qs = await col(db, ctx.org.id, 'people').where('status', 'in', ['visitor', 'member', 'inactive', 'transferred']).limit(20000).get()
+    const ppl = qs.docs.map(d => ({ id: d.id, ...d.data() })).filter(inBranches(branches))
+    const group = (keyFn) => {
+      const m = new Map()
+      for (const p of ppl) { const k = keyFn(p); if (!k) continue; const g = m.get(k) || []; g.push(p.id); m.set(k, g) }
+      return [...m.entries()].filter(([, ids]) => ids.length > 1).sort((a, b) => b[1].length - a[1].length).slice(0, 50)
+    }
+    return {
+      counts: { total: ppl.length, no_phone: ppl.filter(p => !p.phone_norm).length, no_email: ppl.filter(p => !p.email).length, no_branch: ppl.filter(p => !p.branch_id).length, no_last_name: ppl.filter(p => !p.last_name).length },
+      possibleDuplicates: {
+        byName: group(p => p.name_lower).map(([k, ids]) => ({ name: k, n: ids.length, ids })),
+        byEmail: group(p => p.email && p.email.toLowerCase()).map(([k, ids]) => ({ email: k, n: ids.length, ids })),
+      },
+      sampled: qs.size >= 20000,
+    }
   })
 }

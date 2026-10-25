@@ -1,6 +1,7 @@
-// Postgres access. Uses Netlify Database when deployed; DATABASE_URL overrides it
-// (e.g. an external Neon/Supabase database, or a local database in tests).
-import { getDatabase } from '@netlify/database'
+// Postgres access via DATABASE_URL (Neon, Supabase or any Postgres).
+// For serverless, use the provider's *pooled* connection string.
+import pg from 'pg'
+import { HttpError } from './http.js'
 
 let pool = null
 
@@ -8,8 +9,17 @@ export function setPool(p) { pool = p }
 
 function getPool() {
   if (!pool) {
-    const opts = process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : undefined
-    pool = getDatabase(opts).pool
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) throw new HttpError(503, 'Gatherwell is not connected to its database yet. Set DATABASE_URL in Netlify and redeploy.')
+    const local = /localhost|127\.0\.0\.1/.test(connectionString)
+    pool = new pg.Pool({
+      connectionString,
+      max: 3,
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: 10_000,
+      ssl: local ? undefined : { rejectUnauthorized: false },
+    })
+    pool.on('error', (e) => console.error('pg pool error', e.message))
   }
   return pool
 }
@@ -45,7 +55,7 @@ export async function tx(fn) {
   }
 }
 
-// Builds parameterised WHERE clauses: const w = where(); w.add('org_id = ?', orgId)
+// Builds parameterised WHERE clauses: const b = builder(); b.add('org_id = ?', orgId)
 export function builder(start = []) {
   const params = [...start]
   const parts = []

@@ -1,23 +1,16 @@
-// Integration tests: real Postgres (PGlite via @netlify/database-dev) + the real API handler.
-import { test, before, after } from 'node:test'
+// Integration tests: the real API handler against an in-memory Firestore/Auth stand-in that
+// enforces Firestore's index rules (see tests/fake-firebase.js).
+import { test, before } from 'node:test'
 import assert from 'node:assert/strict'
-import pg from 'pg'
-import { NetlifyDB } from '@netlify/database-dev'
-import { setPool } from '../server/db.js'
+import { setFirebase } from '../server/firebase.js'
 import { handle } from '../server/app.js'
+import { createFakeFirebase } from './fake-firebase.js'
 
 process.env.GW_INSECURE_COOKIES = '1'
 process.env.PLATFORM_ADMIN_EMAILS = 'ops@gatherwell.test'
 
-let db, pool
-before(async () => {
-  db = new NetlifyDB({ logger: () => {} })
-  const url = await db.start()
-  await db.applyMigrations(new URL('../netlify/database/migrations', import.meta.url).pathname)
-  pool = new pg.Pool({ connectionString: url, max: 1 })
-  setPool(pool)
-})
-after(async () => { await pool?.end(); await db?.stop() })
+let fake
+before(() => { fake = createFakeFirebase(); setFirebase(fake) })
 
 // Tiny client with a cookie jar.
 function client() {
@@ -33,18 +26,41 @@ function client() {
     const data = ct.includes('json') ? await res.json() : await res.text()
     return { status: res.status, data }
   }
-  return {
+  const c = {
     get: (p) => call('GET', p), post: (p, b, h) => call('POST', p, b ?? {}, h), patch: (p, b) => call('PATCH', p, b), del: (p) => call('DELETE', p, undefined),
+    // Mirrors the browser: Firebase sign-in → ID token → session cookie.
+    login: async (email, password) => {
+      const idToken = fake.auth.signIn(email, password)
+      if (!idToken) return { status: 401 }
+      return call('POST', '/auth/session', { idToken })
+    },
   }
+  return c
+}
+async function signup(c, body) {
+  const r = await c.post('/auth/signup', body)
+  if (r.status !== 201) return r
+  await c.login(body.email, body.password)
+  return r
+}
+async function acceptNew(c, token, name) {
+  const r = await c.post('/auth/accept-invite', { token, name, password: 'password123' })
+  if (r.status === 200) {
+    const inv = await client().get(`/public/invite/${token}`).catch(() => null)
+  }
+  return r
+}
+async function setPerson(id, patch) {
+  for (const [path, d] of fake.db._store) if (path.endsWith(`/people/${id}`)) fake.db._store.set(path, { ...d, ...patch })
 }
 
 const S = {}
 
 test('sign-up creates org, branch and owner; /me reports caps', async () => {
   S.a = client(); S.b = client()
-  let r = await S.a.post('/auth/signup', { orgName: 'Grace Chapel', branchName: 'Central', name: 'Ada Owner', email: 'ada@grace.test', password: 'password123' })
+  let r = await signup(S.a, { orgName: 'Grace Chapel', branchName: 'Central', name: 'Ada Owner', email: 'ada@grace.test', password: 'password123' })
   assert.equal(r.status, 201, JSON.stringify(r.data))
-  r = await S.b.post('/auth/signup', { orgName: 'Hope Church', name: 'Ben Owner', email: 'ben@hope.test', password: 'password123' })
+  r = await signup(S.b, { orgName: 'Hope Church', name: 'Ben Owner', email: 'ben@hope.test', password: 'password123' })
   assert.equal(r.status, 201)
   const me = await S.a.get('/me')
   assert.equal(me.data.org.name, 'Grace Chapel')
@@ -54,14 +70,18 @@ test('sign-up creates org, branch and owner; /me reports caps', async () => {
   S.bBranch = (await S.b.get('/me')).data.branches[0].id
 })
 
-test('duplicate sign-up email is rejected; bad password and login rate limit', async () => {
+test('duplicate sign-up email is rejected; only valid Firebase tokens create sessions', async () => {
   const c = client()
   let r = await c.post('/auth/signup', { orgName: 'X', name: 'X', email: 'ada@grace.test', password: 'password123' })
   assert.equal(r.status, 409)
-  r = await c.post('/auth/login', { email: 'ada@grace.test', password: 'wrong-password' })
+  r = await c.login('ada@grace.test', 'wrong-password')
   assert.equal(r.status, 401)
-  r = await c.post('/auth/login', { email: 'ada@grace.test', password: 'password123' })
+  r = await c.post('/auth/session', { idToken: 'forged-token' })
+  assert.equal(r.status, 401)
+  r = await c.login('ada@grace.test', 'password123')
   assert.equal(r.status, 200)
+  r = await c.get('/me')
+  assert.equal(r.data.org.name, 'Grace Chapel')
 })
 
 test('CSRF guard rejects non-JSON mutations', async () => {
@@ -82,6 +102,7 @@ test('people CRUD with phone de-duplication', async () => {
   assert.equal(r.status, 200, JSON.stringify(r.data))
   S.chidi = r.data.id
   assert.equal(r.data.phone_norm, '2348031234567')
+  assert.ok(!('search' in (await S.a.get(`/people/${S.chidi}`)).data.person), 'search tokens are internal')
   r = await S.a.post('/people', { firstName: 'Someone', phone: '+234 803 123 4567', branchId: S.aBranch1 })
   assert.equal(r.status, 409)
   assert.equal(r.data.details.existingId, S.chidi)
@@ -119,6 +140,7 @@ test('team invites: scoped usher only sees their branch; cannot manage people', 
   S.usher = client()
   r = await S.usher.post('/auth/accept-invite', { token: inviteToken, name: 'Uche Usher', password: 'password123' })
   assert.equal(r.status, 200, JSON.stringify(r.data))
+  await S.usher.login('usher@grace.test', 'password123')
   // Reuse is refused.
   r = await client().post('/auth/accept-invite', { token: inviteToken, name: 'Again', password: 'password123' })
   assert.equal(r.status, 400)
@@ -137,6 +159,7 @@ test('scoped admin cannot grant access beyond their branches or invite admins', 
   let r = await S.a.post('/team/invites', { email: 'admin2@grace.test', role: 'admin', branchIds: [S.aBranch2] })
   S.admin2 = client()
   await S.admin2.post('/auth/accept-invite', { token: r.data.token, name: 'Scoped Admin', password: 'password123' })
+  await S.admin2.login('admin2@grace.test', 'password123')
   r = await S.admin2.post('/team/invites', { email: 'x@grace.test', role: 'lead', branchIds: [S.aBranch1] })
   assert.equal(r.status, 403)
   r = await S.admin2.post('/team/invites', { email: 'x@grace.test', role: 'lead', branchIds: null })
@@ -273,6 +296,7 @@ test('export requires permission and is audited', async () => {
   const lead = client()
   const inv = await S.a.post('/team/invites', { email: 'lead@grace.test', role: 'lead', canExport: false })
   await lead.post('/auth/accept-invite', { token: inv.data.token, name: 'Lead', password: 'password123' })
+  await lead.login('lead@grace.test', 'password123')
   r = await lead.get('/people/export')
   assert.equal(r.status, 403)
   r = await lead.get('/people')
@@ -283,7 +307,7 @@ test('export requires permission and is audited', async () => {
 
 test('absence workflow does not create duplicate cases', async () => {
   // Make Chidi look absent for 5 weeks
-  await pool.query(`UPDATE people SET last_seen_at = NOW() - INTERVAL '35 days' WHERE id = $1`, [S.chidi])
+  await setPerson(S.chidi, { last_seen_at: new Date(Date.now() - 35 * 86400e3) })
   let r = await S.a.get('/followups/absence/candidates')
   assert.ok(r.data.rows.some(p => p.id === S.chidi))
   r = await S.a.post('/followups/absence', { personIds: [S.chidi] })
@@ -373,7 +397,7 @@ test('platform admin area is separate from church ownership', async () => {
   let r = await S.a.get('/platform/summary')
   assert.equal(r.status, 403)
   const ops = client()
-  await ops.post('/auth/signup', { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherwell.test', password: 'password123' })
+  await signup(ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherwell.test', password: 'password123' })
   r = await ops.get('/platform/summary')
   assert.equal(r.status, 200)
   assert.ok(r.data.totals.orgs >= 3)
@@ -394,4 +418,33 @@ test('logout ends the session', async () => {
   assert.equal(r.status, 200)
   r = await S.b.get('/me')
   assert.equal(r.status, 401)
+})
+
+test('index checker rejects queries without a declared composite index', async () => {
+  const q = fake.db.collection('orgs/x/people').where('status', '==', 'member').orderBy('visit_count', 'desc')
+  await assert.rejects(() => q.get(), /needs a composite index/)
+})
+
+test('every people filter and sort combination is backed by an index', async () => {
+  const c = client()
+  await c.login('ada@grace.test', 'password123')
+  const me = (await c.get('/me')).data
+  const branch = me.branches[0].id
+  const unit = (await c.post('/units', { name: 'Choir' })).data.id
+  const filters = [{}, { status: 'member' }, { status: 'visitor,member' }, { branch }, { unit }, { followup: 'open' },
+    { attendance: 'recent' }, { attendance: 'absent' }, { attendance: 'never' }, { firstVisitSince: new Date(Date.now() - 7 * 86400e3).toISOString() },
+    { status: 'member', branch, unit }, { status: 'member', attendance: 'absent', branch }]
+  for (const f of filters) for (const sort of ['name', 'recent', 'last_seen', 'first_visit']) {
+    const qs = new URLSearchParams({ ...f, sort }).toString()
+    const r = await c.get(`/people?${qs}`)
+    assert.equal(r.status, 200, `${qs}: ${JSON.stringify(r.data)}`)
+  }
+  for (const status of ['', 'open', 'closed', 'archived']) {
+    const r = await c.get(`/gatherings?${new URLSearchParams({ status, branch })}`)
+    assert.equal(r.status, 200, `gatherings ${status}: ${JSON.stringify(r.data)}`)
+  }
+  for (const bucket of ['overdue', 'today', 'upcoming', 'done']) assert.equal((await c.get(`/followups?bucket=${bucket}`)).status, 200)
+  for (const when of ['upcoming', 'past', '']) assert.equal((await c.get(`/events?when=${when}`)).status, 200)
+  assert.equal((await c.get(`/overview?branch=${branch}`)).status, 200)
+  assert.equal((await c.get(`/reports/attendance?branch=${branch}`)).status, 200)
 })

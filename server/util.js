@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import { q, one } from './db.js'
+import { fb } from './firebase.js'
 import { tooMany } from './http.js'
 
 // --- tokens & passwords ---------------------------------------------------------
@@ -62,27 +62,54 @@ export function slugify(s) {
   return String(s || '').toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_]+/g, '-').replace(/-+/g, '-').slice(0, 40) || 'church'
 }
 
-// --- rate limiting (fixed window, stored in Postgres) ---------------------------------
+// --- rate limiting (fixed window, stored in Firestore) --------------------------------
 export async function rateLimit(key, limit, windowSeconds) {
-  const row = await one(
-    `INSERT INTO rate_limits (key, window_start, count) VALUES ($1, NOW(), 1)
-     ON CONFLICT (key) DO UPDATE SET
-       count = CASE WHEN rate_limits.window_start < NOW() - make_interval(secs => $2) THEN 1 ELSE rate_limits.count + 1 END,
-       window_start = CASE WHEN rate_limits.window_start < NOW() - make_interval(secs => $2) THEN NOW() ELSE rate_limits.window_start END
-     RETURNING count`,
-    [key, windowSeconds]
-  )
-  if (row.count > limit) throw tooMany()
+  const { db } = await fb()
+  const ref = db.collection('rateLimits').doc(sha256(key).slice(0, 40))
+  const count = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const now = Date.now()
+    const d = snap.exists ? snap.data() : null
+    const start = d?.window_start ? (d.window_start.toDate ? d.window_start.toDate().getTime() : new Date(d.window_start).getTime()) : 0
+    const fresh = !d || now - start > windowSeconds * 1000
+    const n = fresh ? 1 : (d.count || 0) + 1
+    tx.set(ref, { window_start: fresh ? new Date(now) : new Date(start), count: n, expires_at: new Date(now + windowSeconds * 1000) })
+    return n
+  })
+  if (count > limit) throw tooMany()
 }
 
 export async function audit(ctx, action, entity, entityId, meta = {}) {
   try {
-    await q(`INSERT INTO audit_log (org_id, user_id, action, entity, entity_id, meta) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [ctx?.org?.id || null, ctx?.user?.id || null, action, entity || null, entityId ? String(entityId) : null, meta])
+    if (!ctx?.org?.id) return
+    const { db } = await fb()
+    await db.collection('orgs').doc(ctx.org.id).collection('audit').add({
+      action, entity: entity || null, entity_id: entityId ? String(entityId) : null, meta: JSON.parse(JSON.stringify(meta || {})),
+      user_id: ctx.user?.id || null, user_name: ctx.user?.name || null, created_at: new Date(),
+    })
   } catch (e) {
     console.error('audit failed', action, e.message)
   }
 }
+
+// Start of "today" (or of the day containing `date`) in an IANA timezone, as a Date.
+export function startOfDayInTz(tz, date = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date).map(p => [p.type, p.value]))
+  const guess = Date.UTC(+parts.year, +parts.month - 1, +parts.day)
+  return new Date(guess - tzOffsetMs(tz, new Date(guess)))
+}
+export function tzOffsetMs(tz, date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(date).map(x => [x.type, x.value]))
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second) - Math.floor(date.getTime() / 1000) * 1000
+}
+// Monday-of-week key (YYYY-MM-DD) for a date, in a timezone.
+export function weekKey(date, tz) {
+  const d = new Date(date.getTime() + tzOffsetMs(tz, date))
+  const day = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - day)
+  return d.toISOString().slice(0, 10)
+}
+export function monthKey(date, tz) { return new Date(date.getTime() + tzOffsetMs(tz, date)).toISOString().slice(0, 7) }
 
 // Default form for new gatherings and events.
 export const DEFAULT_CHECKIN_FORM = [

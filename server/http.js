@@ -102,10 +102,11 @@ export function email(v, { required = false } = {}) {
   return s.toLowerCase()
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Firestore document IDs (auto IDs are 20 chars; we allow our own slug-like IDs too).
+const ID_RE = /^[A-Za-z0-9_-]{6,64}$/
 export function uuid(v, { name = 'ID', required = false } = {}) {
   if (!v) { if (required) throw bad(`${name} is required.`); return null }
-  if (!UUID_RE.test(String(v))) throw bad(`${name} is not valid.`)
+  if (!ID_RE.test(String(v))) throw notFound(`${name} not found.`)
   return String(v)
 }
-export const isUuid = (v) => UUID_RE.test(String(v || ''))
+export const isUuid = (v) => ID_RE.test(String(v || ''))
