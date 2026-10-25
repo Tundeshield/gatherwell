@@ -10,7 +10,7 @@ export function setPool(p) { pool = p }
 function getPool() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL
-    if (!connectionString) throw new HttpError(503, 'Gatherwell is not connected to its database yet. Set DATABASE_URL in Netlify and redeploy.')
+    if (!connectionString) throw new HttpError(503, 'GatherHQ is not connected to its database yet. Set DATABASE_URL in Netlify and redeploy.')
     const local = /localhost|127\.0\.0\.1/.test(connectionString)
     pool = new pg.Pool({
       connectionString,

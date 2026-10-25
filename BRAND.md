@@ -1,7 +1,7 @@
-# Gatherwell brand & UI system
+# GatherHQ brand & UI system
 
-**Gatherwell** — *A better way to bring church life together.*
-Multi-branch Church Operations Platform. The name is provisional.
+**GatherHQ** — *A better way to bring church life together.*
+Multi-branch Church Operations Platform.
 
 ## Renaming the product
 Change the name in three places only:
@@ -30,11 +30,11 @@ For non-Tailwind contexts (canvas, html2canvas, inline SVG) use `COLORS` from `s
 Inter. Weights: 400 body, 500 labels/nav, 600 headings and figures. Avoid 700+.
 
 ## Logo
-A central amber node (the church/HQ) with spokes to three connected people/branches, held by an arc — a gathering "well".
+One stroke sweeps into a **G** and wraps around a person — the amber head — so the name and the idea of a church gathered around each individual live in one shape. Monoline ivory on forest green, with amber as the only accent.
 - `src/components/Logo.jsx` — `<Logo />` lockup and `<LogoMark />` (props: `size`, `onDark`, `tile`)
 - `public/favicon.svg`, `public/icon-maskable.svg` — browser and app icons
-- `brand/gatherwell-mark.svg`, `brand/gatherwell-horizontal.svg`, `brand/gatherwell-horizontal-reverse.svg` — reports and marketing
-Minimum size: 16px for the mark, 24px tall for the lockup. Don't recolour, rotate or add effects.
+- `brand/gatherhq-mark.svg` (tile), `brand/gatherhq-mark-outline.svg` (no tile), `brand/gatherhq-horizontal.svg`, `brand/gatherhq-horizontal-reverse.svg`
+Minimum size: 16px for the mark, 24px tall for the lockup. Keep the stroke weight; don't recolour the head except to amber; don't add effects.
 
 ## Components (`src/components/ui.jsx`)
 `Btn`, `IconBtn`, `Badge` (adds `success`/`warning`/`danger`/`info`/`highlight`), `StatCard` (optional `onClick`, `hint`),

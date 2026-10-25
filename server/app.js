@@ -59,7 +59,7 @@ export async function handle(req) {
     // Firestore: a composite index is missing or still building (first deploys).
     if (e?.code === 9 && /index/i.test(e.message || '')) {
       console.error('Firestore index needed', e.message)
-      return json({ error: 'Gatherwell is finishing its database setup. Please try again in a few minutes.' }, 503)
+      return json({ error: 'GatherHQ is finishing its database setup. Please try again in a few minutes.' }, 503)
     }
     console.error('API error', method, path, e)
     return json({ error: 'Something went wrong on our side. Please try again.' }, 500)

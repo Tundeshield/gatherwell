@@ -16,7 +16,7 @@ function PhoneMock() {
             <div className="mt-4 text-[19px] font-semibold text-ink">Welcome back, Chidi!</div>
             <div className="mt-1.5 text-[13px] text-mist-500">You're checked in for Sunday Service.</div>
           </div>
-          <div className="mt-6 flex items-center justify-center gap-1 text-[11px] text-mist-400"><LogoMark size={12} />Powered by Gatherwell</div>
+          <div className="mt-6 flex items-center justify-center gap-1 text-[11px] text-mist-400"><LogoMark size={12} />Powered by GatherHQ</div>
         </div>
       </div>
       <div className="absolute -bottom-12 -left-4 w-[240px] rounded-xl border border-mist-200 bg-white px-4 py-3 shadow-pop sm:-left-16">
@@ -45,7 +45,7 @@ export default function Landing() {
       <header className="mx-auto flex max-w-page items-center justify-between px-6 py-5">
         <Logo size={30} />
         <nav className="flex items-center gap-2">
-          {signedIn ? <Link to="/app" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Open Gatherwell</Link> : <>
+          {signedIn ? <Link to="/app" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Open GatherHQ</Link> : <>
             <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-ink hover:bg-white">Sign in</Link>
             <Link to="/signup" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Start free</Link>
           </>}
@@ -55,7 +55,7 @@ export default function Landing() {
       <section className="mx-auto grid max-w-page items-center gap-14 px-6 pb-24 pt-10 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
         <div>
           <h1 className="max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.025em] text-ink sm:text-[54px]">Know your people. Coordinate every branch. Follow through.</h1>
-          <p className="mt-6 max-w-lg text-[18px] leading-relaxed text-ink-soft">Gatherwell brings attendance, visitors, follow-ups and events into one calm place — so no one who walks through your doors is forgotten.</p>
+          <p className="mt-6 max-w-lg text-[18px] leading-relaxed text-ink-soft">GatherHQ brings attendance, visitors, follow-ups and events into one calm place — so no one who walks through your doors is forgotten.</p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link to={signedIn ? '/app' : '/signup'} className="rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Start your free 30 days'}</Link>
             {!signedIn && <Link to="/login" className="rounded-lg border border-mist-200 bg-white px-6 py-3 text-[15px] font-medium text-ink hover:border-mist-300">Sign in</Link>}
@@ -101,7 +101,7 @@ export default function Landing() {
         <div className="mx-auto grid max-w-page gap-12 px-6 py-20 lg:grid-cols-[1fr_1.2fr]">
           <div>
             <h2 className="text-[30px] font-semibold leading-tight">Your members' trust, protected</h2>
-            <p className="mt-4 max-w-md text-[16px] leading-relaxed text-brand-100">Church records are personal. Gatherwell is built so the right people see the right things — and nothing more.</p>
+            <p className="mt-4 max-w-md text-[16px] leading-relaxed text-brand-100">Church records are personal. GatherHQ is built so the right people see the right things — and nothing more.</p>
           </div>
           <ul className="grid gap-6 sm:grid-cols-2">
             {[[ShieldCheck, 'Every church is sealed off', 'Each organisation’s data is isolated on the server, not just hidden in the interface.'],
@@ -123,7 +123,7 @@ export default function Landing() {
       <footer className="border-t border-mist-200">
         <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-mist-500">
           <Logo size={24} />
-          <span>© {new Date().getFullYear()} Gatherwell</span>
+          <span>© {new Date().getFullYear()} GatherHQ</span>
         </div>
       </footer>
     </div>

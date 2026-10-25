@@ -25,7 +25,7 @@ function downloadPoster({ qrCanvas, title, subtitle, orgName, cta }) {
   ctx.fillStyle = COLORS.muted; ctx.font = '400 36px Inter, system-ui, sans-serif'
   if (subtitle) ctx.fillText(subtitle, W / 2, 1465)
   ctx.font = '500 30px Inter, system-ui, sans-serif'
-  ctx.fillText('Gatherwell', W / 2, H - 140)
+  ctx.fillText('GatherHQ', W / 2, H - 140)
   const a = document.createElement('a')
   a.download = `${title.replace(/[^\w]+/g, '-')}-QR.png`
   a.href = c.toDataURL('image/png')

@@ -1,4 +1,4 @@
-// In-memory stand-in for the parts of firebase-admin (Firestore + Auth) Gatherwell uses.
+// In-memory stand-in for the parts of firebase-admin (Firestore + Auth) GatherHQ uses.
 // Used by the integration tests and the local demo server, because the Firestore emulator
 // can't be downloaded in every environment. It deliberately ENFORCES Firestore's index rules:
 // a query that would need a composite index not declared in firestore.indexes.json throws,

@@ -26,7 +26,7 @@ export default function NoOrg() {
   }
 
   return (
-    <AuthLayout title={`Hi ${me.user.name.split(' ')[0]}`} subtitle="You're not part of an active church on Gatherwell right now."
+    <AuthLayout title={`Hi ${me.user.name.split(' ')[0]}`} subtitle="You're not part of an active church on GatherHQ right now."
       footer={<button className="link" onClick={async () => { await logout(); navigate('/login') }}>Sign out</button>}>
       <p className="mb-5 text-sm text-mist-600">If you were expecting access, ask your church admin to send you an invitation link. Or start a new church account:</p>
       <form onSubmit={create}>

@@ -1,24 +1,17 @@
 import { BRAND, COLORS } from '../brand'
 
-// Gatherwell mark: a central node (the church / HQ) with spokes to three
-// connected people/branches, held together by an arc — a gathering "well".
-// Geometry is on a 40×40 grid so it stays crisp from 16px favicons up to print.
+// GatherHQ mark: one stroke sweeps into a G and wraps around a person (amber head) —
+// the church gathered around each individual. 40×40 grid; legible from 16px up.
+const PATH = 'M28.78 11.53 A12.2 12.2 0 1 0 29.54 27.6 L26.8 27.6 A6.8 4.2 0 0 0 13.2 27.6'
+
 export function LogoMark({ size = 32, tile = true, onDark = false, title = BRAND.name }) {
   const bg = onDark ? COLORS.ivory : COLORS.forest
-  const node = onDark ? COLORS.forest : COLORS.ivory
-  const line = onDark ? COLORS.sage : COLORS.sageLight
-  const hub = COLORS.amber
+  const stroke = tile ? (onDark ? COLORS.forest : COLORS.ivory) : (onDark ? COLORS.ivory : COLORS.forest)
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" role="img" aria-label={title} xmlns="http://www.w3.org/2000/svg">
       {tile && <rect width="40" height="40" rx="10" fill={bg} />}
-      <g fill="none" stroke={tile ? line : COLORS.sage} strokeWidth="2.2" strokeLinecap="round">
-        <path d="M9 21.5 A 12 12 0 0 0 31 21.5" />
-        <path d="M20 15.5 L9 21.5 M20 15.5 L20 31 M20 15.5 L31 21.5" />
-      </g>
-      <circle cx="20" cy="14.5" r="4.2" fill={hub} />
-      <circle cx="9" cy="21.5" r="3.6" fill={tile ? node : COLORS.forest} />
-      <circle cx="20" cy="31" r="3.6" fill={tile ? node : COLORS.forest} />
-      <circle cx="31" cy="21.5" r="3.6" fill={tile ? node : COLORS.forest} />
+      <path d={PATH} fill="none" stroke={stroke} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="20" cy="18.2" r="3.3" fill={COLORS.amber} />
     </svg>
   )
 }

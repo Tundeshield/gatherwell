@@ -66,7 +66,7 @@ function OrgSwitcher() {
         <Logo size={30} showName={false} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-semibold text-ink">{me.org.name}</span>
-          <span className="block truncate text-xs text-mist-400">Gatherwell</span>
+          <span className="block truncate text-xs text-mist-400">GatherHQ</span>
         </span>
         {multi && <ChevronsUpDown size={14} className="text-mist-400" />}
       </button>

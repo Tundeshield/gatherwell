@@ -36,7 +36,7 @@ export default function Login() {
 
   return (
     <AuthLayout title={resetMode ? 'Reset your password' : 'Sign in'} subtitle={resetMode ? "We'll email you a link to choose a new password." : "Welcome back. Sign in to your church's workspace."}
-      footer={<>New to Gatherwell? <Link to="/signup" className="link">Create a church account</Link></>}>
+      footer={<>New to GatherHQ? <Link to="/signup" className="link">Create a church account</Link></>}>
       <form onSubmit={submit} noValidate>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         {notice && <Notice tone="success" className="mb-4">{notice}</Notice>}

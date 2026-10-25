@@ -1,6 +1,6 @@
 {
-  "name": "Gatherwell",
-  "short_name": "Gatherwell",
+  "name": "GatherHQ",
+  "short_name": "GatherHQ",
   "description": "A better way to bring church life together.",
   "start_url": "/",
   "display": "standalone",

@@ -225,7 +225,7 @@ function TeamTab() {
           <div className="pb-2">
             <Notice tone="success" title="Invitation created">Send this link to {f.email}. It works once and expires in 14 days.</Notice>
             <div className="mt-4 flex gap-2"><input readOnly value={link} className="field text-xs" onFocus={e => e.target.select()} aria-label="Invitation link" /><Button variant="secondary" icon={Copy} onClick={copy}>Copy</Button></div>
-            <a className="link mt-3 inline-block text-sm" href={`https://wa.me/?text=${encodeURIComponent(`You've been invited to join ${me.org.name} on Gatherwell: ${link}`)}`} target="_blank" rel="noreferrer">Share on WhatsApp</a>
+            <a className="link mt-3 inline-block text-sm" href={`https://wa.me/?text=${encodeURIComponent(`You've been invited to join ${me.org.name} on GatherHQ: ${link}`)}`} target="_blank" rel="noreferrer">Share on WhatsApp</a>
           </div>
         ) : <><Input label="Email" type="email" value={f.email} onChange={e => setF(x => ({ ...x, email: e.target.value }))} required />{roleFields}</>}
       </Modal>

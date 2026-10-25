@@ -13,8 +13,8 @@ function icsFile(ev, orgName) {
   const stamp = (d) => new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
   const end = ev.endsAt || new Date(new Date(ev.startsAt).getTime() + 2 * 3600e3).toISOString()
   const esc = (s) => String(s || '').replace(/[\\;,]/g, (m) => '\\' + m).replace(/\n/g, '\\n')
-  const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gatherwell//EN', 'BEGIN:VEVENT',
-    `UID:${stamp(ev.startsAt)}-${Math.random().toString(36).slice(2)}@gatherwell`, `DTSTAMP:${stamp(new Date())}`,
+  const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//GatherHQ//EN', 'BEGIN:VEVENT',
+    `UID:${stamp(ev.startsAt)}-${Math.random().toString(36).slice(2)}@gatherhq`, `DTSTAMP:${stamp(new Date())}`,
     `DTSTART:${stamp(ev.startsAt)}`, `DTEND:${stamp(end)}`, `SUMMARY:${esc(ev.name)}`,
     `LOCATION:${esc(ev.location)}`, `DESCRIPTION:${esc(`${orgName}\n${ev.description || ''}`)}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
   const a = document.createElement('a')

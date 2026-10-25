@@ -120,7 +120,7 @@ export default function ImportPeople({ open, onClose, onDone }) {
           <Select label="Add these people to branch" value={branchId} onChange={e => setBranchId(e.target.value)}>
             {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </Select>
-          <p className="mb-3 text-sm text-mist-600">Match your columns to Gatherwell fields. We've guessed where we could.</p>
+          <p className="mb-3 text-sm text-mist-600">Match your columns to GatherHQ fields. We've guessed where we could.</p>
           <div className="grid gap-x-4 sm:grid-cols-2">
             {TARGETS.map(t => (
               <Select key={t.key} label={t.label} value={mapping[t.key] ?? ''} onChange={e => setMapping(m => ({ ...m, [t.key]: e.target.value === '' ? undefined : Number(e.target.value) }))}>

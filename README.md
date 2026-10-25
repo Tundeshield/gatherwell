@@ -1,4 +1,4 @@
-# Gatherwell
+# GatherHQ
 
 Multi-branch church operations: QR attendance, visitor follow-up, events with tickets, reports, and team permissions.
 *A better way to bring church life together.* (The name is provisional — change it in `src/brand.js`, `index.html` and `public/manifest.webmanifest`.)

@@ -1,4 +1,4 @@
-// Fetch wrapper for the Gatherwell API. Throws ApiError with server message and field details.
+// Fetch wrapper for the GatherHQ API. Throws ApiError with server message and field details.
 export class ApiError extends Error {
   constructor(status, message, details) { super(message); this.status = status; this.details = details }
 }
@@ -8,7 +8,7 @@ async function request(method, path, body) {
   if (body !== undefined) { init.headers['content-type'] = 'application/json'; init.body = JSON.stringify(body) }
   let res
   try { res = await fetch('/api' + path, init) }
-  catch { throw new ApiError(0, "Can't reach Gatherwell. Check your internet connection and try again.") }
+  catch { throw new ApiError(0, "Can't reach GatherHQ. Check your internet connection and try again.") }
   const ct = res.headers.get('content-type') || ''
   const data = ct.includes('json') ? await res.json().catch(() => ({})) : null
   if (!res.ok) {

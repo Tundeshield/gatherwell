@@ -1,14 +1,13 @@
 // Single source of truth for product branding.
-// The name is provisional — change it here (and in index.html / public/manifest.webmanifest)
-// once domain and trademark checks are complete.
+// Product name — change it here (and in index.html / public/manifest.webmanifest) to rename the app.
 export const BRAND = {
-  name: 'Gatherwell',
+  name: 'GatherHQ',
   tagline: 'A better way to bring church life together.',
   category: 'Church Operations Platform',
-  platformLabel: 'Gatherwell Platform',
-  poweredBy: 'Powered by Gatherwell',
+  platformLabel: 'GatherHQ Platform',
+  poweredBy: 'Powered by GatherHQ',
   // Used for file names (exports, QR downloads)
-  slug: 'Gatherwell',
+  slug: 'GatherHQ',
 }
 
 // Raw hex values for places Tailwind can't reach (canvas exports, inline SVG, html2canvas).

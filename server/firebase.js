@@ -9,7 +9,7 @@ export function setFirebase(f) { impl = f }
 async function load() {
   if (impl) return impl
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT
-  if (!raw) throw new HttpError(503, 'Gatherwell is not connected to Firebase yet. Add FIREBASE_SERVICE_ACCOUNT in Netlify and redeploy.')
+  if (!raw) throw new HttpError(503, 'GatherHQ is not connected to Firebase yet. Add FIREBASE_SERVICE_ACCOUNT in Netlify and redeploy.')
   let sa
   try { sa = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')) }
   catch { throw new HttpError(503, 'FIREBASE_SERVICE_ACCOUNT is not valid JSON. Paste the whole service-account file contents.') }

@@ -49,7 +49,7 @@ export default function Signup() {
 
   return (
     <AuthLayout title="Create your church account" subtitle="Free for 30 days. No card needed."
-      footer={<>Already using Gatherwell? <Link to="/login" className="link">Sign in</Link></>}>
+      footer={<>Already using GatherHQ? <Link to="/login" className="link">Sign in</Link></>}>
       <form onSubmit={submit} noValidate>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         <Input label="Church name" placeholder="e.g. Grace Community Church" value={form.orgName} onChange={set('orgName')} error={fieldErrors.orgName} required autoFocus />

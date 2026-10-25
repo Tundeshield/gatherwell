@@ -10,7 +10,7 @@ import { handle } from '../server/app.js'
 import { createFakeFirebase } from '../tests/fake-firebase.js'
 
 process.env.GW_INSECURE_COOKIES = '1'
-process.env.PLATFORM_ADMIN_EMAILS ||= 'ops@gatherwell.local'
+process.env.PLATFORM_ADMIN_EMAILS ||= 'ops@gatherhq.local'
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const PORT = Number(process.env.PORT || 8888)
 const fake = createFakeFirebase()
@@ -36,7 +36,7 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' })
   fs.createReadStream(file).pipe(res)
 })
-server.listen(PORT, () => console.log(`Gatherwell local: http://localhost:${PORT}`))
+server.listen(PORT, () => console.log(`GatherHQ local: http://localhost:${PORT}`))
 
 if (process.argv.includes('--seed')) {
   const { seed } = await import('./seed.mjs')

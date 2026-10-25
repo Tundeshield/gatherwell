@@ -7,7 +7,7 @@ import { handle } from '../server/app.js'
 import { createFakeFirebase } from './fake-firebase.js'
 
 process.env.GW_INSECURE_COOKIES = '1'
-process.env.PLATFORM_ADMIN_EMAILS = 'ops@gatherwell.test'
+process.env.PLATFORM_ADMIN_EMAILS = 'ops@gatherhq.test'
 
 let fake
 before(() => { fake = createFakeFirebase(); setFirebase(fake) })
@@ -397,7 +397,7 @@ test('platform admin area is separate from church ownership', async () => {
   let r = await S.a.get('/platform/summary')
   assert.equal(r.status, 403)
   const ops = client()
-  await signup(ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherwell.test', password: 'password123' })
+  await signup(ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherhq.test', password: 'password123' })
   r = await ops.get('/platform/summary')
   assert.equal(r.status, 200)
   assert.ok(r.data.totals.orgs >= 3)

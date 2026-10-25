@@ -115,7 +115,7 @@ export default function Attendance() {
         ) : data.rows.length === 0 ? (
           <EmptyState icon={CalendarCheck} title={status ? `No ${STATUS_LABEL[status].toLowerCase()} sessions` : 'No sessions yet'}
             action={can('attendance.manage') && !status && <Button icon={Plus} onClick={() => setCreating(true)}>Create your first session</Button>}>
-            {!status && 'Create a session for each service or meeting. Gatherwell gives you a QR code people scan to check in.'}
+            {!status && 'Create a session for each service or meeting. GatherHQ gives you a QR code people scan to check in.'}
           </EmptyState>
         ) : (
           <>

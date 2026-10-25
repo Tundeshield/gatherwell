@@ -50,7 +50,7 @@ export default function AcceptInvite() {
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         {invite.hasAccount ? (
           <>
-            <p className="mb-4 text-sm text-mist-500">You already have a Gatherwell account. Enter your password to accept.</p>
+            <p className="mb-4 text-sm text-mist-500">You already have a GatherHQ account. Enter your password to accept.</p>
             <Input label="Password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus />
           </>
         ) : (
