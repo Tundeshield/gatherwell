@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "firebase": "^13.1.0",
-    "firebase-admin": "^14.5.0",
+    "firebase-admin": "^13.10.0",
     "lucide-react": "^0.460.0",
     "qrcode.react": "^4.1.0",
     "react": "^18.3.1",
@@ -28,6 +28,6 @@
     "vite": "^5.4.11"
   },
   "engines": {
-    "node": ">=22.12"
+    "node": ">=20"
   }
 }
