@@ -12,7 +12,7 @@ if (!raw) {
   warn('FIREBASE_SERVICE_ACCOUNT is not set — skipping Firestore rules/index setup. The app needs it to work.')
   process.exit(0)
 }
-for (const k of ['VITE_FIREBASE_API_KEY', 'VITE_FIREBASE_AUTH_DOMAIN', 'VITE_FIREBASE_PROJECT_ID', 'VITE_FIREBASE_APP_ID']) {
+for (const k of []) { // web settings now have built-in defaults
   if (!process.env[k]) warn(`${k} is not set — sign-in in the browser will not work until it is.`)
 }
 

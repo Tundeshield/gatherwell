@@ -1,5 +1,5 @@
 // Local full-stack server for development and screenshots: real API + in-memory Firestore/Auth stand-in + built SPA.
-// Usage: npm run build:web && node scripts/local-server.mjs [--seed]
+// Usage: VITE_LOCAL_DEV=1 npm run build:web && node scripts/local-server.mjs [--seed]
 // Without Firebase web settings, the login page posts email/password to /auth/session; this server converts
 // that into a stand-in ID token. The production function ignores those fields.
 import http from 'node:http'

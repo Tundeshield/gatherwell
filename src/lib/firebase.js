@@ -2,11 +2,20 @@
 // exchanged for an HttpOnly session cookie and the client signs out of Firebase again.
 import { api } from './api'
 
+// Firebase web settings are public identifiers (not secrets). Production builds fall back to the
+// gather-hq-main project so sign-in works even if the VITE_FIREBASE_* variables are not set.
+const PROD = import.meta.env.PROD && !import.meta.env.VITE_LOCAL_DEV
+const DEFAULTS = PROD ? {
+  apiKey: 'AIzaSyAj0TwDMDmahVqrQp0cOHqGlCkiq-DxOj0',
+  authDomain: 'gather-hq-main.firebaseapp.com',
+  projectId: 'gather-hq-main',
+  appId: '1:351585370209:web:9a8feda39c2b39a503aa20',
+} : {}
 const config = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || DEFAULTS.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULTS.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULTS.projectId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || DEFAULTS.appId,
 }
 export const firebaseConfigured = () => !!config.apiKey
 
