@@ -1,0 +1,367 @@
+// Composite indexes the API needs (mirrors firestore.indexes.json).
+export const INDEXES = [
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "name_lower",
+    "order": "ASCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "last_seen_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_visit_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_time_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "name_lower",
+    "order": "ASCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "last_seen_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_visit_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_time_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "unit_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "name_lower",
+    "order": "ASCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "unit_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "unit_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "last_seen_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "unit_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_visit_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "unit_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_time_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "has_open_followup",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "name_lower",
+    "order": "ASCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "has_open_followup",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "has_open_followup",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "last_seen_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "has_open_followup",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_visit_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "has_open_followup",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "first_time_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "people",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "last_seen_at",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "name_lower",
+    "order": "ASCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "checkins",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "person_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "followups",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "person_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "created_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "followups",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "closed_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "gatherings",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "status",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "starts_at",
+    "order": "DESCENDING"
+   }
+  ]
+ },
+ {
+  "collectionGroup": "gatherings",
+  "queryScope": "COLLECTION",
+  "fields": [
+   {
+    "fieldPath": "branch_id",
+    "order": "ASCENDING"
+   },
+   {
+    "fieldPath": "starts_at",
+    "order": "DESCENDING"
+   }
+  ]
+ }
+]

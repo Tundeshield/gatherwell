@@ -1,4 +1,6 @@
 import { Router, HttpError, json, forbidden, unauthorized } from './http.js'
+import { fb } from './firebase.js'
+import { ensureIndexes } from './setup.js'
 import { loadContext, requireOrg, requireUser } from './access.js'
 import authRoutes from './routes/auth.js'
 import orgRoutes from './routes/org.js'
@@ -59,7 +61,12 @@ export async function handle(req) {
     // Firestore: a composite index is missing or still building (first deploys).
     if (e?.code === 9 && /index/i.test(e.message || '')) {
       console.error('Firestore index needed', e.message)
-      return json({ error: 'GatherHQ is finishing its database setup. Please try again in a few minutes.' }, 503)
+      const f = await fb().catch(() => null)
+      const st = await ensureIndexes(f?.credential, f?.project)
+      const error = st?.failed && !st.created && !st.existing
+        ? `GatherHQ could not finish its database setup (${st.error}). Share this message with your administrator.`
+        : 'GatherHQ is finishing its database setup. Please try again in a few minutes.'
+      return json({ error }, 503)
     }
     console.error('API error', method, path, e)
     return json({ error: 'Something went wrong on our side. Please try again.' }, 500)

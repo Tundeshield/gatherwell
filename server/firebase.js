@@ -19,7 +19,7 @@ async function load() {
   const app = getApps()[0] || initializeApp({ credential: cert(sa), projectId: sa.project_id })
   const db = getFirestore(app)
   try { db.settings({ ignoreUndefinedProperties: true }) } catch {}
-  impl = { db, auth: getAuth(app), FieldValue }
+  impl = { db, auth: getAuth(app), FieldValue, credential: cert(sa), project: sa.project_id }
   return impl
 }
 
