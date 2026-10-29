@@ -312,6 +312,47 @@ export default function (r) {
     return { ok: true }
   })
 
+  // Clean slate: removes every person in the church with their check-ins, follow-ups and
+  // phone keys. Sessions and events stay (their attendance resets to zero). Works in rounds so
+  // a large church never hits the function time limit; the client calls again until done.
+  r.post('/people/delete-all', async ({ ctx, body }) => {
+    requireCap(ctx, 'org.manage')
+    if (String(body.confirm || '').trim().toUpperCase() !== 'DELETE') throw bad('Type DELETE to confirm.')
+    const { db } = await fb()
+    const C = (n) => col(db, ctx.org.id, n)
+    const started = Date.now()
+    const budget = () => Date.now() - started < 6000
+    let removed = 0
+    const wipe = async (name, withNotes = false) => {
+      while (budget()) {
+        const qs = await C(name).limit(300).get()
+        if (qs.empty) return true
+        const b = db.batch()
+        for (const d of qs.docs) {
+          if (withNotes) for (const n of (await d.ref.collection('notes').get()).docs) b.delete(n.ref)
+          b.delete(d.ref)
+        }
+        await b.commit()
+        if (name === 'people') removed += qs.size
+      }
+      return false
+    }
+    for (const name of ['checkins', 'followups', 'followupKeys', 'phones', 'people']) {
+      if (!(await wipe(name, name === 'followups'))) {
+        const left = (await C('people').count().get()).data().count
+        return { done: false, removed, remaining: left }
+      }
+    }
+    // Everything is gone: reset session counters and unlink event registrations.
+    for (const g of (await C('gatherings').get()).docs) await g.ref.update({ attendance: 0, first_timers: 0, manual: 0 })
+    const linked = (await C('registrations').get()).docs.filter(d => d.data().person_id)
+    for (let i = 0; i < linked.length; i += 400) {
+      const b = db.batch(); linked.slice(i, i + 400).forEach(d => b.update(d.ref, { person_id: null })); await b.commit()
+    }
+    await audit(ctx, 'people.deleted_all', 'people', null, {})
+    return { done: true, removed, remaining: 0 }
+  })
+
   r.post('/people/bulk', async ({ ctx, body }) => {
     requireCap(ctx, 'people.edit')
     const { db } = await fb()

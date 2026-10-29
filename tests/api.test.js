@@ -448,3 +448,31 @@ test('every people filter and sort combination is backed by an index', async () 
   assert.equal((await c.get(`/overview?branch=${branch}`)).status, 200)
   assert.equal((await c.get(`/reports/attendance?branch=${branch}`)).status, 200)
 })
+
+test('delete all people: owner only, typed confirmation, scoped to own church', async () => {
+  const c = client()
+  await signup(c, { orgName: 'Clean Slate Church', branchName: 'Main', name: 'Owner Z', email: 'z@clean.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const me = (await c.get('/me')).data
+  const branchId = me.branches[0].id
+  for (const [f, ph] of [['Ade', '08011110001'], ['Bola', '08011110002'], ['Chi', '08011110003']]) {
+    const r = await c.post('/people', { firstName: f, lastName: 'Test', phone: ph, branchId, status: 'visitor' })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+  }
+  const g = (await c.post('/gatherings', { name: 'Service', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+  await client().post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '08011110001', firstName: 'Ade' })
+  assert.equal((await c.get(`/gatherings/${g.id}`)).data.stats.attendance, 1)
+  const before = (await S.a.get('/people')).data.total
+
+  let r = await c.post('/people/delete-all', { confirm: 'yes' })
+  assert.equal(r.status, 400)
+  r = await S.a.get('/me') // other church unaffected by anything below
+  do { r = await c.post('/people/delete-all', { confirm: 'delete' }) } while (r.status === 200 && !r.data.done)
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal((await c.get('/people')).data.total, 0)
+  assert.equal((await c.get(`/gatherings/${g.id}`)).data.stats.attendance, 0)
+  assert.equal((await c.get('/followups?bucket=open')).data.rows?.length ?? 0, 0)
+  // The same phone can be added again afterwards.
+  r = await c.post('/people', { firstName: 'Ade', lastName: 'Again', phone: '08011110001', branchId })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal((await S.a.get('/people')).data.total, before)
+})

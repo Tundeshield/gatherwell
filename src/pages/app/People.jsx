@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Plus, Upload, Download, Users, X } from 'lucide-react'
+import { Plus, Upload, Download, Users, X, Trash2 } from 'lucide-react'
 import { api, qs, download } from '../../lib/api'
 import { useSession, useBranchParam } from '../../lib/session'
-import { useLoad, useDebounced, PageHeader, Button, SearchInput, Badge, PERSON_TONE, Avatar, Table, Th, Td, Pagination, EmptyState, ErrorState, Skeleton, useToast, Modal, Select } from '../../components/ui'
+import { useLoad, useDebounced, PageHeader, Button, SearchInput, Badge, PERSON_TONE, Avatar, Table, Th, Td, Pagination, EmptyState, ErrorState, Skeleton, useToast, Modal, Select, Input, Notice } from '../../components/ui'
 import { fmtDate, relative, personName, STATUS_LABELS } from '../../lib/format'
 import PersonForm from '../../components/PersonForm'
 import ImportPeople from '../../components/ImportPeople'
@@ -29,6 +29,7 @@ export default function People() {
   const [adding, setAdding] = useState(false)
   const [importing, setImporting] = useState(params.get('import') === '1')
   const [bulk, setBulk] = useState(false)
+  const [wiping, setWiping] = useState(false)
 
   const setParam = (k, v) => { const p = new URLSearchParams(params); v ? p.set(k, v) : p.delete(k); if (k !== 'offset') p.delete('offset'); setParams(p, { replace: true }) }
   useEffect(() => { if ((params.get('q') || '') !== q) setParam('q', q) }, [q]) // eslint-disable-line
@@ -58,6 +59,7 @@ export default function People() {
     <div>
       <PageHeader title="People" description={data ? `${data.total.toLocaleString()} ${activeFilters.length || q ? 'matching' : 'people'}` : ' '}
         actions={<>
+          {can('org.manage') && data?.total > 0 && <Button variant="danger-ghost" icon={Trash2} onClick={() => setWiping(true)}>Delete all</Button>}
           {can('export') && <Button variant="secondary" icon={Download} onClick={exportCsv}>Export</Button>}
           {can('people.edit') && <Button variant="secondary" icon={Upload} onClick={() => setImporting(true)}>Import</Button>}
           {can('people.edit') && <Button icon={Plus} onClick={() => setAdding(true)}>Add person</Button>}
@@ -154,6 +156,8 @@ export default function People() {
         <PersonForm onCancel={() => setAdding(false)} onSaved={(p) => { setAdding(false); toast(`${p.first_name} added`); navigate(`/app/people/${p.id}`) }} />
       </Modal>
       <ImportPeople open={importing} onClose={() => { setImporting(false); if (params.get('import')) setParam('import', '') }} onDone={() => reload()} />
+      <DeleteAll open={wiping} onExport={can('export') ? exportCsv : null} onClose={() => setWiping(false)}
+        onDone={(n) => { setWiping(false); setSelected(new Set()); toast(`Deleted ${n.toLocaleString()} ${n === 1 ? 'person' : 'people'}`); reload() }} />
       <BulkEdit open={bulk} ids={[...selected]} units={units.data || []} onClose={() => setBulk(false)} onDone={(n) => { setBulk(false); setSelected(new Set()); toast(`${n} updated`); reload() }} />
     </div>
   )
@@ -187,6 +191,44 @@ function BulkEdit({ open, ids, units, onClose, onDone }) {
         <option value="">No unit</option>
         {units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
       </Select>
+    </Modal>
+  )
+}
+
+function DeleteAll({ open, onExport, onClose, onDone }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [progress, setProgress] = useState(0)
+  useEffect(() => { if (open) { setText(''); setError(''); setProgress(0) } }, [open])
+  const ready = text.trim().toUpperCase() === 'DELETE'
+  async function run() {
+    setBusy(true); setError('')
+    let removed = 0
+    try {
+      for (let round = 0; round < 200; round++) {
+        const r = await api.post('/people/delete-all', { confirm: text })
+        removed += r.removed || 0
+        setProgress(removed)
+        if (r.done) return onDone(removed)
+      }
+      setError('This is taking longer than expected. Please try again to finish.')
+    } catch (e) { setError(e.message) } finally { setBusy(false) }
+  }
+  return (
+    <Modal open={open} onClose={busy ? undefined : onClose} title="Delete everyone and start fresh?" size="md"
+      footer={<>
+        <Button variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+        <Button variant="danger" icon={Trash2} onClick={run} disabled={!ready} loading={busy}>Delete everyone</Button>
+      </>}>
+      <div className="space-y-4 text-sm text-mist-600">
+        <p>This permanently removes <b className="text-ink">every person in your church, across all branches</b>, together with their check-in history and follow-ups. It can’t be undone.</p>
+        <p>Your branches, team, services and events stay. Their attendance counts go back to zero.</p>
+        {onExport && <Notice tone="info" action={<Button size="sm" variant="secondary" icon={Download} onClick={onExport}>Export</Button>}>Download a copy of your people list first, just in case.</Notice>}
+        {error && <Notice tone="danger">{error}</Notice>}
+        {busy && progress > 0 && <p className="text-ink">Deleted {progress.toLocaleString()} so far…</p>}
+        <Input label="Type DELETE to confirm" value={text} onChange={e => setText(e.target.value)} autoComplete="off" disabled={busy} />
+      </div>
     </Modal>
   )
 }
