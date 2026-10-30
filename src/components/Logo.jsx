@@ -1,17 +1,20 @@
 import { BRAND, COLORS } from '../brand'
 
-// GatherHQ mark: one stroke sweeps into a G and wraps around a person (amber head) —
-// the church gathered around each individual. 40×40 grid; legible from 16px up.
-const PATH = 'M28.78 11.53 A12.2 12.2 0 1 0 29.54 27.6 L26.8 27.6 A6.8 4.2 0 0 0 13.2 27.6'
+// GatherHQ mark: six people gathered in a circle around one amber centre — the church
+// gathered around each person. 40×40 grid; legible from 16px up.
+const PEOPLE = [0, 1, 2, 3, 4, 5].map(i => {
+  const a = (i * Math.PI) / 3 - Math.PI / 2
+  return [+(20 + 10.5 * Math.cos(a)).toFixed(2), +(20 + 10.5 * Math.sin(a)).toFixed(2)]
+})
 
 export function LogoMark({ size = 32, tile = true, onDark = false, title = BRAND.name }) {
   const bg = onDark ? COLORS.ivory : COLORS.forest
-  const stroke = tile ? (onDark ? COLORS.forest : COLORS.ivory) : (onDark ? COLORS.ivory : COLORS.forest)
+  const dot = tile ? (onDark ? COLORS.forest : COLORS.ivory) : (onDark ? COLORS.ivory : COLORS.forest)
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" role="img" aria-label={title} xmlns="http://www.w3.org/2000/svg">
       {tile && <rect width="40" height="40" rx="10" fill={bg} />}
-      <path d={PATH} fill="none" stroke={stroke} strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="20" cy="18.2" r="3.3" fill={COLORS.amber} />
+      {PEOPLE.map(([cx, cy]) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="3.4" fill={dot} />)}
+      <circle cx="20" cy="20" r="4.6" fill={COLORS.amber} />
     </svg>
   )
 }
