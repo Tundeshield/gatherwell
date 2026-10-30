@@ -385,7 +385,7 @@ test('overview, reports and messages compute without errors', async () => {
   assert.equal(r.status, 200)
   r = await S.a.post(`/messages/${r.data.id}/send`)
   assert.equal(r.status, 400)
-  assert.match(r.data.error, /nothing was sent/)
+  assert.match(r.data.error, /isn’t available yet/)
   // Usher overview only includes what they may see
   r = await S.usher.get('/overview')
   assert.equal(r.status, 200)
@@ -475,4 +475,111 @@ test('delete all people: owner only, typed confirmation, scoped to own church', 
   r = await c.post('/people', { firstName: 'Ade', lastName: 'Again', phone: '08011110001', branchId })
   assert.equal(r.status, 200, JSON.stringify(r.data))
   assert.equal((await S.a.get('/people')).data.total, before)
+})
+
+test('email: branding, preview-safe rendering, test send, unsubscribe and batched sending', async () => {
+  const { unsubscribeUrl } = await import('../server/email.js')
+  const c = client()
+  await signup(c, { orgName: 'Mail Church', branchName: 'Main', name: 'Mary Owner', email: 'mary@mail.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const me = (await c.get('/me')).data
+  const branchId = me.branches[0].id
+
+  let r = await c.get('/email/settings')
+  assert.equal(r.data.connected, false)
+  assert.equal(r.data.branding.fromName, 'Mail Church')
+
+  r = await c.patch('/email/branding', { color: '#123456', footer: '12 Church Road', website: 'grace.org', replyTo: 'office@grace.org' })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.website, 'https://grace.org')
+  r = await c.patch('/email/branding', { replyTo: 'not-an-email' })
+  assert.equal(r.status, 400)
+
+  // Logo upload is served publicly as an image
+  const png = 'data:image/png;base64,' + Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64')
+  r = await c.post('/email/assets', { dataUrl: png, kind: 'logo' })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const assetPath = new URL(r.data.url).pathname.replace(/^\/api/, '')
+  const img = await client().get(assetPath)
+  assert.equal(img.status, 200)
+  r = await c.post('/email/assets', { dataUrl: 'data:image/png;base64,' + Buffer.from('<svg>').toString('base64') })
+  assert.equal(r.status, 400)
+
+  const ids = []
+  for (const [f, e] of [['Ada', 'ada@x.test'], ['Bayo', 'bayo@x.test'], ['Cy', 'cy@x.test'], ['Dup', 'ADA@x.test'], ['NoMail', null]]) {
+    r = await c.post('/people', { firstName: f, lastName: 'T', email: e || undefined, phone: `0802${String(ids.length).padStart(7, '0')}`, branchId, status: 'member' })
+    assert.equal(r.status, 200, JSON.stringify(r.data)); ids.push(r.data.id)
+  }
+  // Cy unsubscribes through the link in an email
+  const unsub = new URL(unsubscribeUrl('http://test.local', me.org.id, ids[2]))
+  r = await client().get('/public/unsubscribe' + unsub.search)
+  assert.ok(String(r.data).includes('Unsubscribe'))
+  r = await handle(new Request('http://test.local/api/public/unsubscribe' + unsub.search, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' }))
+  assert.equal(r.status, 200)
+  assert.ok((await r.text()).includes('unsubscribed'))
+  r = await client().get('/public/unsubscribe' + unsub.search.replace(/t=[^&]+/, 't=forged0000000000000000000000000'))
+  assert.ok(String(r.data).includes('isn’t valid'))
+
+  const audience = { statuses: ['member'], segment: 'all' }
+  r = await c.post('/messages/audience', { audience })
+  assert.equal(r.data.counts.with_email, 2, 'deduplicated, unsubscribed excluded')
+  assert.equal(r.data.counts.unsubscribed, 1)
+
+  const blocks = [{ type: 'heading', text: 'Hi {first_name} <script>alert(1)</script>' }, { type: 'text', text: 'See https://grace.org' }, { type: 'button', label: 'Go', url: 'javascript:alert(1)' }, { type: 'evil' }]
+  r = await c.post('/messages', { channel: 'email', subject: 'Sunday {first_name}', blocks, audience })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const msg = r.data
+  assert.equal(msg.blocks.length, 3)
+  assert.equal(msg.blocks[2].url, '', 'unsafe link removed')
+
+  r = await c.post(`/messages/${msg.id}/send`)
+  assert.equal(r.status, 400)
+  assert.match(r.data.error, /switched on/)
+
+  // Connect a simulated email service
+  process.env.RESEND_API_KEY = 're_test'; process.env.EMAIL_FROM_DOMAIN = 'mail.gatherhq.test'
+  const calls = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (u, init) => {
+    if (!String(u).startsWith('https://api.resend.com')) return realFetch(u, init)
+    calls.push({ url: String(u), headers: init.headers, body: JSON.parse(init.body) })
+    return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    r = await c.get('/email/settings')
+    assert.equal(r.data.connected, true)
+    assert.match(r.data.fromAddress, /^"Mail Church" <mail-church@mail\.gatherhq\.test>$/)
+
+    r = await c.post('/messages/test', { subject: 'Hello', blocks })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    assert.deepEqual(calls[0].body[0].to, ['mary@mail.test'])
+    assert.equal(calls[0].body[0].subject, '[Test] Hello')
+
+    let p
+    do { p = await c.post(`/messages/${msg.id}/send`) } while (p.status === 200 && p.data.status === 'sending')
+    assert.equal(p.status, 200, JSON.stringify(p.data))
+    assert.deepEqual([p.data.status, p.data.total, p.data.sent, p.data.failed], ['sent', 2, 2, 0])
+    const batch = calls[1].body
+    assert.equal(calls[1].url, 'https://api.resend.com/emails/batch')
+    assert.ok(calls[1].headers['idempotency-key'])
+    assert.deepEqual(batch.map(e => e.to[0]).sort(), ['ada@x.test', 'bayo@x.test'])
+    const ada = batch.find(e => e.to[0] === 'ada@x.test')
+    assert.equal(ada.subject, 'Sunday Ada')
+    assert.equal(ada.reply_to, 'office@grace.org')
+    assert.ok(ada.html.includes('Hi Ada &lt;script&gt;'))
+    assert.ok(!ada.html.includes('<script>'))
+    assert.ok(ada.html.includes('#123456'))
+    assert.ok(ada.html.includes('12 Church Road'))
+    assert.match(ada.headers['List-Unsubscribe'], /\/api\/public\/unsubscribe\?o=/)
+    assert.ok(ada.text.toLowerCase().includes('hi ada'))
+
+    // Sending again does nothing; sent messages can't be edited
+    r = await c.post(`/messages/${msg.id}/send`)
+    assert.equal(r.data.status, 'sent')
+    assert.equal(calls.length, 2)
+    r = await c.patch(`/messages/${msg.id}`, { subject: 'Changed' })
+    assert.equal(r.status, 400)
+  } finally {
+    globalThis.fetch = realFetch
+    delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM_DOMAIN
+  }
 })

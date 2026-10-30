@@ -29,7 +29,11 @@ Multi-branch church operations: QR attendance, visitor follow-up, events with ti
 | `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_APP_ID` | Firebase web app settings (public) |
 | `PLATFORM_ADMIN_EMAILS` | Comma-separated emails allowed into `/platform` |
 | `AWS_LAMBDA_JS_RUNTIME` | `nodejs22.x` — firebase-admin needs Node 22 in functions |
-| `SMS_PROVIDER`, `EMAIL_PROVIDER`, `WHATSAPP_PROVIDER` | Reserved — messaging stays draft-only until a provider is integrated |
+| `RESEND_API_KEY` | Resend API key. With `EMAIL_FROM_DOMAIN`, switches on email sending and test emails |
+| `EMAIL_FROM_DOMAIN` | Verified sending domain in Resend, e.g. `mail.gatherhq.app`. Churches send as `"Church name" <church-slug@domain>` with replies to their own address |
+| `EMAIL_DAILY_LIMIT` | Optional. Max emails per church per day (default 2000) |
+| `EMAIL_SIGNING_SECRET` | Optional. Secret for unsubscribe links (defaults to one derived from the service account) |
+| `SMS_PROVIDER`, `WHATSAPP_PROVIDER` | Reserved — SMS and WhatsApp stay draft-only until a provider is integrated |
 
 ## Develop
 ```bash

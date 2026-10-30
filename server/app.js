@@ -31,13 +31,13 @@ export async function handle(req) {
 
     // CSRF: state-changing requests must be JSON. Browsers can't send cross-site JSON
     // without a CORS preflight, which this API never approves.
-    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE') {
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !route.opts.form) {
       const ct = req.headers.get('content-type') || ''
       if (!ct.includes('application/json')) return json({ error: 'Unsupported content type.' }, 415)
     }
 
     let body = {}
-    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE') {
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !route.opts.form) {
       const text = await req.text()
       if (text.length > 6_000_000) return json({ error: 'Request too large.' }, 413)
       try { body = text ? JSON.parse(text) : {} } catch { return json({ error: 'Invalid JSON.' }, 400) }

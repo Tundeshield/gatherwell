@@ -34,6 +34,7 @@ function rowOut(snapOrObj, lk) {
     branch_id: p.branch_id || null, unit_id: p.unit_id || null, first_visit_at: p.first_visit_at || null, last_seen_at: p.last_seen_at || null,
     visit_count: p.visit_count || 0, created_at: p.created_at, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null,
     open_followups: p.open_followups || 0, phone_norm: p.phone_norm || null, gender: p.gender || null, birthday: p.birthday || null, joined_at: p.joined_at || null,
+    email_opt_out: !!p.email_opt_out,
   }
 }
 

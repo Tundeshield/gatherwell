@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Copy, Building2, Users, Layers, FileText, Trash2, Pencil } from 'lucide-react'
+import { Plus, Copy, Building2, Users, Layers, FileText, Trash2, Pencil, Upload, CheckCircle2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { useLoad, PageHeader, Button, Badge, Modal, Input, Select, Notice, Toggle, Checkbox, EmptyState, ErrorState, Skeleton, useToast, useConfirm, Table, Th, Td, IconButton, Textarea } from '../../components/ui'
 import { fmtDate, relative } from '../../lib/format'
 import { COUNTRIES } from '../public/Signup'
 import { changePassword } from '../../lib/firebase'
+import EmailPreview from '../../components/EmailPreview'
+import { prepareImage } from '../../lib/image'
 
 const ROLE_HELP = {
   owner: 'Everything, including church settings and billing.',
@@ -375,6 +377,108 @@ function ActivityTab() {
   )
 }
 
+
+const BRAND_SWATCHES = ['#244E43', '#243447', '#1F4E8C', '#6B2D5C', '#8A3B12', '#B0362F', '#C69B55', '#2F6F4F']
+const SAMPLE_BLOCKS = [
+  { type: 'heading', text: 'You’re invited, {first_name}' },
+  { type: 'text', text: 'Join us this Sunday at 9am for our family service. Bring a friend, there’s a seat for everyone.' },
+  { type: 'button', label: 'Get directions', url: 'https://maps.google.com' },
+]
+
+function EmailTab() {
+  const { me, can, refresh } = useSession()
+  const toast = useToast()
+  const canEdit = can('org.manage')
+  const { data, error, reload } = useLoad(() => api.get('/email/settings'), [])
+  const [f, setF] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [err, setErr] = useState('')
+  const fileRef = useRef(null)
+  useEffect(() => { if (data) setF({ ...data.branding }) }, [data])
+  const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
+  const sample = useMemo(() => SAMPLE_BLOCKS, [])
+  const person = useMemo(() => ({ first_name: (me.user?.name || 'Ada').split(' ')[0] }), [me])
+
+  async function uploadLogo(file) {
+    if (!file) return
+    setUploading(true); setErr('')
+    try {
+      const dataUrl = await prepareImage(file, { maxWidth: 600, keepTransparency: true, maxBytes: 300_000 })
+      const { url } = await api.post('/email/assets', { dataUrl, kind: 'logo' })
+      setF(x => ({ ...x, logoUrl: url }))
+    } catch (e) { setErr(e.message) } finally { setUploading(false); if (fileRef.current) fileRef.current.value = '' }
+  }
+  async function save(e) {
+    e.preventDefault(); setBusy(true); setErr('')
+    try { const b = await api.patch('/email/branding', f); setF(b); toast('Email branding saved'); reload(); refresh?.() }
+    catch (e2) { setErr(e2.message) } finally { setBusy(false) }
+  }
+
+  if (error) return <ErrorState error={error} onRetry={reload} />
+  if (!f) return <Skeleton className="h-64" />
+  return (
+    <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
+      <form onSubmit={save} className="space-y-6">
+        <section className={`panel flex items-start gap-3 px-6 py-4 ${data.connected ? '' : 'bg-mist-50/60'}`}>
+          {data.connected ? <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-green-700" /> : <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-mist-300" />}
+          <div className="text-sm">
+            <p className="font-medium text-ink">{data.connected ? 'Email sending is on' : 'Email sending isn’t switched on yet'}</p>
+            <p className="text-mist-500">{data.connected ? <>Emails go out from <span className="font-medium text-ink">{data.fromAddress}</span>. Up to {data.dailyLimit.toLocaleString()} a day ({data.usedToday.toLocaleString()} used today).</> : 'You can set up your branding and write emails now. Sending starts once the GatherHQ email domain is connected.'}</p>
+          </div>
+        </section>
+        {err && <Notice tone="danger">{err}</Notice>}
+        <fieldset disabled={!canEdit} className="space-y-6">
+          <section className="panel px-6 py-5">
+            <h2 className="mb-1 text-[15px] font-semibold text-ink">Logo</h2>
+            <p className="mb-4 text-sm text-mist-500">Shown at the top of every email. A wide logo on a transparent or white background works best.</p>
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex h-20 w-48 items-center justify-center rounded-lg border border-mist-200 bg-white p-2">
+                {f.logoUrl ? <img src={f.logoUrl} alt="Church logo" className="max-h-full max-w-full object-contain" /> : <span className="text-xs text-mist-400">No logo yet</span>}
+              </div>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={e => uploadLogo(e.target.files[0])} />
+              <Button variant="secondary" icon={Upload} loading={uploading} onClick={() => fileRef.current?.click()}>{f.logoUrl ? 'Change logo' : 'Upload logo'}</Button>
+              {f.logoUrl && <Button variant="ghost" onClick={() => setF(x => ({ ...x, logoUrl: '' }))}>Remove</Button>}
+            </div>
+          </section>
+          <section className="panel px-6 py-5">
+            <h2 className="mb-4 text-[15px] font-semibold text-ink">Look and sender</h2>
+            <div className="mb-4">
+              <p className="label">Brand colour</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {BRAND_SWATCHES.map(c => (
+                  <button key={c} type="button" aria-label={`Use colour ${c}`} aria-pressed={f.color === c} onClick={() => setF(x => ({ ...x, color: c }))}
+                    className={`h-8 w-8 rounded-full border-2 ${f.color === c ? 'border-ink' : 'border-white ring-1 ring-mist-200'}`} style={{ background: c }} />
+                ))}
+                <label className="ml-1 flex items-center gap-2 text-sm text-mist-600">
+                  <input type="color" value={f.color} onChange={set('color')} className="h-8 w-10 cursor-pointer rounded border border-mist-200 bg-white" aria-label="Custom colour" />
+                  {f.color}
+                </label>
+              </div>
+              <p className="hint">Used for the top bar, buttons and links.</p>
+            </div>
+            <div className="grid gap-x-4 sm:grid-cols-2">
+              <Input label="Sender name" value={f.fromName} onChange={set('fromName')} hint="Who the email appears to be from." maxLength={80} />
+              <Input label="Replies go to" type="email" value={f.replyTo} onChange={set('replyTo')} placeholder="office@yourchurch.org" hint="When someone replies, it lands here." />
+            </div>
+          </section>
+          <section className="panel px-6 py-5">
+            <h2 className="mb-4 text-[15px] font-semibold text-ink">Footer</h2>
+            <Textarea label="Footer text" rows={3} value={f.footer} onChange={set('footer')} placeholder={'12 Church Road, Ikeja, Lagos\nSundays 8am and 10am'} maxLength={500} />
+            <Input className="mb-0" label="Website" value={f.website} onChange={set('website')} placeholder="https://yourchurch.org" />
+            <p className="hint">Every email also includes an unsubscribe link, added automatically.</p>
+          </section>
+        </fieldset>
+        {canEdit ? <div className="flex justify-end"><Button type="submit" loading={busy}>Save branding</Button></div>
+          : <Notice tone="info">Only the church owner can change email branding.</Notice>}
+      </form>
+      <div className="2xl:sticky 2xl:top-6">
+        <EmailPreview org={me.org} branding={f} subject="This Sunday: Family Service" preheader="Bring a friend, there’s a seat for everyone" blocks={sample} person={person} fromAddress={data.fromAddress} />
+      </div>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { can } = useSession()
   const [params, setParams] = useSearchParams()
@@ -382,13 +486,14 @@ export default function Settings() {
     can('org.manage') && ['church', 'Church'],
     can('branches.manage') && ['branches', 'Branches'],
     can('team.manage') && ['team', 'Team'],
+    can('messages.manage') && ['email', 'Email'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />
