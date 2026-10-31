@@ -74,7 +74,7 @@ function EditSession({ open, g, onClose, onSaved }) {
   const [f, setF] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { if (open) { setF({ name: g.name, kind: g.kind, startsAt: toLocalInput(g.starts_at), endsAt: toLocalInput(g.ends_at), description: g.description || '', form: g.form }); setError('') } }, [open, g])
+  useEffect(() => { if (open) { setF({ name: g.name, kind: g.kind, startsAt: toLocalInput(g.starts_at), endsAt: toLocalInput(g.ends_at), description: g.description || '', form: g.form }); setError('') } }, [open]) // eslint-disable-line -- load once when opened; background refreshes must not wipe edits
   if (!f) return null
   const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
   async function save() {
@@ -112,10 +112,10 @@ export default function SessionDetail() {
 
   const isOpen = data?.gathering.status === 'open'
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || editing) return // pause live refresh while the edit window is open
     const t = setInterval(() => { attendees.reload(); reload() }, 15000)
     return () => clearInterval(t)
-  }, [isOpen]) // eslint-disable-line
+  }, [isOpen, editing]) // eslint-disable-line
 
   if (loading && !data) return <PageLoader />
   if (error) return <ErrorState error={error.status === 404 ? { message: "This session doesn't exist, or belongs to a branch you can't access." } : error} onRetry={reload} />
