@@ -58,7 +58,7 @@ const htmlPage = (title, body) => new Response(`<!doctype html><html><head><meta
 const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 const out = (m) => {
-  const blocks = m.channel === 'email' ? (m.blocks?.length ? m.blocks : blocksFromBody(m.body)) : []
+  const blocks = m.channel === 'email' ? cleanBlocks(m.blocks?.length ? m.blocks : blocksFromBody(m.body)) : []
   return { id: m.id, channel: m.channel, subject: m.subject || null, preheader: m.preheader || null, body: m.body || '', blocks, audience: m.audience, status: m.status,
     recipient_count: m.recipient_count || 0, sent_count: m.sent_count || 0, failed_count: m.failed_count || 0, last_error: m.last_error || null,
     created_by_name: m.created_by_name || null, created_at: m.created_at, updated_at: m.updated_at, sent_at: m.sent_at || null }

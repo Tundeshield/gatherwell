@@ -25,8 +25,11 @@ export function checkUnsubToken(orgId, personId, token) {
   const want = unsubToken(orgId, personId)
   return typeof token === 'string' && token.length === want.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(want))
 }
+// Always https outside local development: Netlify's URL can still say http:// right after a
+// custom domain is added, and an http image on an https page shows "Not secure".
 export function siteOrigin(url) {
-  return (process.env.URL || url?.origin || '').replace(/\/$/, '')
+  const o = (process.env.URL || url?.origin || '').replace(/\/$/, '')
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(o) ? o : o.replace(/^http:\/\//, 'https://')
 }
 export const unsubscribeUrl = (origin, orgId, personId) =>
   `${origin}/api/public/unsubscribe?o=${encodeURIComponent(orgId)}&p=${encodeURIComponent(personId)}&t=${unsubToken(orgId, personId)}`

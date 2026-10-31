@@ -7,7 +7,9 @@ export const DEFAULT_COLOR = '#244E43'
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const isHex = (c) => /^#[0-9a-fA-F]{6}$/.test(c || '')
-export const safeUrl = (u) => (/^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? String(u).trim() : '')
+// Images we host are always served over https; upgrade any saved before the certificate existed.
+const upgradeOwn = (u) => (/^http:\/\/(?!localhost|127\.0\.0\.1)[^/]+\/api\/public\/asset\//i.test(u) ? u.replace(/^http:/i, 'https:') : u)
+export const safeUrl = (u) => (/^https?:\/\/[^\s"'<>]+$/i.test(String(u || '').trim()) ? upgradeOwn(String(u).trim()) : '')
 
 function luminance(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
