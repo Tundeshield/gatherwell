@@ -1,7 +1,7 @@
 import { fb, col, docOut, plain, F, toDate } from '../firebase.js'
 import { bad, notFound, conflict, forbidden, str, oneOf, int, uuid, date, email as emailV } from '../http.js'
 import { requireCap, branchFilter, assertBranch, assertRowScope, orgBranches } from '../access.js'
-import { shortId, sanitizeForm, audit, normalizePhone, ticketCode } from '../util.js'
+import { shortId, sanitizeForm, audit, normalizePhone, exportPhone, ticketCode } from '../util.js'
 import { toCsv, csvResponse } from '../domain.js'
 
 export const EVENT_STATUSES = ['draft', 'published', 'postponed', 'cancelled', 'completed']
@@ -274,7 +274,7 @@ export default function (r) {
     const extra = (e.form || []).filter(f => !f.core)
     await audit(ctx, 'event.exported', 'event', e.id, { count: rows.length, name: e.name })
     return csvResponse(toCsv(rows, [
-      { label: 'Name', value: 'name' }, { label: 'Phone', value: 'phone' }, { label: 'Email', value: 'email' },
+      { label: 'Name', value: 'name' }, { label: 'Phone', value: r => { const n = normalizePhone(r.phone, ctx.org.settings?.defaultCountryCode); return n ? exportPhone(n) : (r.phone || '') } }, { label: 'Email', value: 'email' },
       { label: 'Status', value: 'status' }, { label: 'Ticket code', value: 'code' },
       { label: 'Registered at', value: 'created_at' }, { label: 'Checked in at', value: r => r.checked_in_at || '' },
       ...extra.map(f => ({ label: f.label, value: r => r.answers?.[f.id] ?? '' })),

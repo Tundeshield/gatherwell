@@ -1,7 +1,7 @@
 import { fb, col, docOut, plain, getMany, searchTokens, toDate, ms, isAlreadyExists } from '../firebase.js'
 import { bad, conflict, notFound, str, oneOf, int, uuid, date, email as emailV, isUuid } from '../http.js'
 import { requireCap, branchFilter, assertBranch, assertRowScope, can, orgBranches } from '../access.js'
-import { normalizePhone, audit } from '../util.js'
+import { normalizePhone, displayPhone, exportPhone, audit } from '../util.js'
 import { toCsv, csvResponse, lockRef } from '../domain.js'
 
 export const STATUSES = ['visitor', 'member', 'inactive', 'transferred', 'archived']
@@ -24,13 +24,13 @@ async function lookups(ctx) {
   if (!ctx._units) ctx._units = (await col(db, ctx.org.id, 'units').get()).docs.map(d => ({ id: d.id, ...d.data() }))
   const branches = new Map((await orgBranches(ctx)).map(b => [b.id, b.name]))
   const units = new Map(ctx._units.map(u => [u.id, u.name]))
-  return { branches, units }
+  return { branches, units, cc: ctx.org.settings?.defaultCountryCode || '234' }
 }
 
 function rowOut(snapOrObj, lk) {
   const p = snapOrObj.data ? { id: snapOrObj.id, ...plain(snapOrObj.data()) } : snapOrObj
   return {
-    id: p.id, first_name: p.first_name, last_name: p.last_name || null, phone: p.phone || null, email: p.email || null, status: p.status,
+    id: p.id, first_name: p.first_name, last_name: p.last_name || null, phone: p.phone_norm ? displayPhone(p.phone_norm, lk.cc) : (p.phone || null), email: p.email || null, status: p.status,
     branch_id: p.branch_id || null, unit_id: p.unit_id || null, first_visit_at: p.first_visit_at || null, last_seen_at: p.last_seen_at || null,
     visit_count: p.visit_count || 0, created_at: p.created_at, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null,
     open_followups: p.open_followups || 0, phone_norm: p.phone_norm || null, gender: p.gender || null, birthday: p.birthday || null, joined_at: p.joined_at || null,
@@ -122,7 +122,7 @@ function cleanPerson(body, cc) {
   return {
     first_name: str(body.firstName, { required: true, max: 80, name: 'First name' }),
     last_name: str(body.lastName, { max: 80, name: 'Last name' }),
-    phone, phone_norm: phoneNorm,
+    phone: phoneNorm ? displayPhone(phoneNorm, cc) : null, phone_norm: phoneNorm,
     email: body.email ? emailV(body.email) : null,
     gender: oneOf(body.gender || null, ['female', 'male'], { name: 'Gender' }),
     birthday: body.birthday ? date(body.birthday, { name: 'Birthday' }).slice(0, 10) : null,
@@ -196,7 +196,7 @@ export default function (r) {
     await audit(ctx, 'people.exported', 'people', null, { count: rows.length })
     const csv = toCsv(rows.map(p => rowOut(p, lk)), [
       { label: 'First name', value: 'first_name' }, { label: 'Last name', value: 'last_name' },
-      { label: 'Phone', value: 'phone' }, { label: 'Email', value: 'email' }, { label: 'Status', value: 'status' },
+      { label: 'Phone', value: r => r.phone_norm ? exportPhone(r.phone_norm) : (r.phone || '') }, { label: 'Email', value: 'email' }, { label: 'Status', value: 'status' },
       { label: 'Branch', value: 'branch_name' }, { label: 'Service unit', value: 'unit_name' },
       { label: 'Gender', value: 'gender' }, { label: 'Birthday', value: 'birthday' },
       { label: 'First visit', value: r => dateStr(r.first_visit_at) }, { label: 'Last attended', value: r => dateStr(r.last_seen_at) },
@@ -220,7 +220,7 @@ export default function (r) {
     const owner = p.owner_user_id ? (await db.collection('users').doc(p.owner_user_id).get()).data() : null
     const eventIds = [...new Set(regs.docs.map(d => d.data().event_id))]
     const events = new Map((await getMany(db, eventIds.map(id => C('events').doc(id)))).filter(e => e.exists).map(e => [e.id, plain(e.data())]))
-    const person = { ...p, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null, owner_name: owner?.name || null }
+    const person = { ...p, phone: p.phone_norm ? displayPhone(p.phone_norm, lk.cc) : p.phone, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null, owner_name: owner?.name || null }
     delete person.search
     if (!can(ctx, 'people.edit')) delete person.notes
     return {
@@ -452,14 +452,16 @@ async function analyseImport(ctx, rawRows) {
     if (!first) errors.push('Missing first name')
     const phone = String(r.phone || '').trim()
     const phoneNorm = phone ? normalizePhone(phone, cc) : null
-    if (phone && !phoneNorm) errors.push(`Phone "${phone}" isn't valid`)
+    if (phone && !phoneNorm) errors.push(/e\s*[+-]?\s*\d+/i.test(phone)
+      ? `Phone "${phone}" was shortened by Excel. Format the phone column as Text, retype the number and save again`
+      : `Phone "${phone}" isn't valid`)
     let email = String(r.email || '').trim().toLowerCase() || null
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errors.push(`Email "${email}" isn't valid`); email = null }
     const status = String(r.status || '').trim().toLowerCase()
     const g = String(r.gender || '').trim().toLowerCase()
     const toD = (v) => { if (!v) return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10) }
     const data = {
-      first_name: first.slice(0, 80), last_name: last.slice(0, 80) || null, phone: phone || null, phone_norm: phoneNorm, email,
+      first_name: first.slice(0, 80), last_name: last.slice(0, 80) || null, phone: phoneNorm ? displayPhone(phoneNorm, cc) : null, phone_norm: phoneNorm, email,
       gender: ['f', 'female', 'woman'].includes(g) ? 'female' : ['m', 'male', 'man'].includes(g) ? 'male' : null,
       status: STATUSES.includes(status) ? status : 'member', joined_at: toD(r.joinedAt), birthday: toD(r.birthday),
     }

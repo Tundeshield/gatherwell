@@ -583,3 +583,42 @@ test('email: branding, preview-safe rendering, test send, unsubscribe and batche
     delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM_DOMAIN
   }
 })
+
+test('phone numbers: every way of writing a Nigerian number matches the same person', async () => {
+  const { normalizePhone, displayPhone, exportPhone } = await import('../server/util.js')
+  const same = ['08067999999', '8067999999', '+2348067999999', '2348067999999', '+234 806 799 9999', '+234 (0) 806 799 9999',
+    '234 0806 799 9999', '0806-799-9999', '(0806) 799 9999', '8067999999.0', "'08067999999", '002348067999999', 8067999999, 2348067999999]
+  for (const v of same) assert.equal(normalizePhone(v, '234'), '2348067999999', `failed for ${v}`)
+  assert.equal(normalizePhone('2.34807E+12', '234'), null, 'scientific notation is refused, not guessed')
+  assert.equal(normalizePhone('8.068E+09', '234'), null)
+  assert.equal(normalizePhone('', '234'), null)
+  assert.equal(normalizePhone('12', '234'), null)
+  assert.equal(normalizePhone('+44 7700 900123', '234'), '447700900123')
+  assert.equal(normalizePhone('0244123456', '233'), '233244123456')
+  assert.equal(displayPhone('2348067999999', '234'), '08067999999')
+  assert.equal(displayPhone('447700900123', '234'), '+447700900123')
+  assert.equal(exportPhone('2348067999999'), '+234 806 799 9999')
+  assert.equal(normalizePhone(exportPhone('2348067999999'), '234'), '2348067999999', 'exports import straight back')
+
+  // Import where Excel dropped the 0 matches someone already saved with it
+  const c = client()
+  await signup(c, { orgName: 'Phone Church', branchName: 'Main', name: 'P Owner', email: 'p@phone.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const branchId = (await c.get('/me')).data.branches[0].id
+  let r = await c.post('/people', { firstName: 'Ngozi', lastName: 'A', phone: '0806 799 9999', branchId })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.phone, '08067999999', 'saved in tidy local form')
+  r = await c.post('/people/import/preview', { branchId, rows: [{ firstName: 'Ngozi', phone: '8067999999' }, { firstName: 'Bayo', phone: '8031234567' }, { firstName: 'Bad', phone: '2.34807E+12' }] })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const byName = Object.fromEntries(r.data.rows.map(x => [x.data?.first_name || x.raw?.firstName, x]))
+  assert.notEqual(byName.Ngozi.action, 'create', 'recognised as the existing person')
+  assert.equal(byName.Bayo.action, 'create')
+  assert.equal(byName.Bad.action, 'reject')
+  assert.match(byName.Bad.errors.join(' '), /shortened by Excel/)
+  r = await c.post('/people/import/commit', { branchId, rows: [{ firstName: 'Bayo', phone: '8031234567' }] })
+  r = await c.get('/people?q=Bayo')
+  assert.equal(r.data.rows[0].phone, '08031234567', 'the 0 is put back')
+  // Public check-in with the 0 left off finds the person
+  const g = (await c.post('/gatherings', { name: 'Service', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+  r = await client().post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '806 799 9999', firstName: 'Ngozi' })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+})

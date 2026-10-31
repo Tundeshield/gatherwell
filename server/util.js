@@ -38,17 +38,46 @@ export async function verifyPassword(pw, stored) {
 // --- phones & names -------------------------------------------------------------
 // Normalises to digits with country code. Default country code is Nigeria (234) for local numbers
 // starting with 0; organisations can override via settings.defaultCountryCode.
+// Turns any way of writing a number into one canonical form (country code + number, digits only),
+// so 08067999999, 8067999999 (Excel dropped the 0), +234 806 799 9999, 2348067999999 and
+// +234 (0) 806 799 9999 all match the same person.
 export function normalizePhone(raw, defaultCc = '234') {
-  if (!raw) return null
+  if (raw === null || raw === undefined) return null
   let s = String(raw).trim()
+  if (!s) return null
+  // Excel scientific notation (2.34807E+12) has already lost digits: refuse rather than guess.
+  if (/\d\s*[.,]?\d*\s*e\s*[+-]?\s*\d+/i.test(s)) return null
+  s = s.replace(/[.,]0+$/, '') // 8067999999.0 from some spreadsheet exports
   const plus = s.startsWith('+')
   s = s.replace(/[^\d]/g, '')
   if (!s) return null
+  const cc = String(defaultCc || '').replace(/\D/g, '')
   if (s.startsWith('00')) s = s.slice(2)
-  else if (!plus && s.startsWith('0')) s = defaultCc + s.slice(1)
-  else if (!plus && s.length <= 10 && defaultCc) s = defaultCc + s
+  else if (!plus && s.startsWith('0')) s = cc + s.slice(1)
+  else if (!plus && s.length <= 10 && cc) s = cc + s
+  // "+234 (0) 806 799 9999": drop the 0 written after the country code.
+  if (cc && s.startsWith(cc + '0') && s.length - cc.length === 11) s = cc + s.slice(cc.length + 1)
   if (s.length < 8 || s.length > 15) return null
   return s
+}
+
+// How a number is shown and stored for people: local style (08067999999) for the church's own
+// country, international (+447700900123) for others.
+export function displayPhone(norm, defaultCc = '234') {
+  if (!norm) return null
+  const cc = String(defaultCc || '').replace(/\D/g, '')
+  if (cc && cc !== '1' && norm.startsWith(cc) && norm.length - cc.length >= 7) return '0' + norm.slice(cc.length)
+  return '+' + norm
+}
+
+// For CSV exports: "+234 806 799 9999". The spaces keep Excel from turning it into a number
+// and dropping digits, and it imports straight back in.
+export function exportPhone(norm) {
+  if (!norm) return ''
+  const m = /^(234|233|254|27|44|1)(\d+)$/.exec(norm)
+  if (!m) return '+' + norm
+  const rest = m[2]
+  return `+${m[1]} ${rest.slice(0, 3)} ${rest.slice(3, 6)} ${rest.slice(6)}`.trim()
 }
 
 export function maskName(first, last) {

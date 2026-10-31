@@ -1,7 +1,7 @@
 import { fb, col, docOut, plain, getMany, toDate, ms, F } from '../firebase.js'
 import { bad, notFound, conflict, str, oneOf, int, uuid, date } from '../http.js'
 import { requireCap, branchFilter, assertBranch, assertRowScope, orgBranches } from '../access.js'
-import { shortId, sanitizeForm, audit, normalizePhone, DEFAULT_CHECKIN_FORM } from '../util.js'
+import { shortId, sanitizeForm, audit, normalizePhone, exportPhone, DEFAULT_CHECKIN_FORM } from '../util.js'
 import { recordCheckin, toCsv, csvResponse } from '../domain.js'
 import { createPerson } from './people.js'
 
@@ -159,7 +159,8 @@ export default function (r) {
     const extra = (g.form || []).filter(f => !f.core)
     await audit(ctx, 'gathering.exported', 'gathering', g.id, { count: rows.length, name: g.name })
     const csv = toCsv(rows, [
-      { label: 'First name', value: 'first_name' }, { label: 'Last name', value: 'last_name' }, { label: 'Phone', value: 'phone' },
+      { label: 'First name', value: 'first_name' }, { label: 'Last name', value: 'last_name' },
+      { label: 'Phone', value: r => { const n = normalizePhone(r.phone, ctx.org.settings?.defaultCountryCode); return n ? exportPhone(n) : (r.phone || '') } },
       { label: 'Status', value: 'status' }, { label: 'First time', value: r => r.first_time ? 'Yes' : 'No' },
       { label: 'Method', value: 'method' }, { label: 'Checked in at', value: 'created_at' },
       ...extra.map(f => ({ label: f.label, value: r => r.answers?.[f.id] ?? '' })),

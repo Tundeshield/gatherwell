@@ -54,6 +54,12 @@ export default function ImportPeople({ open, onClose, onDone }) {
       const XLSX = await import('xlsx')
       const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true })
       const ws = wb.Sheets[wb.SheetNames[0]]
+      // Phone numbers stored as numbers: use the real value, not Excel's display text,
+      // which can be 2.34807E+12 or have the leading 0 dropped.
+      for (const [addr, cell] of Object.entries(ws)) {
+        if (addr[0] === '!' || !cell || cell.t !== 'n' || !Number.isFinite(cell.v)) continue
+        if (Number.isInteger(cell.v) && Math.abs(cell.v) >= 1e6) cell.w = BigInt(cell.v).toString()
+      }
       const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }).filter(r => r.some(c => String(c).trim()))
       if (aoa.length < 2) throw new Error('That file has no data rows. The first row should be column headings.')
       const headers = aoa[0].map((h, i) => String(h).trim() || `Column ${i + 1}`)
@@ -111,7 +117,7 @@ export default function ImportPeople({ open, onClose, onDone }) {
             <span className="mt-1 text-xs text-mist-500">.xlsx, .xls or .csv — up to 5,000 rows. First row must be headings.</span>
             <input type="file" accept=".xlsx,.xls,.csv" className="sr-only" onChange={e => e.target.files[0] && readFile(e.target.files[0])} />
           </label>
-          <p className="mt-4 text-xs text-mist-500">You'll see exactly what will happen before anything is saved. People who already exist (same phone number) are never duplicated.</p>
+          <p className="mt-4 text-xs text-mist-500">You'll see exactly what will happen before anything is saved. People who already exist (same phone number) are never duplicated. Phone numbers work with or without the leading 0, or with +234.</p>
         </div>
       )}
 

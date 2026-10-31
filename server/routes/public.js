@@ -2,7 +2,7 @@
 // They never return member directories, internal IDs of people, or contact details.
 import { fb, col, plain } from '../firebase.js'
 import { bad, notFound, conflict, clientIp, str } from '../http.js'
-import { rateLimit, normalizePhone, maskName, validateAnswers } from '../util.js'
+import { rateLimit, normalizePhone, displayPhone, maskName, validateAnswers } from '../util.js'
 import { recordCheckin } from '../domain.js'
 import { createPerson } from './people.js'
 import { createRegistration, eventStats } from './events.js'
@@ -92,7 +92,7 @@ export default function (r) {
     let person
     try {
       person = await createPerson({ org }, {
-        first_name: first, last_name: str(answers.last_name, { max: 80 }), phone: str(answers.phone, { max: 40 }), phone_norm: phoneNorm,
+        first_name: first, last_name: str(answers.last_name, { max: 80 }), phone: displayPhone(phoneNorm, cc), phone_norm: phoneNorm,
         email: answers.email ? String(answers.email).toLowerCase().slice(0, 254) : null, status: 'visitor',
       }, { branch_id: g.branch_id, source: 'checkin' })
     } catch (e) {
