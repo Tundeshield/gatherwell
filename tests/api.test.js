@@ -184,7 +184,7 @@ test('last owner cannot be demoted', async () => {
 })
 
 test('attendance: public QR check-in for new and returning people', async () => {
-  let r = await S.a.post('/gatherings', { name: 'Sunday Service', branchId: S.aBranch2, startsAt: new Date(Date.now() - 3600e3).toISOString() })
+  let r = await S.a.post('/gatherings', { name: 'Sunday Service', branchId: S.aBranch2, startsAt: new Date(Date.now() - 3600e3).toISOString(), confirmName: true })
   assert.equal(r.status, 200, JSON.stringify(r.data))
   S.g1 = r.data
   const pub = client()
@@ -621,4 +621,36 @@ test('phone numbers: every way of writing a Nigerian number matches the same per
   const g = (await c.post('/gatherings', { name: 'Service', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
   r = await client().post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '806 799 9999', firstName: 'Ngozi' })
   assert.equal(r.status, 200, JSON.stringify(r.data))
+})
+
+test('quick check-in (default): phone number alone checks a returning person in', async () => {
+  const c = client()
+  await signup(c, { orgName: 'Quick Church', branchName: 'Main', name: 'Q Owner', email: 'q@quick.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const branchId = (await c.get('/me')).data.branches[0].id
+  await c.post('/people', { firstName: 'Kemi', lastName: 'O', phone: '08055550001', branchId })
+  const g = (await c.post('/gatherings', { name: 'Service', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+  assert.equal(g.confirm_name, false, 'off by default')
+  const pub = client()
+  let r = await pub.get(`/public/g/${g.public_token}`)
+  assert.equal(r.data.gathering.confirmName, false)
+  r = await pub.post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '8055550001' })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.firstName, 'Kemi')
+  assert.equal(r.data.alreadyCheckedIn, false)
+  r = await pub.post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '08055550001' })
+  assert.equal(r.data.alreadyCheckedIn, true)
+  // Unknown number: told to fill in the new-visitor form, nothing recorded
+  r = await pub.post(`/public/g/${g.public_token}/checkin`, { mode: 'returning', phone: '08055550999' })
+  assert.deepEqual(r.data, { found: false })
+  // Someone known who fills in the new-visitor form is simply checked in
+  const g2 = (await c.post('/gatherings', { name: 'Midweek', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+  r = await pub.post(`/public/g/${g2.public_token}/checkin`, { mode: 'new', answers: { first_name: 'Kemi', last_name: 'O', phone: '0805 555 0001' } })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.returning, true)
+  assert.equal((await c.get(`/gatherings/${g.id}`)).data.stats.attendance, 1)
+  // Turning the name check on per session
+  r = await c.patch(`/gatherings/${g2.id}`, { confirmName: true })
+  assert.equal(r.data.confirm_name, true)
+  r = await pub.post(`/public/g/${g2.public_token}/checkin`, { mode: 'returning', phone: '08055550001', firstName: 'Wrong' })
+  assert.equal(r.status, 400)
 })

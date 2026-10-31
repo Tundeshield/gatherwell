@@ -59,6 +59,15 @@ export default function CheckIn() {
     e?.preventDefault()
     setError(''); setBusy(true)
     try {
+      if (!info.gathering.confirmName) {
+        // Quick check-in: phone number only.
+        const r = await api.post(`/public/g/${token}/checkin`, { mode: 'returning', phone })
+        if (r.found) {
+          savePhone(remember ? phone : '')
+          setResult({ name: r.firstName, already: r.alreadyCheckedIn, returning: true }); setStep('done')
+        } else { setAnswers({ phone }); setStep('new') }
+        return
+      }
       const r = await api.post(`/public/g/${token}/lookup`, { phone })
       if (r.found) {
         setHint(r.hint)
@@ -86,7 +95,7 @@ export default function CheckIn() {
     try {
       const r = await api.post(`/public/g/${token}/checkin`, { mode: 'new', answers })
       savePhone(remember ? answers.phone : '')
-      setResult({ name: r.firstName, firstTime: r.firstTime }); setStep('done')
+      setResult({ name: r.firstName, firstTime: r.firstTime, already: r.alreadyCheckedIn, returning: r.returning }); setStep('done')
     } catch (err) {
       if (err.details?.code === 'exists') { setPhone(answers.phone); setHint(err.details.hint); setStep('confirm'); setError('') }
       else { setError(err.message); setFieldErrors(err.details?.fields || {}) }

@@ -70,7 +70,7 @@ export default function (r) {
       branch_id: branch.id, name: str(body.name, { required: true, max: 120, name: 'Name' }), kind: oneOf(body.kind, KINDS, { name: 'Type', fallback: 'service' }),
       description: str(body.description, { max: 1000 }), starts_at: new Date(startsAt), ends_at: endsAt ? new Date(endsAt) : null,
       status: oneOf(body.status, STATUSES, { name: 'Status', fallback: 'open' }), public_token: token,
-      form: sanitizeForm(body.form?.length ? body.form : DEFAULT_CHECKIN_FORM), attendance: 0, first_timers: 0, manual: 0,
+      form: sanitizeForm(body.form?.length ? body.form : DEFAULT_CHECKIN_FORM), confirm_name: body.confirmName === true, attendance: 0, first_timers: 0, manual: 0,
       created_by: ctx.user.id, created_at: new Date(), updated_at: new Date(),
     }
     const batch = db.batch()
@@ -110,6 +110,7 @@ export default function (r) {
     if (end && end <= start) throw bad('End time must be after the start time.')
     const status = oneOf(body.status, STATUSES, { name: 'Status' }); if (status) patch.status = status
     if (body.form) patch.form = sanitizeForm(body.form)
+    if (body.confirmName !== undefined) patch.confirm_name = body.confirmName === true
     const ref = col(db, ctx.org.id, 'gatherings').doc(g.id)
     await ref.update(patch)
     if (status && status !== g.status) await audit(ctx, `gathering.${status}`, 'gathering', g.id, { name: g.name })

@@ -46,7 +46,7 @@ export default function (r) {
     const { org, item: g, branchName } = await loadPublicGathering(params.token)
     return {
       orgName: org.name, branchName, timezone: org.timezone,
-      gathering: { name: g.name, startsAt: plain(g.starts_at), status: g.status, description: g.description || null },
+      gathering: { name: g.name, startsAt: plain(g.starts_at), status: g.status, description: g.description || null, confirmName: !!g.confirm_name },
       form: g.form,
     }
   })
@@ -73,6 +73,13 @@ export default function (r) {
     if (body.mode === 'returning') {
       const phoneNorm = normalizePhone(body.phone, cc)
       if (!phoneNorm) throw bad('Please enter a valid phone number.')
+      // Quick check-in (the default): the phone number alone is enough.
+      if (!g.confirm_name) {
+        const p = await findByPhone(db, org.id, phoneNorm)
+        if (!p) return { found: false }
+        const res = await recordCheckin({ org, gathering: g, personId: p.id, method: 'qr' })
+        return { ok: true, found: true, firstName: p.first_name, alreadyCheckedIn: res.alreadyCheckedIn, firstTime: res.firstTime }
+      }
       await rateLimit(`confirm:${g.id}:${phoneNorm}`, 5, 900)
       const p = await findByPhone(db, org.id, phoneNorm)
       // Second factor: the first name must match the record for that phone.
@@ -98,6 +105,11 @@ export default function (r) {
     } catch (e) {
       if (e.status === 409) {
         const ex = await findByPhone(db, org.id, phoneNorm)
+        // Quick check-in: they're already known, so just check them in.
+        if (ex && !g.confirm_name) {
+          const res = await recordCheckin({ org, gathering: g, personId: ex.id, method: 'qr' })
+          return { ok: true, firstName: ex.first_name, alreadyCheckedIn: res.alreadyCheckedIn, firstTime: res.firstTime, returning: true }
+        }
         throw conflict('This phone number is already registered with us.', { code: 'exists', hint: ex ? maskName(ex.first_name, ex.last_name) : '•••' })
       }
       throw e

@@ -7,6 +7,7 @@ import { useLoad, useDebounced, PageLoader, ErrorState, Button, Badge, SESSION_T
 import { fmtDateTime, fmtTime, relative, personName, KIND_LABELS, STATUS_LABELS, toLocalInput, fromLocalInput, pctChange } from '../../lib/format'
 import QrPanel from '../../components/QrPanel'
 import FormBuilder from '../../components/FormBuilder'
+import { ConfirmNameToggle } from './Attendance'
 
 function ManualCheckin({ gatheringId, onDone }) {
   const toast = useToast()
@@ -74,7 +75,7 @@ function EditSession({ open, g, onClose, onSaved }) {
   const [f, setF] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { if (open) { setF({ name: g.name, kind: g.kind, startsAt: toLocalInput(g.starts_at), endsAt: toLocalInput(g.ends_at), description: g.description || '', form: g.form }); setError('') } }, [open]) // eslint-disable-line -- load once when opened; background refreshes must not wipe edits
+  useEffect(() => { if (open) { setF({ name: g.name, kind: g.kind, startsAt: toLocalInput(g.starts_at), endsAt: toLocalInput(g.ends_at), description: g.description || '', form: g.form, confirmName: !!g.confirm_name }); setError('') } }, [open]) // eslint-disable-line -- load once when opened; background refreshes must not wipe edits
   if (!f) return null
   const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
   async function save() {
@@ -93,6 +94,7 @@ function EditSession({ open, g, onClose, onSaved }) {
       </div>
       <div className="mb-2 text-sm font-medium text-ink">Check-in form</div>
       <FormBuilder value={f.form} onChange={(form) => setF(x => ({ ...x, form }))} />
+      <ConfirmNameToggle checked={f.confirmName} onChange={v => setF(x => ({ ...x, confirmName: v }))} />
     </Modal>
   )
 }

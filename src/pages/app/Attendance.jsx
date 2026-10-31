@@ -29,7 +29,7 @@ export function NewSessionModal({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (open) {
-      setF({ name: 'Sunday Service', kind: 'service', branchId: branchParam || activeBranches[0]?.id, startsAt: toLocalInput(nextSunday9()), endsAt: '', status: 'open', form: DEFAULT_FORM })
+      setF({ name: 'Sunday Service', kind: 'service', branchId: branchParam || activeBranches[0]?.id, startsAt: toLocalInput(nextSunday9()), endsAt: '', status: 'open', form: DEFAULT_FORM, confirmName: false })
       setError(''); setSaveTemplate(false); setTemplateName('')
     }
   }, [open]) // eslint-disable-line
@@ -78,8 +78,9 @@ export function NewSessionModal({ open, onClose, onCreated }) {
           </Select>
         </div>
         <div className="mb-2 text-sm font-medium text-ink">Check-in form</div>
-        <p className="mb-3 text-xs text-mist-500">Name and phone are always asked so people can be recognised next time. Returning people only enter their phone and first name.</p>
+        <p className="mb-3 text-xs text-mist-500">Name and phone are always asked so people can be recognised next time. Returning people just enter their phone number.</p>
         <FormBuilder value={f.form} onChange={(form) => setF(x => ({ ...x, form }))} />
+        <ConfirmNameToggle checked={f.confirmName} onChange={v => setF(x => ({ ...x, confirmName: v }))} />
         {can('attendance.manage') && (
           <div className="mt-4 rounded-lg border border-mist-200 px-4 py-3">
             <label className="flex items-center gap-2 text-sm text-ink"><input type="checkbox" checked={saveTemplate} onChange={e => { setSaveTemplate(e.target.checked); if (!templateName) setTemplateName(f.name) }} className="h-4 w-4 accent-brand-700" />Save as a template for next time</label>
@@ -141,5 +142,18 @@ export default function Attendance() {
       <NewSessionModal open={creating} onClose={() => { setCreating(false); if (params.get('new')) setParams({}, { replace: true }) }}
         onCreated={(g) => { setCreating(false); toast('Session created'); navigate(`/app/attendance/${g.id}`) }} />
     </div>
+  )
+}
+
+// Returning people check in with their phone number alone unless the church turns this on.
+export function ConfirmNameToggle({ checked, onChange }) {
+  return (
+    <label className="mt-4 flex items-start gap-3 rounded-lg border border-mist-200 px-4 py-3">
+      <input type="checkbox" checked={!!checked} onChange={e => onChange(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand-700" />
+      <span>
+        <span className="block text-sm font-medium text-ink">Ask returning people to confirm their first name</span>
+        <span className="block text-xs text-mist-500">Off: people type their number and are checked in straight away (fastest). On: they also type their first name, so nobody can check in someone else by entering their number.</span>
+      </span>
+    </label>
   )
 }
