@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, HeartHandshake, Trash2, Phone, Mail, Building2, Users, CalendarCheck } from 'lucide-react'
+import { ArrowLeft, Pencil, HeartHandshake, Trash2, Phone, Mail, Building2, Users, CalendarCheck, MessageCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { useLoad, PageLoader, ErrorState, Button, Badge, PERSON_TONE, Avatar, Modal, useToast, useConfirm, EmptyState } from '../../components/ui'
@@ -8,10 +8,11 @@ import { fmtDate, fmtDay, relative, personName, STATUS_LABELS, REASON_LABELS } f
 import PersonForm from '../../components/PersonForm'
 import NewFollowup from '../../components/NewFollowup'
 import { TagChip, TagPicker, useTags, loadTags } from '../../components/Tags'
+import { whatsappLink } from '../../../shared/automation.js'
 
 export default function PersonDetail() {
   const { id } = useParams()
-  const { can, tz, multiBranch } = useSession()
+  const { can, tz, multiBranch, me } = useSession()
   const navigate = useNavigate()
   const toast = useToast()
   const confirm = useConfirm()
@@ -67,7 +68,10 @@ export default function PersonDetail() {
         <div className="space-y-6">
           <section className="panel px-5 py-5">
             <ul className="space-y-3">
-              <Info icon={Phone}>{p.phone ? <a href={`tel:${p.phone}`} className="link">{p.phone}</a> : <span className="text-mist-400">No phone</span>}</Info>
+              <Info icon={Phone}>{p.phone ? <span className="flex flex-wrap items-center gap-x-3 gap-y-1"><a href={`tel:${p.phone}`} className="link">{p.phone}</a>
+                {p.phone_norm && <a href={whatsappLink({ template: (me.org.whatsappTemplates || {})[p.open_reasons?.[0]] || (me.org.whatsappTemplates || {})[p.status === 'visitor' && (p.visit_count || 0) <= 1 ? 'first_visit' : 'general'], phoneNorm: p.phone_norm, person: p, churchName: me.org.name, myName: me.user.name })}
+                  target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full bg-[#E7F7EE] px-2.5 py-0.5 text-xs font-medium text-[#0B6B3A] hover:bg-[#D3F0E0]"><MessageCircle size={13} />WhatsApp</a>}</span>
+                : <span className="text-mist-400">No phone</span>}</Info>
               <Info icon={Mail}>{p.email ? <a href={`mailto:${p.email}`} className="link">{p.email}</a> : <span className="text-mist-400">No email</span>}</Info>
               {multiBranch && <Info icon={Building2}>{p.branch_name || 'No branch'}</Info>}
             </ul>

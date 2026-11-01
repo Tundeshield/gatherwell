@@ -9,6 +9,8 @@ import { COUNTRIES } from '../public/Signup'
 import { changePassword } from '../../lib/firebase'
 import EmailPreview from '../../components/EmailPreview'
 import { TagChip, TAG_STYLES, TAG_COLORS, useTags, loadTags } from '../../components/Tags'
+import EmailBlocksEditor, { withKeys, stripKeys } from '../../components/EmailBlocksEditor'
+import { JOURNEY_STEPS, DELAY_OPTIONS, WHATSAPP_KINDS } from '../../../shared/automation.js'
 import { prepareImage } from '../../lib/image'
 
 const ROLE_HELP = {
@@ -345,6 +347,7 @@ function AccountTab() {
           <Button onClick={() => save('name')} loading={busy === 'name'} disabled={!name.trim() || name === me.user.name}>Save</Button>
         </div>
       </section>
+      <BriefPreference />
       <section className="panel px-6 py-5">
         <h2 className="mb-4 text-[15px] font-semibold text-ink">Change password</h2>
         <div className="max-w-md">
@@ -541,6 +544,167 @@ function TagsTab() {
   )
 }
 
+
+function BriefPreference() {
+  const toast = useToast()
+  const { data, reload } = useLoad(() => api.get('/me/notifications'), [])
+  if (!data?.canReceiveBrief) return null
+  async function set(v) {
+    try { await api.patch('/me/notifications', { brief: v }); toast(v ? 'You’ll get the Monday brief' : 'Monday brief turned off'); reload() } catch (e) { toast(e.message, 'error') }
+  }
+  return (
+    <section className="panel px-6 py-5">
+      <h2 className="mb-1 text-[15px] font-semibold text-ink">Emails to you</h2>
+      <Toggle checked={data.brief} onChange={set} label="Monday Pastor’s Brief" hint="Last week’s attendance, first-time visitors, people to check on and follow-ups, every Monday at 7am." />
+    </section>
+  )
+}
+
+function JourneyStep({ step, value, stats, connected, canEdit, onSaved }) {
+  const toast = useToast()
+  const { me } = useSession()
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState(null)
+  const [blocks, setBlocks] = useState([])
+  const [busy, setBusy] = useState('')
+  const [err, setErr] = useState('')
+  useEffect(() => { if (open) { setF({ subject: value.subject, preheader: value.preheader || '', delayHours: value.delayHours }); setBlocks(withKeys(value.blocks)); setErr('') } }, [open]) // eslint-disable-line
+  const draft = () => ({ ...f, blocks: stripKeys(blocks) })
+  async function save(patch, label) {
+    setBusy(label); setErr('')
+    try { await api.patch('/automation', { journey: { [step.key]: patch } }); onSaved(); toast(label === 'toggle' ? (patch.enabled ? `“${step.label}” email switched on` : `“${step.label}” email switched off`) : 'Email saved'); if (label === 'save') setOpen(false) }
+    catch (e) { setErr(e.message); toast(e.message, 'error') } finally { setBusy('') }
+  }
+  async function test() {
+    setBusy('test'); setErr('')
+    try { const r = await api.post('/automation/journey/test', { step: step.key, draft: draft() }); toast(`Test sent to ${r.to}`) }
+    catch (e) { setErr(e.message) } finally { setBusy('') }
+  }
+  const delayLabel = DELAY_OPTIONS.find(([h]) => h === value.delayHours)?.[1] || `${value.delayHours} hours later`
+  return (
+    <div className="rounded-xl border border-mist-200 bg-white">
+      <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">{step.label}</p>
+          <p className="text-xs text-mist-500">{step.hint} Sent {delayLabel.toLowerCase()}. “{value.subject}”</p>
+          {stats?.sent > 0 && <p className="mt-1 text-xs text-brand-700">Sent to {stats.sent} {stats.sent === 1 ? 'person' : 'people'} so far</p>}
+        </div>
+        <Button size="sm" variant="secondary" onClick={() => setOpen(o => !o)}>{open ? 'Close' : canEdit ? 'Edit email' : 'View email'}</Button>
+        <label className={`flex items-center gap-2 text-sm font-medium ${canEdit ? 'cursor-pointer' : 'opacity-60'}`}>
+          <input type="checkbox" className="peer sr-only" checked={value.enabled} disabled={!canEdit || busy === 'toggle'} onChange={e => save({ enabled: e.target.checked }, 'toggle')} />
+          <span className="relative h-6 w-11 rounded-full bg-mist-200 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-brand-700 peer-checked:after:translate-x-5" />
+          <span className={value.enabled ? 'text-brand-700' : 'text-mist-500'}>{value.enabled ? 'On' : 'Off'}</span>
+        </label>
+      </div>
+      {open && f && (
+        <div className="border-t border-mist-100 px-5 py-5">
+          {err && <Notice tone="danger" className="mb-4">{err}</Notice>}
+          <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,480px)]">
+            <fieldset disabled={!canEdit} className="space-y-4">
+              <div className="grid gap-x-4 sm:grid-cols-[1fr_200px]">
+                <Input label="Subject" value={f.subject} onChange={e => setF(x => ({ ...x, subject: e.target.value }))} maxLength={200} />
+                <Select label="When to send" value={f.delayHours} onChange={e => setF(x => ({ ...x, delayHours: Number(e.target.value) }))}>
+                  {DELAY_OPTIONS.map(([h, l]) => <option key={h} value={h}>{l}</option>)}
+                </Select>
+              </div>
+              <Input label="Preview text" value={f.preheader} onChange={e => setF(x => ({ ...x, preheader: e.target.value }))} maxLength={200} hint="The short line shown next to the subject in the inbox." />
+              <EmailBlocksEditor blocks={blocks} setBlocks={setBlocks} />
+              {canEdit && (
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button variant="secondary" onClick={test} loading={busy === 'test'} disabled={!connected}>Send test to me</Button>
+                  <Button onClick={() => save(draft(), 'save')} loading={busy === 'save'}>Save email</Button>
+                </div>
+              )}
+            </fieldset>
+            <EmailPreview org={me.org} branding={brandingPreview(me)} subject={f.subject} preheader={f.preheader} blocks={stripKeys(blocks)} person={{ first_name: 'Temi', last_name: 'Adebayo' }} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+// Branding for previews comes from the email settings, loaded once.
+let brandingCache = null
+function brandingPreview() { return brandingCache || {} }
+
+function AutomationsTab() {
+  const { can, me } = useSession()
+  const toast = useToast()
+  const canEdit = can('org.manage')
+  const { data, error, reload } = useLoad(async () => {
+    const [a, e] = await Promise.all([api.get('/automation'), api.get('/email/settings')])
+    brandingCache = e.branding
+    return a
+  }, [])
+  const [wa, setWa] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [busy, setBusy] = useState('')
+  useEffect(() => { if (data) setWa({ ...data.whatsapp }) }, [data])
+
+  if (error) return <ErrorState error={error} onRetry={reload} />
+  if (!data || !wa) return <Skeleton className="h-64" />
+
+  async function setBrief(v) {
+    try { await api.patch('/automation', { briefEnabled: v }); toast(v ? 'Monday brief switched on' : 'Monday brief switched off'); reload() } catch (e) { toast(e.message, 'error') }
+  }
+  async function openPreview() {
+    setBusy('preview')
+    try { setPreview(await api.get('/automation/brief/preview')) } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+  async function testBrief() {
+    setBusy('brief')
+    try { const r = await api.post('/automation/brief/test'); toast(`Brief sent to ${r.to}`) } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+  async function saveWa() {
+    setBusy('wa')
+    try { await api.patch('/automation', { whatsapp: wa }); toast('WhatsApp messages saved'); reload() } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+
+  return (
+    <div className="space-y-6">
+      {!data.connected && <Notice tone="info" title="Email sending isn’t switched on yet">You can set everything up now. Emails start going out once sending is connected.</Notice>}
+
+      <section className="panel px-6 py-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-xl">
+            <h2 className="text-[15px] font-semibold text-ink">Monday Pastor’s Brief</h2>
+            <p className="mt-1 text-sm text-mist-500">Every Monday at 7am, owners and admins get last week at a glance: attendance against the usual, first-time visitors by name, regulars who haven’t been seen for two weeks, overdue follow-ups, birthdays and upcoming events.</p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={openPreview} loading={busy === 'preview'}>Preview</Button>
+            {canEdit && <Button size="sm" variant="secondary" onClick={testBrief} loading={busy === 'brief'} disabled={!data.connected}>Send me one now</Button>}
+          </div>
+        </div>
+        <div className="mt-2">
+          <Toggle checked={data.briefEnabled} onChange={v => canEdit && setBrief(v)} label="Send the Monday brief" hint={canEdit ? 'Each person can also switch it off for themselves under My account.' : 'Only the church owner can change this.'} />
+        </div>
+      </section>
+
+      <section className="panel px-6 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">Welcome journey</h2>
+        <p className="mb-4 mt-1 max-w-2xl text-sm text-mist-500">Automatic emails to visitors after their first, second and third visits, from {me.org.name}, with your logo and colours. Each is off until you switch it on. Your follow-up team still gets call tasks as usual.</p>
+        <div className="space-y-3">
+          {JOURNEY_STEPS.map(step => <JourneyStep key={step.key} step={step} value={data.journey[step.key]} stats={data.journeyStats?.[step.key]} connected={data.connected} canEdit={canEdit} onSaved={reload} />)}
+        </div>
+        <p className="mt-3 text-xs text-mist-500">Only visitors with an email address who haven’t unsubscribed receive these. Nobody gets the same email twice.</p>
+      </section>
+
+      <section className="panel px-6 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">WhatsApp messages</h2>
+        <p className="mb-4 mt-1 max-w-2xl text-sm text-mist-500">The ready-written message that opens in WhatsApp when your team taps WhatsApp on a follow-up or a person’s page. They can change it before sending. Use {'{first_name}'}, {'{church_name}'} and {'{my_name}'} (the person sending).</p>
+        <fieldset disabled={!canEdit} className="grid gap-x-4 lg:grid-cols-2">
+          {WHATSAPP_KINDS.map(([k, label]) => <Textarea key={k} label={label} rows={3} value={wa[k]} onChange={e => setWa(x => ({ ...x, [k]: e.target.value }))} maxLength={1000} />)}
+        </fieldset>
+        {canEdit && <div className="flex justify-end"><Button onClick={saveWa} loading={busy === 'wa'}>Save messages</Button></div>}
+      </section>
+
+      <Modal open={!!preview} onClose={() => setPreview(null)} title="This week’s brief" description={preview?.subject} size="xl">
+        {preview && <iframe title="Brief preview" srcDoc={preview.html} sandbox="allow-same-origin allow-popups" className="h-[70vh] w-full rounded-lg border border-mist-200 bg-[#F3F4F0]" />}
+      </Modal>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
@@ -549,6 +713,7 @@ export default function Settings() {
     can('branches.manage') && branchesEnabled && ['branches', 'Branches'],
     can('team.manage') && ['team', 'Team'],
     can('messages.manage') && ['email', 'Email'],
+    (can('org.manage') || can('messages.manage')) && ['automations', 'Automations'],
     can('people.edit') && ['tags', 'Tags'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
@@ -556,7 +721,7 @@ export default function Settings() {
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, tags: TagsTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

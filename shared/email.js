@@ -70,7 +70,7 @@ export function cleanBranding(b = {}) {
  * @param {string} o.unsubscribeUrl
  * @returns {{subject: string, html: string, text: string}}
  */
-export function renderEmail({ org = {}, branding = {}, subject = '', preheader = '', blocks = [], person = {}, unsubscribeUrl = '#' }) {
+export function renderEmail({ org = {}, branding = {}, subject = '', preheader = '', blocks = [], person = {}, unsubscribeUrl = '#', footerReason = null, unsubscribeLabel = 'Unsubscribe' }) {
   const br = cleanBranding(branding)
   const color = br.color
   const churchName = br.fromName || org.name || ''
@@ -104,7 +104,7 @@ export function renderEmail({ org = {}, branding = {}, subject = '', preheader =
   const footerLines = [
     br.footer && esc(br.footer).replace(/\n/g, '<br>'),
     br.website && `<a href="${esc(br.website)}" style="color:#5B6B7A">${esc(br.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`,
-    `You’re receiving this because you’re part of ${esc(churchName)}. <a href="${esc(unsubscribeUrl)}" style="color:#5B6B7A;text-decoration:underline">Unsubscribe</a>`,
+    `${esc(footerReason || `You’re receiving this because you’re part of ${churchName}.`)} <a href="${esc(unsubscribeUrl)}" style="color:#5B6B7A;text-decoration:underline">${esc(unsubscribeLabel)}</a>`,
   ].filter(Boolean)
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(m(subject))}</title></head>
@@ -118,7 +118,7 @@ export function renderEmail({ org = {}, branding = {}, subject = '', preheader =
 <tr><td style="padding:20px 32px;font-size:12px;line-height:1.6;color:#5B6B7A;text-align:center">${footerLines.join('<br><br>')}</td></tr>
 </table></td></tr></table></body></html>`
 
-  const plain = [churchName, '', ...text.flatMap((t) => [t, '']), '--', br.footer, br.website, `Unsubscribe: ${unsubscribeUrl}`].filter((x) => x !== undefined && x !== null && x !== '').join('\n')
+  const plain = [churchName, '', ...text.flatMap((t) => [t, '']), '--', br.footer, br.website, `${unsubscribeLabel}: ${unsubscribeUrl}`].filter((x) => x !== undefined && x !== null && x !== '').join('\n')
   return { subject: m(subject), html, text: plain }
 }
 

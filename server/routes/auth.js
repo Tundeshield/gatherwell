@@ -1,6 +1,7 @@
 import { fb, plain } from '../firebase.js'
 import { bad, conflict, unauthorized, str, email as emailV, json, clientIp, notFound, forbidden } from '../http.js'
 import { rateLimit, slugify, shortId, sha256, audit } from '../util.js'
+import { whatsappFor } from '../../shared/automation.js'
 import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
 
 const DEFAULT_SETTINGS = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }
@@ -62,7 +63,7 @@ export async function mePayload(ctx) {
     user: ctx.user,
     org: o && {
       id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
-      trialEndsAt: plain(o.trial_ends_at), branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
+      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
     membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,

@@ -6,6 +6,7 @@ import { useSession, useBranchParam } from '../../lib/session'
 import { useLoad, PageHeader, Button, Badge, Segmented, EmptyState, ErrorState, Skeleton, Drawer, Modal, Input, Select, Textarea, Notice, useToast, Avatar, Checkbox } from '../../components/ui'
 import { fmtDay, fmtDateTime, relative, personName, REASON_LABELS, toLocalInput, fromLocalInput } from '../../lib/format'
 import { useTeam } from '../../components/NewFollowup'
+import { whatsappLink } from '../../../shared/automation.js'
 
 const NOTE_KINDS = [
   { kind: 'call', label: 'Called', icon: Phone },
@@ -41,7 +42,9 @@ function FollowupDrawer({ id, onClose, onChanged }) {
   const p = data?.person
   const open = f && ['pending', 'in_progress'].includes(f.status)
   const digits = (p?.phone || '').replace(/\D/g, '')
-  const intl = digits.startsWith('0') ? (me.org.settings?.defaultCountryCode || '234') + digits.slice(1) : digits
+  const intl = p?.phone_norm || (digits.startsWith('0') ? (me.org.settings?.defaultCountryCode || '234') + digits.slice(1) : digits)
+  const waTemplates = me.org.whatsappTemplates || {}
+  const waLink = p && whatsappLink({ template: waTemplates[f?.reason] || waTemplates.general, phoneNorm: intl, person: p, churchName: me.org.name, myName: me.user.name })
 
   async function act(label, fn, msg) {
     setBusy(label)
@@ -63,7 +66,7 @@ function FollowupDrawer({ id, onClose, onChanged }) {
           {p.phone && (
             <div className="flex gap-2">
               <a href={`tel:${p.phone}`} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-mist-200 text-sm font-medium text-ink hover:bg-mist-50"><Phone size={16} />Call</a>
-              <a href={`https://wa.me/${intl}`} target="_blank" rel="noreferrer" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-mist-200 text-sm font-medium text-ink hover:bg-mist-50"><MessageCircle size={16} />WhatsApp</a>
+              <a href={waLink || `https://wa.me/${intl}`} target="_blank" rel="noreferrer" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-mist-200 text-sm font-medium text-ink hover:bg-mist-50"><MessageCircle size={16} />WhatsApp</a>
               <a href={`sms:${p.phone}`} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-mist-200 text-sm font-medium text-ink hover:bg-mist-50"><Send size={16} />Text</a>
             </div>
           )}

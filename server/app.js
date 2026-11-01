@@ -13,9 +13,10 @@ import messageRoutes from './routes/messages.js'
 import platformRoutes from './routes/platform.js'
 import publicRoutes from './routes/public.js'
 import tagRoutes from './routes/tags.js'
+import automationRoutes from './routes/automation.js'
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes]) {
   register(router)
 }
 

@@ -1,6 +1,7 @@
 // Shared domain logic: check-ins and automatic follow-ups (Firestore transactions).
 import { conflict } from './http.js'
 import { fb, col, F, toDate } from './firebase.js'
+import { JOURNEY_STEPS, journeyFor } from '../shared/automation.js'
 
 export const AUTO_REASONS = ['first_visit', 'second_visit', 'absence', 'event']
 export const lockRef = (db, orgId, personId, reason) => col(db, orgId, 'followupKeys').doc(`${personId}_${reason}`)
@@ -71,6 +72,17 @@ export async function recordCheckin({ org, gathering, personId, method, answers 
         // The welcome call is no longer the right action once they've come back.
         if (l1.exists) { closeFollowup(l1, 'Returned for a second visit'); remove.push('first_visit') }
         if (!l2.exists) openFollowup('second_visit', 'Second visit — invite to connect', 72)
+      }
+    }
+    // Welcome journey: queue the email for this visit if the church has switched it on.
+    if (p.status === 'visitor') {
+      const step = JOURNEY_STEPS.find(j => j.visit === visits)
+      const cfg = step && journeyFor(org)[step.key]
+      if (cfg?.enabled && !(p.journey || {})[step.key]) {
+        tx.set(db.collection('jobs').doc(`${org.id}_${personId}_${step.key}`), {
+          kind: 'journey', org_id: org.id, person_id: personId, step: step.key,
+          due_at: new Date(now.getTime() + Math.max(0, Number(cfg.delayHours) || 0) * 3600e3), created_at: now,
+        })
       }
     }
     // Someone flagged for absence has come back: close the case, keeping the history.

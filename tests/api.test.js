@@ -13,10 +13,12 @@ let fake
 before(() => { fake = createFakeFirebase(); setFirebase(fake) })
 
 // Tiny client with a cookie jar.
+let ipSeq = 0
 function client() {
   let cookie = ''
+  const ip = `10.9.${Math.floor(ipSeq / 250)}.${(ipSeq++ % 250) + 1}` // each client is its own visitor
   const call = async (method, path, body, headers = {}) => {
-    const init = { method, headers: { ...headers } }
+    const init = { method, headers: { 'x-nf-client-connection-ip': ip, ...headers } }
     if (cookie) init.headers.cookie = cookie
     if (body !== undefined) { init.body = typeof body === 'string' ? body : JSON.stringify(body); init.headers['content-type'] ??= 'application/json' }
     const res = await handle(new Request('http://test.local/api' + path, init))
@@ -711,4 +713,90 @@ test('tags: create, tag people in bulk, filter lists and email audiences, hand-p
   assert.equal(r.status, 400)
   r = await other.get('/tags'); assert.ok(!r.data.some(t => t.id === choir))
   r = await other.get(`/people/${ids.Ada}`); assert.equal(r.status, 404)
+})
+
+test('automations: welcome journey emails, Monday brief timing, opt-outs, WhatsApp templates', async () => {
+  const { runScheduled } = await import('../server/jobs.js')
+  const { tzOffsetMs } = await import('../server/util.js')
+  const c = client()
+  await signup(c, { orgName: 'Journey Church', name: 'Joy Owner', email: 'joy@journey.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const me = (await c.get('/me')).data
+  const branchId = me.branches[0].id
+  assert.match(me.org.whatsappTemplates.first_visit, /\{first_name\}/)
+
+  // Defaults: everything off
+  let r = await c.get('/automation')
+  assert.equal(r.data.journey.welcome.enabled, false)
+  assert.equal(r.data.briefEnabled, true)
+  r = await c.patch('/automation', { journey: { welcome: { enabled: true, delayHours: 3 }, second: { enabled: true, delayHours: 1 } }, whatsapp: { general: 'Hello {first_name}!' } })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.whatsapp.general, 'Hello {first_name}!')
+  r = await c.patch('/automation', { journey: { third: { enabled: true, subject: '' } } })
+  assert.equal(r.status, 400, 'cannot switch on an email without a subject')
+
+  const g = (await c.post('/gatherings', { name: 'Sunday', branchId, startsAt: new Date(Date.now() - 3600e3).toISOString() })).data
+  const pub = client()
+  r = await pub.post(`/public/g/${g.public_token}/checkin`, { mode: 'new', answers: { first_name: 'Femi', last_name: 'A', phone: '08077770001', email: 'femi@x.test' } })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  await pub.post(`/public/g/${g.public_token}/checkin`, { mode: 'new', answers: { first_name: 'NoMail', last_name: 'B', phone: '08077770002' } })
+
+  process.env.RESEND_API_KEY = 're_test'; process.env.EMAIL_FROM_DOMAIN = 'mail.gatherhq.test'
+  const sent = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (u, init) => {
+    if (!String(u).startsWith('https://api.resend.com')) return realFetch(u, init)
+    const body = JSON.parse(init.body); for (const e of (Array.isArray(body) ? body : [body])) sent.push(e)
+    return new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    const toFemi = () => sent.filter(e => e.to[0] === 'femi@x.test')
+    await runScheduled({ now: new Date(Date.now() + 3600e3) })
+    assert.equal(toFemi().length, 0, 'not due yet after 1 hour')
+    await runScheduled({ now: new Date(Date.now() + 3.5 * 3600e3) })
+    assert.equal(toFemi().length, 1, 'welcome sent after 3 hours')
+    assert.equal(toFemi()[0].subject, 'Welcome to Journey Church, Femi!')
+    assert.ok(toFemi()[0].headers['List-Unsubscribe'])
+    await runScheduled({ now: new Date(Date.now() + 5 * 3600e3) })
+    assert.equal(toFemi().length, 1, 'never sent twice')
+    assert.ok(!sent.some(e => /NoMail/.test(e.html || '')), 'people without email are skipped')
+
+    // Second visit queues the second email
+    const g2 = (await c.post('/gatherings', { name: 'Midweek', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+    await pub.post(`/public/g/${g2.public_token}/checkin`, { mode: 'returning', phone: '08077770001' })
+    await runScheduled({ now: new Date(Date.now() + 2 * 3600e3) })
+    assert.equal(toFemi().length, 2)
+    assert.match(toFemi()[1].subject, /again, Femi/)
+
+    // Journey test send goes to the signed-in user
+    r = await c.post('/automation/journey/test', { step: 'third' })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    assert.equal(sent.at(-1).to[0], 'joy@journey.test')
+    assert.match(sent.at(-1).subject, /^\[Test\]/)
+
+    // Monday brief: only on Monday from 7am Lagos time, once a week
+    let monday = new Date(Date.now() + 3600e3)
+    const local = (d) => new Date(d.getTime() + tzOffsetMs('Africa/Lagos', d))
+    while (!(local(monday).getUTCDay() === 1 && local(monday).getUTCHours() === 7)) monday = new Date(monday.getTime() + 3600e3)
+    monday = new Date(monday.getTime() + 30 * 60e3)
+    const toJoy = () => sent.filter(e => e.to[0] === 'joy@journey.test' && /Monday brief/.test(e.subject))
+    await runScheduled({ now: new Date(monday.getTime() - 2 * 3600e3) })
+    assert.equal(toJoy().length, 0, 'not before 7am')
+    await runScheduled({ now: monday })
+    assert.equal(toJoy().length, 1, 'sent on Monday morning')
+    assert.match(toJoy()[0].subject, /at church last week/)
+    assert.ok(toJoy()[0].html.includes('Femi A'), 'names the first-time visitor')
+    await runScheduled({ now: new Date(monday.getTime() + 3600e3) })
+    assert.equal(toJoy().length, 1, 'once per week')
+
+    // Preview and opt-out
+    r = await c.get('/automation/brief/preview')
+    assert.equal(r.status, 200); assert.ok(r.data.html.includes('Your week at a glance'))
+    r = await c.patch('/me/notifications', { brief: false })
+    r = await c.get('/me/notifications'); assert.equal(r.data.brief, false)
+    await runScheduled({ now: new Date(monday.getTime() + 7 * 86400e3) })
+    assert.equal(toJoy().length, 1, 'opted out')
+  } finally {
+    globalThis.fetch = realFetch
+    delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM_DOMAIN
+  }
 })
