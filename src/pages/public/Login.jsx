@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session'
 import { signInWithPassword, sendReset } from '../../lib/firebase'
 import { Button, Input, Notice } from '../../components/ui'
 import AuthLayout from './AuthLayout'
+import { isAdminHost } from '../../lib/host'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -29,14 +30,14 @@ export default function Login() {
       await signInWithPassword(email, password)
       const me = await refresh()
       const next = params.get('next')
-      navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : me?.org ? '/app' : '/welcome', { replace: true })
+      navigate(next && next.startsWith('/') && !next.startsWith('//') ? next : isAdminHost ? '/' : me?.org ? '/app' : '/welcome', { replace: true })
     } catch (err) { setError(err.message); setPassword('') }
     finally { setLoading(false) }
   }
 
   return (
-    <AuthLayout title={resetMode ? 'Reset your password' : 'Sign in'} subtitle={resetMode ? "We'll email you a link to choose a new password." : "Welcome back. Sign in to your church's workspace."}
-      footer={<>New to GatherHQ? <Link to="/signup" className="link">Create a church account</Link></>}>
+    <AuthLayout title={resetMode ? 'Reset your password' : 'Sign in'} subtitle={resetMode ? "We'll email you a link to choose a new password." : isAdminHost ? 'GatherHQ admin. For the GatherHQ team only.' : "Welcome back. Sign in to your church's workspace."}
+      footer={isAdminHost ? null : <>New to GatherHQ? <Link to="/signup" className="link">Create a church account</Link></>}>
       <form onSubmit={submit} noValidate>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         {notice && <Notice tone="success" className="mb-4">{notice}</Notice>}

@@ -29,7 +29,8 @@ const Messages = lazyPage(() => import('./pages/app/Messages'))
 const MessageEditor = lazyPage(() => import('./pages/app/MessageEditor'))
 const WhatsAppSend = lazyPage(() => import('./pages/app/WhatsAppSend'))
 const Settings = lazyPage(() => import('./pages/app/Settings'))
-const Platform = lazyPage(() => import('./pages/app/Platform'))
+const AdminApp = lazyPage(() => import('./pages/admin/AdminApp'))
+import { isAdminHost } from './lib/host'
 
 function RequireAuth({ children, cap, platform = false }) {
   const { me, can } = useSession()
@@ -39,6 +40,13 @@ function RequireAuth({ children, cap, platform = false }) {
   if (platform) return me.user.isPlatformAdmin ? children : <Navigate to="/app" replace />
   if (!me.org) return <Navigate to="/welcome" replace />
   if (cap && !can(cap)) return <Navigate to="/app" replace />
+  return children
+}
+
+function AdminGuest({ children }) {
+  const { me } = useSession()
+  if (me === undefined) return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>
+  if (me) return <Navigate to="/" replace />
   return children
 }
 
@@ -57,6 +65,12 @@ export default function App() {
         <ConfirmProvider>
           <PageErrorBoundary resetKey={pathname}>
           <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><PageLoader /></div>}>
+            {isAdminHost ? (
+              <Routes>
+                <Route path="/login" element={<AdminGuest><Login /></AdminGuest>} />
+                <Route path="/*" element={<AdminApp />} />
+              </Routes>
+            ) : (
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/legal/:doc" element={<Legal />} />
@@ -69,7 +83,8 @@ export default function App() {
               <Route path="/c/:token" element={<CheckIn />} />
               <Route path="/e/:token" element={<EventRegister />} />
               <Route path="/welcome" element={<NoOrg />} />
-              <Route path="/platform" element={<RequireAuth platform><Platform /></RequireAuth>} />
+              <Route path="/platform" element={<Navigate to="/admin" replace />} />
+              <Route path="/admin/*" element={<AdminApp />} />
 
               <Route path="/app" element={<RequireAuth><AppShell /></RequireAuth>}>
                 <Route index element={<Overview />} />
@@ -89,6 +104,7 @@ export default function App() {
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
+            )}
           </Suspense>
           </PageErrorBoundary>
         </ConfirmProvider>

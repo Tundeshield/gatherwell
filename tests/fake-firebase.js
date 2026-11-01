@@ -253,6 +253,7 @@ class FakeAuth {
     return { uid, email: this.users.get(uid).email }
   }
   async revokeRefreshTokens() {}
+  async generatePasswordResetLink(email) { await this.getUserByEmail(email); return `https://example.test/reset?oobCode=${crypto.randomBytes(6).toString('hex')}` }
 }
 
 export function createFakeFirebase() {

@@ -965,3 +965,66 @@ test('billing: trial, Paystack checkout, webhooks, read-only after expiry, netwo
     delete process.env.PAYSTACK_SECRET_KEY
   }
 })
+
+test('admin console: revenue, church controls, users and support', async () => {
+  const realFetch = globalThis.fetch
+  process.env.PAYSTACK_SECRET_KEY = 'sk_test_console'
+  try {
+    const c = client()
+    await signup(c, { orgName: 'Console Church', name: 'Kemi Owner', email: 'kemi@console.test', password: 'password123' })
+    const orgId = (await c.get('/me')).data.org.id
+
+    // Church owners can't reach the console
+    assert.equal((await c.get(`/platform/orgs/${orgId}`)).status, 403)
+
+    let r = await S.ops.get('/platform/summary')
+    assert.equal(r.status, 200)
+    assert.ok(r.data.signups.length === 12 && r.data.totals.new_7d >= 1)
+    assert.ok(r.data.totals.trialing >= 1)
+
+    // Church page: team and counts, no member records
+    r = await S.ops.get(`/platform/orgs/${orgId}`)
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    assert.equal(r.data.team_members[0].email, 'kemi@console.test')
+    assert.equal(r.data.weekly_checkins.length, 8)
+
+    // Extend the trial
+    const before = new Date((await c.get('/me')).data.org.billing.trialEndsAt)
+    r = await S.ops.patch(`/platform/orgs/${orgId}`, { extendTrialDays: 14 })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    const after = new Date((await c.get('/me')).data.org.billing.trialEndsAt)
+    assert.equal(Math.round((after - before) / 86400e3), 14)
+
+    // A plan set by hand (bank transfer), counted as revenue
+    r = await S.ops.patch(`/platform/orgs/${orgId}`, { manualPlan: { plan: 'network', interval: 'yearly', until: new Date(Date.now() + 365 * 86400e3).toISOString() } })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    let me = (await c.get('/me')).data
+    assert.equal(me.org.billing.state, 'active'); assert.equal(me.org.billing.manual, true); assert.equal(me.org.branchesEnabled, true)
+    r = await S.ops.get('/platform/summary')
+    assert.ok(r.data.orgs.find(o => o.id === orgId).mrr > 49)
+    assert.equal((await S.ops.patch(`/platform/orgs/${orgId}`, { manualPlan: { plan: 'church', until: '2001-01-01' } })).status, 400)
+    r = await S.ops.patch(`/platform/orgs/${orgId}`, { manualPlan: null })
+    assert.equal(r.status, 200)
+    assert.equal((await c.get('/me')).data.org.billing.state, 'trialing')
+
+    // Users: search, reset link, admin access
+    r = await S.ops.get('/platform/users?q=kemi@console')
+    assert.equal(r.data.users.length, 1)
+    const uid = r.data.users[0].id
+    r = await S.ops.get(`/platform/users/${uid}`)
+    assert.equal(r.data.churches[0].org_name, 'Console Church')
+    r = await S.ops.post(`/platform/users/${uid}/reset-link`, {})
+    assert.equal(r.status, 200, JSON.stringify(r.data)); assert.ok(r.data.link.startsWith('https://'))
+    assert.equal((await c.get('/platform/users')).status, 403)
+    r = await S.ops.patch(`/platform/users/${uid}`, { platformAdmin: true })
+    assert.equal(r.status, 200)
+    assert.equal((await c.get('/platform/users')).status, 200)
+    await S.ops.patch(`/platform/users/${uid}`, { platformAdmin: false })
+    assert.equal((await c.get('/platform/users')).status, 403)
+    const opsId = (await S.ops.get('/me')).data.user.id
+    assert.equal((await S.ops.patch(`/platform/users/${opsId}`, { platformAdmin: false })).status, 400)
+  } finally {
+    globalThis.fetch = realFetch
+    delete process.env.PAYSTACK_SECRET_KEY
+  }
+})

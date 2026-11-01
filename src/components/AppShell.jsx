@@ -1,3 +1,4 @@
+import { adminUrl } from '../lib/host'
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Users, CalendarCheck, HeartHandshake, CalendarDays, MessageSquare, BarChart3, Settings, LogOut, Menu, X, ChevronsUpDown, Check, Building2, ShieldCheck } from 'lucide-react'
@@ -107,7 +108,7 @@ function SidebarContent({ onNavigate }) {
         ))}
       </nav>
       <div className="space-y-0.5 border-t border-mist-200 px-3 py-3">
-        {me.user.isPlatformAdmin && <NavLink to="/platform" className={link} onClick={onNavigate}><ShieldCheck size={18} strokeWidth={1.9} />Platform</NavLink>}
+        {me.user.isPlatformAdmin && <a href={adminUrl()} className={link({ isActive: false })}><ShieldCheck size={18} strokeWidth={1.9} />GatherHQ admin</a>}
         <NavLink to="/app/settings" className={link} onClick={onNavigate}><Settings size={18} strokeWidth={1.9} />Settings</NavLink>
         <div className="flex items-center gap-2 px-3 pt-2">
           <div className="min-w-0 flex-1">

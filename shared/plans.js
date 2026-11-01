@@ -18,6 +18,8 @@ export const PLANS = {
 }
 export const INTERVALS = { monthly: 'Monthly', yearly: 'Yearly' }
 export const price = (plan, interval) => PLANS[plan]?.[interval === 'yearly' ? 'yearly' : 'monthly']
+// What a paying church is worth per month (yearly plans spread over 12 months).
+export const monthlyValue = (plan, interval) => (PLANS[plan] ? (interval === 'yearly' ? PLANS[plan].yearly / 12 : PLANS[plan].monthly) : 0)
 
 /**
  * Where a church stands. Returns { state, plan, interval, trialEndsAt, daysLeft, renewsAt }.
@@ -29,6 +31,8 @@ export function billingStatus(org, now = new Date()) {
   const b = org?.billing || {}
   if (org?.plan === 'free') return { state: 'free', plan: 'free' }
   const renewsAt = toD(b.next_payment_date)
+  // Arranged by the GatherHQ team (for example, paid by bank transfer): active until the paid-until date.
+  if (b.manual && b.status === 'active') return renewsAt && renewsAt > now ? { state: 'active', plan: b.plan, interval: b.interval, renewsAt, manual: true } : { state: 'expired', plan: b.plan, lapsed: true }
   if (b.status === 'active') return { state: 'active', plan: b.plan, interval: b.interval, renewsAt }
   if (b.status === 'past_due') {
     // A week's grace to update the card.
