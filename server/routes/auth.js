@@ -63,7 +63,7 @@ export async function mePayload(ctx) {
     user: ctx.user,
     org: o && {
       id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
-      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
+      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), dpaAcceptedAt: plain(o.dpa_accepted_at) || null, dpaAcceptedBy: o.dpa_accepted_by || null, branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
     membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,
@@ -88,6 +88,9 @@ async function accept(db, inv, invRef, user) {
   await audit({ org: { id: inv.org_id }, user }, 'team.invite_accepted', 'user', user.id, { role: inv.role })
 }
 
+// Version of the Terms, Privacy Policy and DPA people agree to (matches src/pages/public/Legal.jsx).
+export const TERMS_VERSION = '2026-11-01'
+
 export default function (r) {
   r.post('/auth/signup', { auth: 'public' }, async ({ req, body }) => {
     await rateLimit(`signup:${clientIp(req)}`, 10, 3600)
@@ -98,6 +101,7 @@ export default function (r) {
     const pw = password(body.password)
     const timezone = str(body.timezone, { max: 64 }) || 'Africa/Lagos'
     const cc = String(body.defaultCountryCode || '').replace(/\D/g, '').slice(0, 4) || '234'
+    if (body.acceptTerms !== true) throw bad('Please agree to the Terms of Service and Privacy Policy.', { fields: { acceptTerms: 'Required to create an account.' } })
     const { db, auth } = await fb()
     let created
     try { created = await auth.createUser({ email, password: pw, displayName: name }) }
@@ -107,7 +111,7 @@ export default function (r) {
       throw e
     }
     const user = { id: created.uid, email, name }
-    await db.collection('users').doc(user.id).set({ email, name, is_platform_admin: false, created_at: new Date(), last_login_at: null, active_org_id: null })
+    await db.collection('users').doc(user.id).set({ email, name, is_platform_admin: false, created_at: new Date(), last_login_at: null, active_org_id: null, terms_accepted_at: new Date(), terms_version: TERMS_VERSION })
     const org = await createOrganisation(db, { orgName, branchName, timezone, country: str(body.country, { max: 64 }), contactEmail: email, settings: { ...DEFAULT_SETTINGS, defaultCountryCode: cc }, owner: user })
     await audit({ org, user }, 'org.created', 'organisation', org.id, { name: orgName })
     return json({ ok: true, signIn: true }, 201)

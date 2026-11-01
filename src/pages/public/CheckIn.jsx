@@ -23,7 +23,7 @@ export function PublicFrame({ orgName, branchName, children }) {
         )}
         <div className="panel flex-none px-5 py-6 sm:px-7 sm:py-8">{children}</div>
         <div className="mt-auto flex items-center justify-center gap-1.5 pt-8 text-xs text-mist-400">
-          <LogoMark size={14} /> Powered by GatherHQ
+          <LogoMark size={14} /> Powered by GatherHQ · <a href="/legal/privacy" className="hover:text-ink hover:underline">Privacy</a>
         </div>
       </div>
     </div>

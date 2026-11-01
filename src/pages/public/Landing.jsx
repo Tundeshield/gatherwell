@@ -3,6 +3,7 @@ import { Check, QrCode, HeartHandshake, Building2, CalendarDays, BarChart3, Shie
 import Logo, { LogoMark } from '../../components/Logo'
 import { useSession } from '../../lib/session'
 import { BRAND } from '../../brand'
+import { LegalFooter } from './Legal'
 
 function PhoneMock() {
   return (
@@ -107,7 +108,7 @@ export default function Landing() {
             {[[ShieldCheck, 'Every church is sealed off', 'Each organisation’s data is isolated on the server, not just hidden in the interface.'],
               [Lock, 'Access by role', 'Ushers check people in without seeing the directory. Everyone sees only what their role needs.'],
               [FileSearch, 'Exports are permissioned and logged', 'Only people you trust can download personal data, and every export is recorded.'],
-              [Check, 'Private check-in', 'A phone number alone shows only a masked hint like “C•••• O.” — people confirm their own first name to check in.']].map(([Icon, t, b]) => (
+              [Check, 'Your data, your rules', 'Your church owns its data and can download or delete it any time. GDPR-ready, with a Data Processing Agreement for every church.']].map(([Icon, t, b]) => (
               <li key={t}><Icon size={20} className="text-gold-200" /><h3 className="mt-3 font-semibold">{t}</h3><p className="mt-1 text-[14px] leading-relaxed text-brand-100">{b}</p></li>
             ))}
           </ul>
@@ -120,12 +121,7 @@ export default function Landing() {
         <Link to={signedIn ? '/app' : '/signup'} className="mt-8 inline-block rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Create your church account'}</Link>
       </section>
 
-      <footer className="border-t border-mist-200">
-        <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-mist-500">
-          <Logo size={24} />
-          <span>© {new Date().getFullYear()} GatherHQ</span>
-        </div>
-      </footer>
+      <LegalFooter />
     </div>
   )
 }

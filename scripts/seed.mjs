@@ -12,7 +12,7 @@ export async function seed(port, fake) {
     return data
   }
   const login = (email) => call('POST', '/auth/session', { idToken: fake.auth.signIn(email, 'password123') })
-  await call('POST', '/auth/signup', { orgName: 'Grace Community Church', branchName: 'Ikeja', name: 'Ada Okafor', email: 'ada@grace.local', password: 'password123', timezone: 'Africa/Lagos', defaultCountryCode: '234' })
+  await call('POST', '/auth/signup', { acceptTerms: true, orgName: 'Grace Community Church', branchName: 'Ikeja', name: 'Ada Okafor', email: 'ada@grace.local', password: 'password123', timezone: 'Africa/Lagos', defaultCountryCode: '234' })
   await login('ada@grace.local')
   const me = await call('GET', '/me')
   const orgId = me.org.id

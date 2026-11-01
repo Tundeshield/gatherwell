@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, HeartHandshake, Trash2, Phone, Mail, Building2, Users, CalendarCheck, MessageCircle } from 'lucide-react'
-import { api } from '../../lib/api'
+import { ArrowLeft, Pencil, HeartHandshake, Trash2, Phone, Mail, Building2, Users, CalendarCheck, MessageCircle, Download } from 'lucide-react'
+import { api, download } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { useLoad, PageLoader, ErrorState, Button, Badge, PERSON_TONE, Avatar, Modal, useToast, useConfirm, EmptyState } from '../../components/ui'
 import { fmtDate, fmtDay, relative, personName, STATUS_LABELS, REASON_LABELS } from '../../lib/format'
@@ -29,8 +29,13 @@ export default function PersonDetail() {
   if (error) return <ErrorState error={error.status === 404 ? { message: "This person doesn't exist, or isn't in a branch you can access." } : error} onRetry={error.status === 404 ? null : reload} />
   const { person: p, attendance, followups, registrations } = data
 
+  async function toggleConsent() {
+    const resub = p.email_opt_out
+    if (resub && !(await confirm({ title: `Resubscribe ${personName(p)}?`, message: 'Only do this if they have asked to receive your church’s emails again. The change is recorded in the activity log.', confirmLabel: 'Resubscribe' }))) return
+    try { await api.patch(`/people/${p.id}/email-consent`, { subscribed: resub }); toast(resub ? 'Resubscribed to emails' : 'Unsubscribed from emails'); reload() } catch (e) { toast(e.message, 'error') }
+  }
   async function remove() {
-    const ok = await confirm({ title: `Delete ${personName(p)}?`, message: 'Their profile, attendance history and follow-ups will be permanently removed. To keep their history, change their status to Archived instead.', confirmLabel: 'Delete permanently', danger: true })
+    const ok = await confirm({ title: `Delete ${personName(p)}?`, message: 'Their profile, attendance history, follow-ups and notes will be permanently removed, for example when they ask you to erase their data. Event registrations stay on the event but are no longer linked to them. To keep their history instead, change their status to Archived.', confirmLabel: 'Delete permanently', danger: true })
     if (!ok) return
     try { await api.del(`/people/${p.id}`); toast(`${personName(p)} deleted`); navigate('/app/people') }
     catch (e) { toast(e.message, 'error') }
@@ -60,6 +65,7 @@ export default function PersonDetail() {
         <div className="flex flex-wrap gap-2">
           {can('followups.manage') && <Button variant="secondary" icon={HeartHandshake} onClick={() => setFollowup(true)}>Follow up</Button>}
           {can('people.edit') && <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Edit</Button>}
+          {can('export') && <Button variant="secondary" icon={Download} onClick={() => download(`/people/${p.id}/export`).then(() => toast('Their data has been downloaded')).catch(e => toast(e.message, 'error'))} title="Everything GatherHQ holds about this person, for a data request">Download data</Button>}
           {can('people.delete') && <Button variant="danger-ghost" icon={Trash2} onClick={remove} aria-label="Delete">Delete</Button>}
         </div>
       </div>
@@ -72,7 +78,11 @@ export default function PersonDetail() {
                 {p.phone_norm && <a href={whatsappLink({ template: (me.org.whatsappTemplates || {})[p.open_reasons?.[0]] || (me.org.whatsappTemplates || {})[p.status === 'visitor' && (p.visit_count || 0) <= 1 ? 'first_visit' : 'general'], phoneNorm: p.phone_norm, person: p, churchName: me.org.name, myName: me.user.name })}
                   target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full bg-[#E7F7EE] px-2.5 py-0.5 text-xs font-medium text-[#0B6B3A] hover:bg-[#D3F0E0]"><MessageCircle size={13} />WhatsApp</a>}</span>
                 : <span className="text-mist-400">No phone</span>}</Info>
-              <Info icon={Mail}>{p.email ? <a href={`mailto:${p.email}`} className="link">{p.email}</a> : <span className="text-mist-400">No email</span>}</Info>
+              <Info icon={Mail}>{p.email ? <span className="block"><a href={`mailto:${p.email}`} className="link">{p.email}</a>
+                <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-mist-500">
+                  {p.email_opt_out ? <>Unsubscribed from emails{p.email_opt_out_at && ` on ${fmtDate(p.email_opt_out_at)}`}</> : 'Receives church emails'}
+                  {can('people.edit') && <button type="button" onClick={toggleConsent} className="text-brand-700 hover:underline">{p.email_opt_out ? 'Resubscribe' : 'Unsubscribe'}</button>}
+                </span></span> : <span className="text-mist-400">No email</span>}</Info>
               {multiBranch && <Info icon={Building2}>{p.branch_name || 'No branch'}</Info>}
             </ul>
             <dl className="mt-5 grid grid-cols-2 gap-4 border-t border-mist-100 pt-5 text-sm">

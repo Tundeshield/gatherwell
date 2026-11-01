@@ -1,5 +1,7 @@
 import { fb, col, docOut, docsOut, plain, getMany } from '../firebase.js'
 import { bad, forbidden, notFound, str, email as emailV, oneOf, int, uuid, isUuid } from '../http.js'
+import { TERMS_VERSION } from './auth.js'
+import { toCsv, csvResponse } from '../domain.js'
 import { requireCap, assertBranch, orgBranches, ROLE_LABELS, membershipId, branchesEnabled } from '../access.js'
 import { randomToken, sha256, audit, sanitizeForm } from '../util.js'
 
@@ -66,6 +68,47 @@ export default function (r) {
     await db.collection('orgs').doc(ctx.org.id).update(patch)
     await audit(ctx, 'org.updated', 'organisation', ctx.org.id)
     return { ok: true }
+  })
+
+  // --- data & privacy -------------------------------------------------------------------
+  r.post('/org/dpa/accept', async ({ ctx }) => {
+    requireCap(ctx, 'org.manage')
+    const { db } = await fb()
+    const patch = { dpa_accepted_at: new Date(), dpa_accepted_by: ctx.user.name, dpa_accepted_email: ctx.user.email, dpa_version: TERMS_VERSION }
+    await db.collection('orgs').doc(ctx.org.id).update(patch)
+    await audit(ctx, 'org.dpa_accepted', 'organisation', ctx.org.id, { version: TERMS_VERSION })
+    return { acceptedAt: patch.dpa_accepted_at, acceptedBy: patch.dpa_accepted_by, version: TERMS_VERSION }
+  })
+
+  // Full exports so a church can take its data with it (people have their own export).
+  const EXPORTS = {
+    attendance: { col: 'checkins', order: 'created_at', columns: [
+      { label: 'First name', value: 'first_name' }, { label: 'Last name', value: 'last_name' }, { label: 'Phone', value: 'phone' },
+      { label: 'Session', value: 'gathering_name' }, { label: 'Session date', value: 'starts_at' }, { label: 'Checked in at', value: 'created_at' },
+      { label: 'First time', value: r => (r.first_time ? 'Yes' : 'No') }, { label: 'Method', value: 'method' }, { label: 'Answers', value: r => r.answers && Object.keys(r.answers).length ? r.answers : '' },
+    ] },
+    followups: { col: 'followups', order: 'created_at', columns: [
+      { label: 'Person', value: 'person_name' }, { label: 'Reason', value: 'reason' }, { label: 'Title', value: 'title' }, { label: 'Status', value: 'status' },
+      { label: 'Assigned to', value: 'assignee_name' }, { label: 'Created', value: 'created_at' }, { label: 'Due', value: 'due_at' }, { label: 'Closed', value: 'closed_at' }, { label: 'Outcome', value: 'outcome' },
+    ] },
+    registrations: { col: 'registrations', order: 'created_at', columns: [
+      { label: 'Name', value: 'name' }, { label: 'Phone', value: 'phone' }, { label: 'Email', value: 'email' }, { label: 'Event', value: 'event_name' },
+      { label: 'Status', value: 'status' }, { label: 'Ticket code', value: 'code' }, { label: 'Registered at', value: 'created_at' }, { label: 'Checked in at', value: 'checked_in_at' },
+    ] },
+  }
+  r.get('/org/data-export/:kind', async ({ ctx, params }) => {
+    requireCap(ctx, 'org.manage')
+    const ex = EXPORTS[params.kind]
+    if (!ex) throw notFound()
+    const { db } = await fb()
+    const qs = await col(db, ctx.org.id, ex.col).orderBy(ex.order, 'desc').limit(50000).get()
+    let rows = qs.docs.map(d => plain(d.data()))
+    if (params.kind === 'registrations') {
+      const events = new Map((await col(db, ctx.org.id, 'events').get()).docs.map(d => [d.id, d.data().name]))
+      rows = rows.map(r => ({ ...r, event_name: events.get(r.event_id) || '' }))
+    }
+    await audit(ctx, 'org.data_exported', 'organisation', ctx.org.id, { kind: params.kind, rows: rows.length })
+    return csvResponse(toCsv(rows, ex.columns), `${ctx.org.slug || 'church'}-${params.kind}.csv`)
   })
 
   // --- branches ---------------------------------------------------------------------

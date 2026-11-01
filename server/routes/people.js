@@ -299,6 +299,46 @@ export default function (r) {
     return docOut(await ref.get())
   })
 
+  // Everything GatherHQ holds about one person, for a data access request (GDPR "subject access").
+  r.get('/people/:id/export', async ({ ctx, params }) => {
+    requireCap(ctx, 'people.view')
+    requireCap(ctx, 'export')
+    const { db } = await fb()
+    const C = (n) => col(db, ctx.org.id, n)
+    const p = docOut(await C('people').doc(uuid(params.id, { required: true })).get())
+    assertRowScope(ctx, p)
+    const [cks, fus, regs, tagDocs] = await Promise.all([
+      C('checkins').where('person_id', '==', p.id).get(), C('followups').where('person_id', '==', p.id).get(),
+      C('registrations').where('person_id', '==', p.id).get(), C('tags').get(),
+    ])
+    const tagNames = new Map(tagDocs.docs.map(d => [d.id, d.data().name]))
+    const followups = await Promise.all(fus.docs.map(async f => ({ ...plain(f.data()), notes: (await f.ref.collection('notes').get()).docs.map(n => plain(n.data())) })))
+    const { search, phone_norm, open_reasons, ...person } = p
+    const data = {
+      exported_at: new Date().toISOString(), church: ctx.org.name, exported_by: ctx.user.name,
+      person: { ...person, tags: (p.tags || []).map(t => tagNames.get(t) || t) },
+      attendance: cks.docs.map(d => { const c = plain(d.data()); return { session: c.gathering_name, date: c.starts_at, checked_in_at: c.created_at, method: c.method, first_time: c.first_time, answers: c.answers } }),
+      event_registrations: regs.docs.map(d => { const r = plain(d.data()); return { name: r.name, email: r.email, phone: r.phone, status: r.status, registered_at: r.created_at, checked_in_at: r.checked_in_at || null, answers: r.answers } }),
+      follow_ups: followups.map(f => ({ title: f.title, reason: f.reason, status: f.status, created_at: f.created_at, due_at: f.due_at, closed_at: f.closed_at, outcome: f.outcome, assignee: f.assignee_name, notes: f.notes.map(n => ({ at: n.created_at, by: n.user_name, type: n.kind, text: n.body })) })),
+    }
+    await audit(ctx, 'person.exported', 'person', p.id, { name: `${p.first_name} ${p.last_name || ''}`.trim() })
+    const file = `${[p.first_name, p.last_name].filter(Boolean).join('-').replace(/[^\w-]+/g, '') || 'person'}-data.json`
+    return new Response(JSON.stringify(data, null, 2), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${file}"`, 'cache-control': 'no-store' } })
+  })
+
+  // Email consent: the church can record that someone has asked to receive emails again.
+  r.patch('/people/:id/email-consent', async ({ ctx, params, body }) => {
+    requireCap(ctx, 'people.edit')
+    const { db } = await fb()
+    const ref = col(db, ctx.org.id, 'people').doc(uuid(params.id, { required: true }))
+    const p = docOut(await ref.get())
+    assertRowScope(ctx, p)
+    const subscribed = body.subscribed === true
+    await ref.update(subscribed ? { email_opt_out: false, email_opt_out_at: null, email_resubscribed_at: new Date() } : { email_opt_out: true, email_opt_out_at: new Date() })
+    await audit(ctx, subscribed ? 'person.email_resubscribed' : 'person.email_unsubscribed', 'person', p.id, { name: `${p.first_name} ${p.last_name || ''}`.trim() })
+    return { subscribed }
+  })
+
   r.delete('/people/:id', async ({ ctx, params }) => {
     requireCap(ctx, 'people.delete')
     const { db } = await fb()
@@ -316,7 +356,12 @@ export default function (r) {
     for (const f of fus.docs) {
       ops.push(b => b.delete(f.ref))
       if (f.data().reason !== 'manual') ops.push(b => b.delete(lockRef(db, ctx.org.id, p.id, f.data().reason)))
+      for (const n of (await f.ref.collection('notes').get()).docs) ops.push(b => b.delete(n.ref)) // follow-up notes about them
     }
+    // Event registrations stay (they are the event's records) but are no longer linked to the person.
+    for (const rg of (await C('registrations').where('person_id', '==', p.id).get()).docs) ops.push(b => b.update(rg.ref, { person_id: null }))
+    // Any welcome-journey emails still waiting to go out.
+    for (const step of ['welcome', 'second', 'third']) ops.push(b => b.delete(db.collection('jobs').doc(`${ctx.org.id}_${p.id}_${step}`)))
     if (p.phone_norm) ops.push(b => b.delete(C('phones').doc(p.phone_norm)))
     ops.push(b => b.delete(ref))
     for (let i = 0; i < ops.length; i += 400) { const b = db.batch(); ops.slice(i, i + 400).forEach(op => op(b)); await b.commit() }

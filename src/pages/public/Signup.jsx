@@ -19,7 +19,7 @@ export const COUNTRIES = [
 ]
 
 export default function Signup() {
-  const [form, setForm] = useState({ orgName: '', branchName: '', name: '', email: '', password: '', country: 'Nigeria' })
+  const [form, setForm] = useState({ orgName: '', branchName: '', name: '', email: '', password: '', country: 'Nigeria', acceptTerms: false })
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [loading, setLoading] = useState(false)
@@ -34,6 +34,7 @@ export default function Signup() {
     if (!form.name.trim()) errs.name = 'Enter your name.'
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errs.email = 'Enter a valid email.'
     if (form.password.length < 8) errs.password = 'Use at least 8 characters.'
+    if (!form.acceptTerms) errs.acceptTerms = 'Please agree to continue.'
     setFieldErrors(errs)
     if (Object.keys(errs).length) return
     setLoading(true); setError('')
@@ -60,8 +61,12 @@ export default function Signup() {
         <Input label="Your name" autoComplete="name" value={form.name} onChange={set('name')} error={fieldErrors.name} required />
         <Input label="Email" type="email" autoComplete="email" value={form.email} onChange={set('email')} error={fieldErrors.email} required />
         <Input label="Password" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} error={fieldErrors.password} hint="At least 8 characters." required />
-        <Button type="submit" size="lg" className="mt-2 w-full" loading={loading}>Create account</Button>
-        <p className="mt-4 text-xs text-mist-400">By creating an account you agree to keep your members' information confidential and to collect it with their consent.</p>
+        <label className="mb-4 mt-1 flex items-start gap-2.5 text-sm text-mist-600">
+          <input type="checkbox" checked={form.acceptTerms} onChange={e => setForm(f => ({ ...f, acceptTerms: e.target.checked }))} className="mt-0.5 h-4 w-4 shrink-0 accent-brand-700" />
+          <span>I agree to the <Link to="/legal/terms" target="_blank" className="link">Terms of Service</Link>, <Link to="/legal/privacy" target="_blank" className="link">Privacy Policy</Link> and <Link to="/legal/dpa" target="_blank" className="link">Data Processing Agreement</Link>, and will collect my church’s information lawfully.</span>
+        </label>
+        {fieldErrors.acceptTerms && <p className="-mt-2 mb-3 text-xs text-red-700">{fieldErrors.acceptTerms}</p>}
+        <Button type="submit" size="lg" className="w-full" loading={loading}>Create account</Button>
       </form>
     </AuthLayout>
   )

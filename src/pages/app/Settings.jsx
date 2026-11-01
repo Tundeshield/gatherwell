@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Copy, Building2, Users, Layers, FileText, Trash2, Pencil, Upload, CheckCircle2 } from 'lucide-react'
-import { api } from '../../lib/api'
+import { Plus, Copy, Building2, Users, Layers, FileText, Trash2, Pencil, Upload, CheckCircle2, Download } from 'lucide-react'
+import { api, download } from '../../lib/api'
 import { useSession } from '../../lib/session'
 import { useLoad, PageHeader, Button, Badge, Modal, Input, Select, Notice, Toggle, Checkbox, EmptyState, ErrorState, Skeleton, useToast, useConfirm, Table, Th, Td, IconButton, Textarea } from '../../components/ui'
 import { fmtDate, relative } from '../../lib/format'
@@ -705,6 +705,65 @@ function AutomationsTab() {
   )
 }
 
+
+function PrivacyTab() {
+  const { me, can, refresh } = useSession()
+  const toast = useToast()
+  const [busy, setBusy] = useState('')
+  const o = me.org
+  async function accept() {
+    setBusy('dpa')
+    try { await api.post('/org/dpa/accept'); await refresh(); toast('Data Processing Agreement accepted') } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+  async function get(kind, path) {
+    setBusy(kind)
+    try { await download(path); toast('Download started') } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+  const files = [
+    ['people', 'People', 'Everyone in your directory with their details', '/people/export?includeArchived=1'],
+    ['attendance', 'Attendance', 'Every check-in (most recent 50,000)', '/org/data-export/attendance'],
+    ['followups', 'Follow-ups', 'All follow-ups and their outcomes', '/org/data-export/followups'],
+    ['registrations', 'Event registrations', 'Everyone who registered for an event', '/org/data-export/registrations'],
+  ]
+  return (
+    <div className="space-y-6">
+      <section className="panel px-6 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">Data Processing Agreement</h2>
+        <p className="mt-1 max-w-2xl text-sm text-mist-500">Your church owns its data and decides how it is used (the “controller”). GatherHQ stores and processes it only on your behalf (the “processor”). This agreement sets that out, as UK and EU data protection law (GDPR) requires.</p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          {o.dpaAcceptedAt
+            ? <span className="inline-flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800"><CheckCircle2 size={16} />Accepted by {o.dpaAcceptedBy} on {fmtDate(o.dpaAcceptedAt)}</span>
+            : can('org.manage') ? <Button onClick={accept} loading={busy === 'dpa'}>Accept the agreement</Button> : <span className="text-sm text-mist-500">Not yet accepted. The church owner can accept it here.</span>}
+          <a href="/legal/dpa" target="_blank" rel="noreferrer" className="text-sm font-medium text-brand-700 hover:underline">Read the agreement</a>
+        </div>
+      </section>
+
+      <section className="panel px-6 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">Download your data</h2>
+        <p className="mb-4 mt-1 text-sm text-mist-500">Spreadsheet files you can open in Excel or Google Sheets. Your data is yours: take it with you any time.</p>
+        <ul className="divide-y divide-mist-100 rounded-lg border border-mist-200">
+          {files.map(([k, t, d, path]) => (
+            <li key={k} className="flex items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1"><p className="text-sm font-medium text-ink">{t}</p><p className="text-xs text-mist-500">{d}</p></div>
+              <Button size="sm" variant="secondary" icon={Download} loading={busy === k} onClick={() => get(k, path)}>Download</Button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="panel px-6 py-5">
+        <h2 className="text-[15px] font-semibold text-ink">Requests from individuals</h2>
+        <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-mist-600">
+          <li><b className="text-ink">“What do you hold about me?”</b> Open their page in People and choose <b>Download data</b>.</li>
+          <li><b className="text-ink">“Please delete my data.”</b> Open their page and choose <b>Delete</b>. Their profile, history, follow-ups and notes are permanently removed.</li>
+          <li><b className="text-ink">“Stop emailing me.”</b> Every email has an unsubscribe link, and you can also unsubscribe them from their page.</li>
+        </ul>
+        <p className="mt-4 text-sm text-mist-500">To close your church’s account and delete everything, email <a href="mailto:privacy@gatherhq.org" className="link">privacy@gatherhq.org</a>. Read our <a href="/legal/privacy" target="_blank" rel="noreferrer" className="link">Privacy Policy</a> and <a href="/legal/terms" target="_blank" rel="noreferrer" className="link">Terms</a>.</p>
+      </section>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
@@ -717,11 +776,12 @@ export default function Settings() {
     can('people.edit') && ['tags', 'Tags'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
+    can('org.manage') && ['privacy', 'Data & privacy'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

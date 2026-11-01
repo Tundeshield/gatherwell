@@ -40,7 +40,7 @@ function client() {
   return c
 }
 async function signup(c, body) {
-  const r = await c.post('/auth/signup', body)
+  const r = await c.post('/auth/signup', { acceptTerms: true, ...body })
   if (r.status !== 201) return r
   await c.login(body.email, body.password)
   return r
@@ -87,7 +87,10 @@ test('sign-up creates org, branch and owner; /me reports caps', async () => {
 
 test('duplicate sign-up email is rejected; only valid Firebase tokens create sessions', async () => {
   const c = client()
-  let r = await c.post('/auth/signup', { orgName: 'X', name: 'X', email: 'ada@grace.test', password: 'password123' })
+  let r = await c.post('/auth/signup', { orgName: 'Y', name: 'Y', email: 'new@terms.test', password: 'password123' })
+  assert.equal(r.status, 400, 'must agree to the terms')
+  assert.ok(r.data.details.fields.acceptTerms)
+  r = await c.post('/auth/signup', { acceptTerms: true, orgName: 'X', name: 'X', email: 'ada@grace.test', password: 'password123' })
   assert.equal(r.status, 409)
   r = await c.login('ada@grace.test', 'wrong-password')
   assert.equal(r.status, 401)
@@ -823,4 +826,54 @@ test('WhatsApp one-tap sending: list, tick off, finish', async () => {
   assert.deepEqual(r.data, { sent: 1, total: 2 })
   r = await c.post(`/messages/${id}/whatsapp/done`, { personId: ids[1] })
   assert.equal(r.status, 400, 'finished messages are closed')
+})
+
+test('data rights: person export, complete deletion, email consent, church exports, DPA acceptance', async () => {
+  const c = client()
+  await signup(c, { orgName: 'Rights Church', name: 'R Owner', email: 'r@rights.test', password: 'password123' })
+  let me = (await c.get('/me')).data
+  const branchId = me.branches[0].id
+  assert.equal(me.org.dpaAcceptedAt, null)
+  const g = (await c.post('/gatherings', { name: 'Sunday', branchId, startsAt: new Date(Date.now() - 600e3).toISOString() })).data
+  await client().post(`/public/g/${g.public_token}/checkin`, { mode: 'new', answers: { first_name: 'Sade', last_name: 'R', phone: '08066660001', email: 'sade@x.test' } })
+  const sade = (await c.get('/people?q=Sade')).data.rows[0]
+  const fu = (await c.get('/followups?bucket=open')).data
+  const fuId = (fu.rows || fu.items || fu).find?.(f => f.person_id === sade.id)?.id
+  if (fuId) await c.post(`/followups/${fuId}/notes`, { kind: 'note', body: 'Prayed together after service' })
+  const ev = (await c.post('/events', { name: 'Retreat', startsAt: new Date(Date.now() + 86400e3 * 5).toISOString(), status: 'published' })).data
+  const reg = await c.post(`/events/${ev.id}/registrations`, { firstName: 'Sade', lastName: 'R', phone: '08066660001' })
+  assert.equal(reg.status, 200, JSON.stringify(reg.data))
+  assert.equal(reg.data.person_id, sade.id, 'registration linked to the person by phone')
+
+  // Subject access export
+  let r = await c.get(`/people/${sade.id}/export`)
+  assert.equal(r.status, 200)
+  const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data
+  assert.equal(data.person.first_name, 'Sade')
+  assert.equal(data.attendance.length, 1)
+  if (fuId) assert.equal(data.follow_ups[0].notes[0].text, 'Prayed together after service')
+  assert.ok(!('search' in data.person), 'internal fields left out')
+
+  // Email consent
+  r = await c.patch(`/people/${sade.id}/email-consent`, { subscribed: false })
+  assert.equal((await c.get(`/people/${sade.id}`)).data.person.email_opt_out, true)
+  r = await c.patch(`/people/${sade.id}/email-consent`, { subscribed: true })
+  assert.equal((await c.get(`/people/${sade.id}`)).data.person.email_opt_out, false)
+
+  // Church exports and DPA
+  r = await c.get('/org/data-export/attendance')
+  assert.equal(r.status, 200); assert.ok(String(r.data).includes('Sade'))
+  r = await c.get('/org/data-export/nonsense'); assert.equal(r.status, 404)
+  r = await c.post('/org/dpa/accept')
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  me = (await c.get('/me')).data
+  assert.ok(me.org.dpaAcceptedAt); assert.equal(me.org.dpaAcceptedBy, 'R Owner')
+
+  // Complete deletion: notes gone, registrations unlinked, nothing left pointing at them
+  r = await c.del(`/people/${sade.id}`)
+  assert.equal(r.status, 200)
+  const leftovers = [...fake.db._store.keys()].filter(k => k.includes(me.org.id) && (fake.db._store.get(k)?.person_id === sade.id || k.includes(sade.id)))
+  assert.deepEqual(leftovers, [], 'no records still linked to the deleted person')
+  r = await c.get('/org/data-export/registrations')
+  assert.ok(String(r.data).includes('Sade R'), 'the event keeps its registration, without the link')
 })
