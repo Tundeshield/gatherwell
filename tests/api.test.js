@@ -877,3 +877,91 @@ test('data rights: person export, complete deletion, email consent, church expor
   r = await c.get('/org/data-export/registrations')
   assert.ok(String(r.data).includes('Sade R'), 'the event keeps its registration, without the link')
 })
+
+test('billing: trial, Paystack checkout, webhooks, read-only after expiry, network unlocks branches', async () => {
+  const crypto = await import('node:crypto')
+  const c = client()
+  await signup(c, { orgName: 'Pay Church', name: 'Pat Owner', email: 'pat@pay.test', password: 'password123' })
+  let me = (await c.get('/me')).data
+  const orgId = me.org.id, branchId = me.branches[0].id
+  assert.equal(me.org.billing.state, 'trialing')
+  assert.ok(me.org.billing.daysLeft >= 30)
+  let r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
+  assert.equal(r.status, 400, 'no payments before Paystack is connected')
+
+  // An expired church is never locked out while payments aren't connected
+  const setOrg = (patch) => { const k = `orgs/${orgId}`; fake.db._store.set(k, { ...fake.db._store.get(k), ...patch }) }
+  setOrg({ billing: { status: 'cancelled', next_payment_date: new Date(Date.now() - 86400e3).toISOString() } })
+  r = await c.post('/people', { firstName: 'Free', phone: '08050000001', branchId }); assert.equal(r.status, 200)
+
+  process.env.PAYSTACK_SECRET_KEY = 'sk_test_x'
+  const calls = []
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (u, init = {}) => {
+    if (!String(u).startsWith('https://api.paystack.co')) return realFetch(u, init)
+    const path = String(u).replace('https://api.paystack.co', ''); calls.push([init.method || 'GET', path, init.body && JSON.parse(init.body)])
+    const ok = (data) => new Response(JSON.stringify({ status: true, data }), { status: 200, headers: { 'content-type': 'application/json' } })
+    if (path.startsWith('/plan?')) return ok([])
+    if (path === '/plan') return ok({ plan_code: `PLN_${JSON.parse(init.body).interval}_${JSON.parse(init.body).amount}` })
+    if (path === '/customer') return ok({ customer_code: 'CUS_pay' })
+    if (path === '/transaction/initialize') return ok({ authorization_url: 'https://checkout.paystack.com/abc', reference: 'ref_1' })
+    if (path.startsWith('/transaction/verify/')) return ok({ status: 'success', paid_at: new Date().toISOString(), metadata: { org_id: orgId, plan: 'church', interval: 'monthly' }, customer: { customer_code: 'CUS_pay' }, authorization: { last4: '4081', card_type: 'visa', exp_month: '12', exp_year: '2030' } })
+    if (path.includes('/manage/link')) return ok({ link: 'https://paystack.com/manage/xyz' })
+    return new Response(JSON.stringify({ status: false, message: 'not mocked' }), { status: 404 })
+  }
+  const hook = (evt, sign = true) => {
+    const raw = JSON.stringify(evt)
+    const sig = sign ? crypto.createHmac('sha512', 'sk_test_x').update(raw).digest('hex') : 'bad'
+    return handle(new Request('http://test.local/api/webhooks/paystack', { method: 'POST', headers: { 'content-type': 'application/json', 'x-paystack-signature': sig }, body: raw }))
+  }
+  try {
+    // Expired and payments connected: read-only
+    r = await c.post('/people', { firstName: 'Blocked', phone: '08050000002', branchId })
+    assert.equal(r.status, 402); assert.equal(r.data.details.code, 'billing_required')
+    assert.equal((await c.get('/people')).status, 200, 'can still view')
+    const g = Object.entries(Object.fromEntries(fake.db._store)).find(([k, v]) => k.startsWith(`orgs/${orgId}/people/`))
+    const pid = g[0].split('/').pop()
+    assert.equal((await c.del(`/people/${pid}`)).status, 200, 'can still erase people')
+
+    // Checkout creates the Paystack plan and customer once
+    r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    assert.equal(r.data.url, 'https://checkout.paystack.com/abc')
+    const init = calls.find(x => x[1] === '/transaction/initialize')[2]
+    assert.deepEqual([init.currency, init.amount, init.plan, init.metadata.org_id], ['USD', 1900, 'PLN_monthly_1900', orgId])
+    await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
+    assert.equal(calls.filter(x => x[1] === '/plan').length, 1, 'plan reused')
+    assert.equal(calls.filter(x => x[1] === '/customer').length, 1, 'customer reused')
+
+    // Returning from Paystack confirms the payment
+    r = await c.post('/billing/confirm', { reference: 'ref_1' })
+    assert.equal(r.data.ok, true)
+    me = (await c.get('/me')).data
+    assert.equal(me.org.billing.state, 'active')
+    r = await c.get('/billing'); assert.equal(r.data.card.last4, '4081')
+    assert.equal((await c.post('/people', { firstName: 'Paid', phone: '08050000003', branchId })).status, 200, 'unlocked')
+
+    // Webhooks: signed only, once each
+    assert.equal((await hook({ event: 'subscription.create', data: { subscription_code: 'SUB_1', email_token: 't', next_payment_date: new Date(Date.now() + 30 * 86400e3).toISOString(), customer: { customer_code: 'CUS_pay' }, plan: { plan_code: 'PLN_monthly_1900' } } }, false)).status, 401)
+    r = await hook({ event: 'subscription.create', data: { subscription_code: 'SUB_1', email_token: 't', next_payment_date: new Date(Date.now() + 30 * 86400e3).toISOString(), customer: { customer_code: 'CUS_pay' }, plan: { plan_code: 'PLN_monthly_1900' } } })
+    assert.equal(r.status, 200)
+    r = await c.get('/billing'); assert.equal(r.data.hasSubscription, true)
+    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://paystack.com/manage/xyz')
+    await hook({ event: 'invoice.payment_failed', data: { id: 9, description: 'Card declined', customer: { customer_code: 'CUS_pay' } } })
+    r = await c.get('/billing'); assert.equal(r.data.state, 'past_due'); assert.equal(r.data.lastError, 'Card declined')
+    assert.equal((await c.post('/people', { firstName: 'Grace', phone: '08050000004', branchId })).status, 200, 'grace period')
+
+    // Upgrading to the network plan switches on branches
+    await hook({ event: 'charge.success', data: { id: 77, paid_at: new Date().toISOString(), metadata: { org_id: orgId, plan: 'network', interval: 'yearly' }, customer: { customer_code: 'CUS_pay' }, authorization: { last4: '1111' } } })
+    me = (await c.get('/me')).data
+    assert.equal(me.org.billing.plan, 'network'); assert.equal(me.org.branchesEnabled, true)
+
+    // A free (complimentary) church is never charged
+    r = await S.ops.patch(`/platform/orgs/${orgId}`, { plan: 'free' })
+    assert.equal(r.status, 200, JSON.stringify(r.data))
+    assert.equal((await c.get('/me')).data.org.billing.state, 'free')
+  } finally {
+    globalThis.fetch = realFetch
+    delete process.env.PAYSTACK_SECRET_KEY
+  }
+})

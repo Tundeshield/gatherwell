@@ -8,6 +8,7 @@ import { emailProvider, fromAddress, sendEmails, unsubscribeUrl, siteOrigin } fr
 import { brandingFor } from './routes/messages.js'
 import { briefData, briefEmail } from './brief.js'
 import { tzOffsetMs, weekKey } from './util.js'
+import { isExpired } from './billing.js'
 
 const appOrigin = () => siteOrigin(null) || 'https://gatherhq.org'
 
@@ -42,7 +43,7 @@ async function runJourney({ now, deadline }) {
     const p = ps?.exists ? { id: ps.id, ...ps.data() } : null
     const cfg = org && journeyFor(org)[j.step]
     // Skip quietly if things changed since it was queued.
-    if (!org || org.status !== 'active' || !p || p.status === 'archived' || !cfg?.enabled || !p.email || p.email_opt_out || (p.journey || {})[j.step]) {
+    if (!org || org.status !== 'active' || isExpired(org) || !p || p.status === 'archived' || !cfg?.enabled || !p.email || p.email_opt_out || (p.journey || {})[j.step]) {
       await job.ref.delete(); skipped++; continue
     }
     const { branding, email } = journeyMessage({ org, person: p, step: j.step })
@@ -109,7 +110,7 @@ async function runBriefs({ now, deadline }) {
   for (const o of orgs.docs) {
     if (Date.now() > deadline) break
     const org = { id: o.id, ...o.data() }
-    if (org.settings?.briefEnabled === false) continue
+    if (org.settings?.briefEnabled === false || isExpired(org)) continue
     const tz = org.timezone || 'Africa/Lagos'
     const { day, hour } = localNow(tz, now)
     if (day !== 1 || hour < 7) continue // Mondays from 7am local time

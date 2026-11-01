@@ -16,6 +16,11 @@ export default function Platform() {
   if (loading && !data) return <PageLoader />
   if (error) return <ErrorState error={error} onRetry={reload} />
 
+  async function setComp(o, free) {
+    if (!(await confirm({ title: free ? `Make ${o.name} free?` : `Put ${o.name} back on paid plans?`,
+      message: free ? 'They will never be asked to pay. You can change this later.' : 'They return to their normal trial or plan.', confirmLabel: free ? 'Make free' : 'Confirm' }))) return
+    try { await api.patch(`/platform/orgs/${o.id}`, { plan: free ? 'free' : 'trial' }); toast(free ? `${o.name} is now free` : `${o.name} is back on paid plans`); reload() } catch (e) { toast(e.message, 'error') }
+  }
   async function setMulti(o, on) {
     if (!(await confirm({ title: on ? `Turn on multiple branches for ${o.name}?` : `Turn off multiple branches for ${o.name}?`,
       message: on ? 'They can add branches and campuses, give people branch access, and see reports by branch.' : 'They won’t be able to add new branches. Branches they already have keep working.',
@@ -54,12 +59,16 @@ export default function Platform() {
             <SearchInput value={q} onChange={setQ} placeholder="Search church or owner" className="w-64" />
           </div>
           <Table>
-            <thead><tr><Th>Church</Th><Th>Owner</Th><Th>Status</Th><Th>Multi-branch</Th><Th className="text-right">Branches</Th><Th className="text-right">People</Th><Th className="text-right">Sessions</Th><Th>Last check-in</Th><Th>Created</Th><Th /></tr></thead>
+            <thead><tr><Th>Church</Th><Th>Owner</Th><Th>Status</Th><Th>Plan</Th><Th>Multi-branch</Th><Th className="text-right">Branches</Th><Th className="text-right">People</Th><Th className="text-right">Sessions</Th><Th>Last check-in</Th><Th>Created</Th><Th /></tr></thead>
             <tbody>{rows.map(o => (
               <tr key={o.id}>
                 <Td><div className="font-medium text-ink">{o.name}</div><div className="text-xs text-mist-500">{o.country || '—'} · {o.plan}{o.plan === 'trial' && o.trial_ends_at ? ` until ${fmtDate(o.trial_ends_at)}` : ''}</div></Td>
                 <Td className="text-mist-600">{o.owner_email}</Td>
                 <Td><Badge tone={o.status === 'active' ? 'success' : o.status === 'suspended' ? 'warning' : 'neutral'}>{o.status}</Badge></Td>
+                <Td className="whitespace-nowrap">
+                  <div className="text-sm text-ink">{{ free: 'Free (comp)', trialing: `Trial · ${o.billing?.daysLeft}d left`, active: `${o.billing?.plan === 'network' ? 'Network' : 'Church'} · ${o.billing?.interval || ''}`, past_due: 'Payment due', expired: 'Expired' }[o.billing?.state] || '—'}</div>
+                  <button type="button" onClick={() => setComp(o, o.billing?.state !== 'free')} className="text-xs text-brand-700 hover:underline">{o.billing?.state === 'free' ? 'Remove free' : 'Make free'}</button>
+                </Td>
                 <Td><button type="button" onClick={() => setMulti(o, !o.multi_branch)} aria-pressed={o.multi_branch}
                   className={`rounded-full px-2.5 py-1 text-xs font-medium ${o.multi_branch ? 'bg-brand-50 text-brand-700 hover:bg-brand-100' : 'bg-mist-100 text-mist-600 hover:bg-mist-200'}`}>
                   {o.multi_branch ? 'On' : 'Off'}</button></Td>

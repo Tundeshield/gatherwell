@@ -11,6 +11,8 @@ import EmailPreview from '../../components/EmailPreview'
 import { TagChip, TAG_STYLES, TAG_COLORS, useTags, loadTags } from '../../components/Tags'
 import EmailBlocksEditor, { withKeys, stripKeys } from '../../components/EmailBlocksEditor'
 import { JOURNEY_STEPS, DELAY_OPTIONS, WHATSAPP_KINDS } from '../../../shared/automation.js'
+import { PLANS } from '../../../shared/plans.js'
+import PlanCards, { IntervalToggle } from '../../components/PlanCards'
 import { prepareImage } from '../../lib/image'
 
 const ROLE_HELP = {
@@ -764,6 +766,80 @@ function PrivacyTab() {
   )
 }
 
+
+function BillingTab() {
+  const { refresh, me } = useSession()
+  const toast = useToast()
+  const [params, setParams] = useSearchParams()
+  const { data, error, reload } = useLoad(() => api.get('/billing'), [])
+  const [interval, setInterval_] = useState('monthly')
+  const [busy, setBusy] = useState('')
+  const [confirming, setConfirming] = useState(!!params.get('reference'))
+
+  // Back from Paystack: confirm the payment, then tidy the address bar.
+  useEffect(() => {
+    const ref = params.get('reference') || params.get('trxref')
+    if (!ref) return
+    api.post('/billing/confirm', { reference: ref })
+      .then(r => { if (r.ok) toast(`Thank you! You’re on the ${PLANS[r.plan]?.name} plan.`); else toast('Your payment didn’t go through. You haven’t been charged.', 'error') })
+      .catch(e => toast(e.message, 'error'))
+      .finally(() => { setConfirming(false); setParams({ tab: 'billing' }, { replace: true }); reload(); refresh() })
+  }, []) // eslint-disable-line
+  useEffect(() => { if (data?.interval) setInterval_(data.interval) }, [data?.interval])
+
+  async function choose(plan) {
+    setBusy(plan)
+    try { const r = await api.post('/billing/checkout', { plan, interval }); window.location.href = r.url }
+    catch (e) { toast(e.message, 'error'); setBusy('') }
+  }
+  async function manage() {
+    setBusy('manage')
+    try { const r = await api.post('/billing/manage'); window.open(r.url, '_blank', 'noopener') } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+  }
+
+  if (error) return <ErrorState error={error} onRetry={reload} />
+  if (!data || confirming) return <div className="panel px-6 py-10 text-center text-sm text-mist-500">{confirming ? 'Confirming your payment…' : 'Loading…'}</div>
+  const fmt = (d) => d ? fmtDate(d) : ''
+  const status = {
+    free: ['Complimentary', 'Your church uses GatherHQ free of charge.'],
+    trialing: [`Free trial: ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left`, `Everything is included until ${fmt(data.trialEndsAt)}. Choose a plan any time; you won’t lose anything.`],
+    active: [`${PLANS[data.plan]?.name || 'Paid'} plan${data.interval ? `, ${data.interval}` : ''}`, data.cancelling ? `Cancelled. Your plan stays active until ${fmt(data.renewsAt)}.` : data.renewsAt ? `Renews on ${fmt(data.renewsAt)}.` : 'Active.'],
+    past_due: ['Payment needed', `${data.lastError || 'We couldn’t take your last payment.'} Update your card by ${fmt(data.graceEnds)} to keep making changes.`],
+    expired: ['No active plan', 'You can still view and download everything, and check-in still works. Choose a plan to make changes again.'],
+  }[data.state] || ['', '']
+  const paid = data.state === 'active' || data.state === 'past_due'
+  return (
+    <div className="space-y-6">
+      <section className={`panel px-6 py-5 ${data.state === 'past_due' || data.state === 'expired' ? 'border-red-200' : ''}`}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-mist-500">Your plan</p>
+            <h2 className="mt-1 text-lg font-semibold text-ink">{status[0]}</h2>
+            <p className="mt-1 max-w-xl text-sm text-mist-500">{status[1]}</p>
+            {data.card && <p className="mt-2 text-sm text-ink-soft">Paying with {data.card.brand ? `${data.card.brand} ` : 'card '}ending {data.card.last4}{data.card.exp ? `, expires ${data.card.exp}` : ''}</p>}
+          </div>
+          {data.hasSubscription && <Button variant="secondary" onClick={manage} loading={busy === 'manage'}>Update card or cancel</Button>}
+        </div>
+      </section>
+      {data.state !== 'free' && (
+        <section>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[15px] font-semibold text-ink">{paid ? 'Change plan' : 'Choose a plan'}</h2>
+            <IntervalToggle value={interval} onChange={setInterval_} />
+          </div>
+          {!data.ready && <Notice tone="info" className="mb-4">Payments aren’t switched on yet, so your church keeps using GatherHQ free for now.</Notice>}
+          <PlanCards interval={interval} current={paid ? data.plan : null} action={(key) => {
+            const same = paid && data.plan === key && data.interval === interval && !data.cancelling
+            return <Button className="w-full" variant={key === 'church' ? 'primary' : 'secondary'} disabled={same || !data.ready} loading={busy === key} onClick={() => choose(key)}>
+              {same ? 'Your current plan' : paid ? `Switch to ${PLANS[key].name}` : `Choose ${PLANS[key].name}`}</Button>
+          }} />
+          <p className="mt-4 text-center text-xs text-mist-500">Prices in US dollars. Secure card payment by Paystack. {me.org.branchesEnabled ? '' : 'The Church network plan also switches on multiple branches.'}</p>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export default function Settings() {
   const { can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
@@ -776,12 +852,13 @@ export default function Settings() {
     can('people.edit') && ['tags', 'Tags'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
+    can('org.manage') && ['billing', 'Billing'],
     can('org.manage') && ['privacy', 'Data & privacy'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, billing: BillingTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

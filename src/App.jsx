@@ -14,6 +14,7 @@ const CheckIn = lazyPage(() => import('./pages/public/CheckIn'))
 const EventRegister = lazyPage(() => import('./pages/public/EventRegister'))
 const NoOrg = lazyPage(() => import('./pages/public/NoOrg'))
 const Legal = lazyPage(() => import('./pages/public/Legal'))
+const Pricing = lazyPage(() => import('./pages/public/Pricing'))
 
 const Overview = lazyPage(() => import('./pages/app/Overview'))
 const People = lazyPage(() => import('./pages/app/People'))
@@ -59,6 +60,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/legal/:doc" element={<Legal />} />
+              <Route path="/pricing" element={<Pricing />} />
               <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />
               <Route path="/terms" element={<Navigate to="/legal/terms" replace />} />
               <Route path="/login" element={<GuestOnly><Login /></GuestOnly>} />

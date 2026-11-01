@@ -14,9 +14,14 @@ import platformRoutes from './routes/platform.js'
 import publicRoutes from './routes/public.js'
 import tagRoutes from './routes/tags.js'
 import automationRoutes from './routes/automation.js'
+import billingRoutes from './routes/billing.js'
+import { isExpired } from './billing.js'
+
+// What an account whose trial has ended may still do: pay, manage its account, and erase people.
+const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/]
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes]) {
   register(router)
 }
 
@@ -39,8 +44,10 @@ export async function handle(req) {
     }
 
     let body = {}
+    let raw = ''
     if (method !== 'GET' && method !== 'HEAD' && method !== 'DELETE' && !route.opts.form) {
       const text = await req.text()
+      raw = text
       if (text.length > 6_000_000) return json({ error: 'Request too large.' }, 413)
       try { body = text ? JSON.parse(text) : {} } catch { return json({ error: 'Invalid JSON.' }, 400) }
     }
@@ -55,7 +62,11 @@ export async function handle(req) {
       if (!ctx.user.isPlatformAdmin) throw forbidden()
     }
 
-    const result = await route.handler({ req, url, params, body, query: Object.fromEntries(url.searchParams), ctx })
+    // After the free trial, an unpaid church can still view and download everything, but not make changes.
+    if (mode === 'org' && !['GET', 'HEAD'].includes(method) && isExpired(ctx.org) && !READ_ONLY_ALLOWED.some(re => re.test(path) && (re.method ? re.method === method : true))) {
+      return json({ error: 'Your free trial has ended. Choose a plan in Settings › Billing to keep making changes. Everything you’ve recorded is safe, and check-in still works.', details: { code: 'billing_required' } }, 402)
+    }
+    const result = await route.handler({ req, url, params, body, raw, query: Object.fromEntries(url.searchParams), ctx })
     if (result instanceof Response) return result
     return json(result ?? { ok: true })
   } catch (e) {

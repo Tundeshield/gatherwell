@@ -169,6 +169,7 @@ export function LegalFooter({ className = '' }) {
       <div className="mx-auto flex max-w-page flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-mist-500">
         <Logo size={24} />
         <nav className="flex flex-wrap gap-x-5 gap-y-2">
+          <Link to="/pricing" className="hover:text-ink">Pricing</Link>
           <Link to="/legal/privacy" className="hover:text-ink">Privacy</Link>
           <Link to="/legal/terms" className="hover:text-ink">Terms</Link>
           <Link to="/legal/dpa" className="hover:text-ink">Data Processing Agreement</Link>

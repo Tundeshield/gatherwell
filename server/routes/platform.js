@@ -1,5 +1,6 @@
 // Platform operators only (users.is_platform_admin or PLATFORM_ADMIN_EMAILS). Being a church owner never grants this.
 // Aggregates only — no member records or pastoral notes are exposed here.
+import { billingStatus } from '../../shared/plans.js'
 import { fb, col, plain } from '../firebase.js'
 import { notFound, oneOf, bad } from '../http.js'
 import { audit } from '../util.js'
@@ -20,7 +21,7 @@ export default function (r) {
         C('checkins').where('created_at', '>=', since).count().get(),
       ])
       return {
-        id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, multi_branch: !!d.features?.branches || branches.data().count > 1, trial_ends_at: plain(d.trial_ends_at), created_at: plain(d.created_at), country: d.country || null,
+        id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, multi_branch: !!d.features?.branches || branches.data().count > 1, billing: billingStatus(d), trial_ends_at: plain(d.trial_ends_at), created_at: plain(d.created_at), country: d.country || null,
         branches: branches.data().count, people: people.data().count, sessions: sessions.data().count, team: team.data().count,
         owner_email: owner.docs[0]?.data().user_email || null, last_checkin_at: last.empty ? null : plain(last.docs[0].data().created_at), _recent: recent.data().count,
       }
@@ -38,6 +39,13 @@ export default function (r) {
     const ref = db.collection('orgs').doc(String(params.id).slice(0, 64))
     const o = await ref.get()
     if (!o.exists) throw notFound()
+    // Make a church complimentary (never charged) or put it back on the normal trial and plans.
+    if (body.plan !== undefined) {
+      const plan = body.plan === 'free' ? 'free' : 'trial'
+      await ref.update({ plan, updated_at: new Date() })
+      await audit({ org: { id: o.id }, user: ctx.user }, `platform.plan_${plan}`, 'organisation', o.id, { by: ctx.user.email })
+      return { id: o.id, name: o.data().name, plan }
+    }
     // Switch multiple branches on or off for a church.
     if (body.multiBranch !== undefined) {
       const on = body.multiBranch === true

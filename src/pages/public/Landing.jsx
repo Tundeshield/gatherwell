@@ -46,6 +46,7 @@ export default function Landing() {
       <header className="mx-auto flex max-w-page items-center justify-between px-6 py-5">
         <Logo size={30} />
         <nav className="flex items-center gap-2">
+          <Link to="/pricing" className="rounded-lg px-4 py-2 text-sm font-medium text-ink hover:bg-white">Pricing</Link>
           {signedIn ? <Link to="/app" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Open GatherHQ</Link> : <>
             <Link to="/login" className="rounded-lg px-4 py-2 text-sm font-medium text-ink hover:bg-white">Sign in</Link>
             <Link to="/signup" className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800">Start free</Link>
@@ -117,7 +118,7 @@ export default function Landing() {
 
       <section className="mx-auto max-w-page px-6 py-20 text-center">
         <h2 className="text-[30px] font-semibold text-ink">{BRAND.tagline}</h2>
-        <p className="mx-auto mt-3 max-w-lg text-[16px] text-mist-600">Try everything free for 30 days. Plans for churches of every size are on the way — your data stays yours, and you can export it any time.</p>
+        <p className="mx-auto mt-3 max-w-lg text-[16px] text-mist-600">Try everything free for 30 days, then from $19 a month. Your data stays yours, and you can export it any time.</p>
         <Link to={signedIn ? '/app' : '/signup'} className="mt-8 inline-block rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Create your church account'}</Link>
       </section>
 

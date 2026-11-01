@@ -123,11 +123,10 @@ function SidebarContent({ onNavigate }) {
 }
 
 export default function AppShell() {
-  const { me } = useSession()
+  const { me, can } = useSession()
   const [open, setOpen] = useState(false)
   const location = useLocation()
   useEffect(() => setOpen(false), [location.pathname])
-  const trialDays = me.org?.plan === 'trial' && me.org.trialEndsAt ? Math.ceil((new Date(me.org.trialEndsAt) - Date.now()) / 86400000) : null
 
   return (
     <div className="min-h-screen bg-ivory">
@@ -148,17 +147,30 @@ export default function AppShell() {
         </div>
       )}
       <main className="lg:pl-64">
-        {trialDays !== null && trialDays <= 7 && (
-          <div className="border-b border-gold-200 bg-gold-50 px-6 py-2 text-center text-sm text-gold-700">
-            {trialDays > 0 ? `Your free trial ends in ${trialDays} day${trialDays === 1 ? '' : 's'}.` : 'Your free trial has ended.'} Billing isn't set up yet — your data stays safe.
-          </div>
-        )}
+        <BillingBanner billing={me.org.billing} owner={can('org.manage')} />
         <div className="mx-auto max-w-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <PageErrorBoundary resetKey={location.pathname}>
             <Suspense fallback={<PageLoader />}><Outlet /></Suspense>
           </PageErrorBoundary>
         </div>
       </main>
+    </div>
+  )
+}
+
+// Reminds the church about its trial or a payment problem. Only shown once payments are connected.
+function BillingBanner({ billing, owner }) {
+  if (!billing?.ready) return null
+  const { state, daysLeft } = billing
+  let tone = 'bg-gold-50 border-gold-200 text-gold-700', text = null
+  if (state === 'trialing' && daysLeft <= 7) text = `Your free trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`
+  else if (state === 'past_due') { text = 'We couldn’t take your last payment. Please update your card to keep GatherHQ running.'; tone = 'bg-red-50 border-red-200 text-red-800' }
+  else if (state === 'expired') { text = 'Your free trial has ended. You can still view and download everything, and check-in still works, but changes are paused.'; tone = 'bg-red-50 border-red-200 text-red-800' }
+  if (!text) return null
+  return (
+    <div className={`border-b px-6 py-2.5 text-center text-sm ${tone}`}>
+      {text}{' '}
+      {owner ? <NavLink to="/app/settings?tab=billing" className="font-semibold underline">{state === 'past_due' ? 'Update payment' : 'Choose a plan'}</NavLink> : <span>Ask your church owner to choose a plan.</span>}
     </div>
   )
 }
