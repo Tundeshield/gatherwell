@@ -6,7 +6,7 @@ import { useLoad, Button, Input, Select, Textarea, Notice } from './ui'
 import { STATUS_LABELS } from '../lib/format'
 
 export default function PersonForm({ person, onSaved, onCancel }) {
-  const { activeBranches, can } = useSession()
+  const { activeBranches, can, multiBranch } = useSession()
   const branchParam = useBranchParam()
   const units = useLoad(() => api.get('/units'), [])
   const team = useLoad(() => api.get('/team/assignees').catch(() => []), [])
@@ -45,9 +45,11 @@ export default function PersonForm({ person, onSaved, onCancel }) {
         <Select label="Status" value={f.status} onChange={set('status')} hint="Their relationship with the church — separate from attendance.">
           {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
-        <Select label="Branch" value={f.branchId} onChange={set('branchId')} required>
-          {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-        </Select>
+        {multiBranch && (
+          <Select label="Branch" value={f.branchId} onChange={set('branchId')} required>
+            {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </Select>
+        )}
         <Select label="Service unit" value={f.unitId} onChange={set('unitId')}>
           <option value="">None</option>
           {(units.data || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}

@@ -19,8 +19,12 @@ async function resolveLink(token, kind) {
   if (!os.exists || !rs.exists || os.data().status !== 'active') return null
   const org = { id: os.id, ...os.data() }
   const item = { id: rs.id, ...rs.data() }
+  // Show the branch on public pages only for churches that actually run several branches.
   let branchName = null
-  if (item.branch_id) branchName = (await col(db, org.id, 'branches').doc(item.branch_id).get()).data()?.name || null
+  if (item.branch_id) {
+    const count = org.features?.branches ? 2 : (await col(db, org.id, 'branches').count().get()).data().count
+    if (count > 1) branchName = (await col(db, org.id, 'branches').doc(item.branch_id).get()).data()?.name || null
+  }
   return { db, org, item, branchName }
 }
 

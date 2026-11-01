@@ -17,6 +17,7 @@ export async function seed(port, fake) {
   const me = await call('GET', '/me')
   const orgId = me.org.id
   const ikeja = me.branches[0].id
+  await fake.db.collection('orgs').doc(orgId).update({ features: { branches: true } }) // demo church is a network
   const lekki = (await call('POST', '/branches', { name: 'Lekki', address: 'Admiralty Way, Lekki' })).id
   for (const n of ['Choir', 'Ushering', 'Media', "Children's church"]) await call('POST', '/units', { name: n })
 

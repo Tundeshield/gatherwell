@@ -20,7 +20,7 @@ export default function (r) {
         C('checkins').where('created_at', '>=', since).count().get(),
       ])
       return {
-        id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, trial_ends_at: plain(d.trial_ends_at), created_at: plain(d.created_at), country: d.country || null,
+        id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, multi_branch: !!d.features?.branches || branches.data().count > 1, trial_ends_at: plain(d.trial_ends_at), created_at: plain(d.created_at), country: d.country || null,
         branches: branches.data().count, people: people.data().count, sessions: sessions.data().count, team: team.data().count,
         owner_email: owner.docs[0]?.data().user_email || null, last_checkin_at: last.empty ? null : plain(last.docs[0].data().created_at), _recent: recent.data().count,
       }
@@ -35,12 +35,19 @@ export default function (r) {
 
   r.patch('/platform/orgs/:id', { auth: 'platform' }, async ({ ctx, params, body }) => {
     const { db } = await fb()
-    const status = oneOf(body.status, ['active', 'suspended', 'closed'], { name: 'Status' })
-    if (!status) throw bad('Choose a status.')
-    if (status === 'closed' && body.confirm !== 'close') throw bad('Type-confirm required to close an organisation.')
     const ref = db.collection('orgs').doc(String(params.id).slice(0, 64))
     const o = await ref.get()
     if (!o.exists) throw notFound()
+    // Switch multiple branches on or off for a church.
+    if (body.multiBranch !== undefined) {
+      const on = body.multiBranch === true
+      await ref.update({ features: { ...(o.data().features || {}), branches: on }, updated_at: new Date() })
+      await audit({ org: { id: o.id }, user: ctx.user }, on ? 'platform.multi_branch_on' : 'platform.multi_branch_off', 'organisation', o.id, { by: ctx.user.email })
+      return { id: o.id, name: o.data().name, multi_branch: on }
+    }
+    const status = oneOf(body.status, ['active', 'suspended', 'closed'], { name: 'Status' })
+    if (!status) throw bad('Choose a status.')
+    if (status === 'closed' && body.confirm !== 'close') throw bad('Type-confirm required to close an organisation.')
     await ref.update({ status, updated_at: new Date() })
     await audit({ org: { id: o.id }, user: ctx.user }, `platform.org_${status}`, 'organisation', o.id, { by: ctx.user.email })
     return { id: o.id, name: o.data().name, status }

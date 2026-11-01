@@ -53,7 +53,6 @@ export default function Signup() {
       <form onSubmit={submit} noValidate>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         <Input label="Church name" placeholder="e.g. Grace Community Church" value={form.orgName} onChange={set('orgName')} error={fieldErrors.orgName} required autoFocus />
-        <Input label="First branch or campus" placeholder="Main campus" hint="You can add more branches later." value={form.branchName} onChange={set('branchName')} />
         <Select label="Country" value={form.country} onChange={set('country')} hint="Sets your timezone and phone number format.">
           {COUNTRIES.map(c => <option key={c.name}>{c.name}</option>)}
         </Select>

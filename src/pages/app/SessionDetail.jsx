@@ -11,6 +11,7 @@ import { ConfirmNameToggle } from './Attendance'
 
 function ManualCheckin({ gatheringId, onDone }) {
   const toast = useToast()
+  const { multiBranch } = useSession()
   const [term, setTerm] = useState('')
   const q = useDebounced(term, 250)
   const [results, setResults] = useState([])
@@ -48,7 +49,7 @@ function ManualCheckin({ gatheringId, onDone }) {
               <Avatar person={p} size={28} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-ink">{personName(p)}</span>
-                <span className="block truncate text-xs text-mist-500">{[p.phone, p.branch_name].filter(Boolean).join(' · ')}</span>
+                <span className="block truncate text-xs text-mist-500">{[p.phone, multiBranch && p.branch_name].filter(Boolean).join(' · ')}</span>
               </span>
               {p.checked_in ? <Badge tone="success"><Check size={12} />Checked in</Badge> :
                 <Button size="sm" loading={busy === personName(p)} onClick={() => checkIn({ personId: p.id }, personName(p))}>Check in</Button>}

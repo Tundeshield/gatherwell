@@ -10,7 +10,7 @@ import FormBuilder, { DEFAULT_FORM } from '../../components/FormBuilder'
 export const EVENT_STATUS = { draft: ['neutral', 'Draft'], published: ['success', 'Published'], postponed: ['warning', 'Postponed'], cancelled: ['danger', 'Cancelled'], completed: ['neutral', 'Completed'] }
 
 export function EventForm({ open, event, onClose, onSaved }) {
-  const { activeBranches, me } = useSession()
+  const { activeBranches, me, multiBranch } = useSession()
   const scoped = !!me.membership?.branchIds
   const branchParam = useBranchParam()
   const [f, setF] = useState(null)
@@ -47,10 +47,12 @@ export function EventForm({ open, event, onClose, onSaved }) {
         <Textarea label="Description" value={f.description} onChange={set('description')} rows={3} hint="Shown on the registration page." />
         <div className="grid gap-x-4 sm:grid-cols-2">
           <Input label="Location" value={f.location} onChange={set('location')} />
-          <Select label="Who it's for" value={f.branchId} onChange={set('branchId')}>
-            {!scoped && <option value="">Whole church (all branches)</option>}
-            {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
+          {multiBranch && (
+            <Select label="Who it's for" value={f.branchId} onChange={set('branchId')}>
+              {!scoped && <option value="">Whole church (all branches)</option>}
+              {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          )}
           <Input label="Starts" type="datetime-local" value={f.startsAt} onChange={set('startsAt')} required />
           <Input label="Ends" type="datetime-local" value={f.endsAt} onChange={set('endsAt')} />
           <Input label="Registration opens" type="datetime-local" value={f.registrationOpensAt} onChange={set('registrationOpensAt')} hint="Leave empty to open now." />

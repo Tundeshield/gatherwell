@@ -146,3 +146,7 @@ export const inScope = (ctx, branchId, branches) => {
 }
 
 export { isUuid }
+
+// Multiple branches is an upgrade, switched on per church from the platform area.
+// Churches that already run several branches keep it.
+export const branchesEnabled = (org, branchCount = 0) => !!org?.features?.branches || branchCount > 1

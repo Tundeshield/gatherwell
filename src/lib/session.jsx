@@ -50,7 +50,9 @@ export function SessionProvider({ children }) {
       branches: me?.branches || [],
       activeBranches,
       branchName: (id) => me?.branches?.find(b => b.id === id)?.name,
-      multiBranch: (me?.branches || []).length > 1,
+      // Multi-branch is an upgrade; single churches never see branch options.
+      branchesEnabled: !!me?.org?.branchesEnabled,
+      multiBranch: !!me?.org?.branchesEnabled && (me?.branches || []).length > 1,
       tz: me?.org?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       logout: async () => { await api.post('/auth/logout').catch(() => {}); setMe(null) },
     }

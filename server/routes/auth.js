@@ -1,7 +1,7 @@
 import { fb, plain } from '../firebase.js'
 import { bad, conflict, unauthorized, str, email as emailV, json, clientIp, notFound, forbidden } from '../http.js'
 import { rateLimit, slugify, shortId, sha256, audit } from '../util.js'
-import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches } from '../access.js'
+import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
 
 const DEFAULT_SETTINGS = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }
 
@@ -57,11 +57,12 @@ export async function mePayload(ctx) {
       .sort((a, b) => (a.status === b.status ? a.name.localeCompare(b.name) : a.status === 'active' ? -1 : 1))
   }
   const o = ctx.org
+  const allBranches = o ? await orgBranches(ctx) : []
   return {
     user: ctx.user,
     org: o && {
       id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
-      trialEndsAt: plain(o.trial_ends_at), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
+      trialEndsAt: plain(o.trial_ends_at), branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
     membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,
@@ -90,7 +91,7 @@ export default function (r) {
   r.post('/auth/signup', { auth: 'public' }, async ({ req, body }) => {
     await rateLimit(`signup:${clientIp(req)}`, 10, 3600)
     const orgName = str(body.orgName, { required: true, max: 120, name: 'Church name' })
-    const branchName = str(body.branchName, { max: 120, name: 'Branch name' }) || 'Main campus'
+    const branchName = str(body.branchName, { max: 120, name: 'Branch name' }) || 'Main'
     const name = str(body.name, { required: true, max: 120, name: 'Your name' })
     const email = emailV(body.email, { required: true })
     const pw = password(body.password)
@@ -143,7 +144,7 @@ export default function (r) {
   r.post('/me/orgs', { auth: 'user' }, async ({ ctx, body }) => {
     const { db } = await fb()
     const orgName = str(body.orgName, { required: true, max: 120, name: 'Church name' })
-    const org = await createOrganisation(db, { orgName, branchName: str(body.branchName, { max: 120 }) || 'Main campus', timezone: str(body.timezone, { max: 64 }) || 'Africa/Lagos', settings: DEFAULT_SETTINGS, owner: ctx.user })
+    const org = await createOrganisation(db, { orgName, branchName: str(body.branchName, { max: 120 }) || 'Main', timezone: str(body.timezone, { max: 64 }) || 'Africa/Lagos', settings: DEFAULT_SETTINGS, owner: ctx.user })
     await audit({ org, user: ctx.user }, 'org.created', 'organisation', org.id, { name: orgName })
     return { ok: true, orgId: org.id }
   })

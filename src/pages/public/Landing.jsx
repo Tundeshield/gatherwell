@@ -31,7 +31,7 @@ function PhoneMock() {
 const FEATURES = [
   { icon: QrCode, title: 'QR check-in that recognises people', body: 'Visitors fill a short form once. Next time they enter their phone number and first name — no apps, no accounts.' },
   { icon: HeartHandshake, title: 'Follow-ups that actually happen', body: 'First-time visitors get a welcome task automatically. Members who have been away surface for a caring check-in, assigned to a real person.' },
-  { icon: Building2, title: 'Every branch, one church', body: 'Each campus runs its own sessions while leadership sees the whole picture. Ushers only see what their branch needs.' },
+  { icon: Building2, title: 'Grows with your church', body: 'Start with one congregation. Church networks can add every branch and campus, with leadership seeing the whole picture.' },
   { icon: CalendarDays, title: 'Events with tickets and waitlists', body: 'A registration page, QR tickets, capacity limits that fill from the waitlist, and a door check-in list that works on a phone.' },
   { icon: BarChart3, title: 'Reports you can trust', body: 'Attendance against the previous period, visitor journeys from first visit to membership, and every number defined in plain words.' },
   { icon: Users, title: 'People, without the spreadsheet', body: 'Import your existing list with a preview and duplicate check, then keep one record per person with their full attendance history.' },
@@ -54,7 +54,7 @@ export default function Landing() {
 
       <section className="mx-auto grid max-w-page items-center gap-14 px-6 pb-24 pt-10 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
         <div>
-          <h1 className="max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.025em] text-ink sm:text-[54px]">Know your people. Coordinate every branch. Follow through.</h1>
+          <h1 className="max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.025em] text-ink sm:text-[54px]">Know your people. Welcome every visitor. Follow through.</h1>
           <p className="mt-6 max-w-lg text-[18px] leading-relaxed text-ink-soft">GatherHQ brings attendance, visitors, follow-ups and events into one calm place — so no one who walks through your doors is forgotten.</p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <Link to={signedIn ? '/app' : '/signup'} className="rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Start your free 30 days'}</Link>
@@ -105,7 +105,7 @@ export default function Landing() {
           </div>
           <ul className="grid gap-6 sm:grid-cols-2">
             {[[ShieldCheck, 'Every church is sealed off', 'Each organisation’s data is isolated on the server, not just hidden in the interface.'],
-              [Lock, 'Access by role and branch', 'Ushers check people in without seeing the directory. Branch leaders see only their branches.'],
+              [Lock, 'Access by role', 'Ushers check people in without seeing the directory. Everyone sees only what their role needs.'],
               [FileSearch, 'Exports are permissioned and logged', 'Only people you trust can download personal data, and every export is recorded.'],
               [Check, 'Private check-in', 'A phone number alone shows only a masked hint like “C•••• O.” — people confirm their own first name to check in.']].map(([Icon, t, b]) => (
               <li key={t}><Icon size={20} className="text-gold-200" /><h3 className="mt-3 font-semibold">{t}</h3><p className="mt-1 text-[14px] leading-relaxed text-brand-100">{b}</p></li>

@@ -68,6 +68,19 @@ test('sign-up creates org, branch and owner; /me reports caps', async () => {
   assert.ok(me.data.caps.includes('export'))
   S.aBranch1 = me.data.branches[0].id
   S.bBranch = (await S.b.get('/me')).data.branches[0].id
+
+  // A new church is a single church: branches are switched off until the platform team enables them.
+  assert.equal(me.data.org.branchesEnabled, false)
+  r = await S.a.post('/branches', { name: 'North' })
+  assert.equal(r.status, 403)
+  assert.match(r.data.error, /church networks/)
+  S.ops = client()
+  await signup(S.ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherhq.test', password: 'password123' })
+  r = await S.a.patch(`/platform/orgs/${me.data.org.id}`, { multiBranch: true })
+  assert.equal(r.status, 403, 'a church owner cannot switch it on themselves')
+  r = await S.ops.patch(`/platform/orgs/${me.data.org.id}`, { multiBranch: true })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal((await S.a.get('/me')).data.org.branchesEnabled, true)
 })
 
 test('duplicate sign-up email is rejected; only valid Firebase tokens create sessions', async () => {
@@ -396,8 +409,7 @@ test('overview, reports and messages compute without errors', async () => {
 test('platform admin area is separate from church ownership', async () => {
   let r = await S.a.get('/platform/summary')
   assert.equal(r.status, 403)
-  const ops = client()
-  await signup(ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherhq.test', password: 'password123' })
+  const ops = S.ops
   r = await ops.get('/platform/summary')
   assert.equal(r.status, 200)
   assert.ok(r.data.totals.orgs >= 3)

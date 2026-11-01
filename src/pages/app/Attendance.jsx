@@ -18,7 +18,7 @@ function nextSunday9() {
 }
 
 export function NewSessionModal({ open, onClose, onCreated }) {
-  const { activeBranches, can } = useSession()
+  const { activeBranches, can, multiBranch } = useSession()
   const branchParam = useBranchParam()
   const templates = useLoad(() => (open ? api.get('/templates') : Promise.resolve([])), [open])
   const [f, setF] = useState(null)
@@ -67,9 +67,11 @@ export function NewSessionModal({ open, onClose, onCreated }) {
           <Select label="Type" value={f.kind} onChange={set('kind')}>
             {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          <Select label="Branch" value={f.branchId} onChange={set('branchId')}>
-            {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
+          {multiBranch && (
+            <Select label="Branch" value={f.branchId} onChange={set('branchId')}>
+              {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          )}
           <Input label="Starts" type="datetime-local" value={f.startsAt} onChange={set('startsAt')} required />
           <Input label="Ends (optional)" type="datetime-local" value={f.endsAt} onChange={set('endsAt')} />
           <Select label="Check-in" value={f.status} onChange={set('status')} hint="You can open or close check-in at any time." className="sm:col-span-2">

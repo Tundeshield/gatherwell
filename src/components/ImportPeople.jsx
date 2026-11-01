@@ -32,7 +32,7 @@ function toCsv(rows) {
 }
 
 export default function ImportPeople({ open, onClose, onDone }) {
-  const { activeBranches } = useSession()
+  const { activeBranches, multiBranch } = useSession()
   const branchParam = useBranchParam()
   const [step, setStep] = useState('upload') // upload | map | preview | done
   const [fileName, setFileName] = useState('')
@@ -123,9 +123,11 @@ export default function ImportPeople({ open, onClose, onDone }) {
 
       {step === 'map' && (
         <div>
-          <Select label="Add these people to branch" value={branchId} onChange={e => setBranchId(e.target.value)}>
-            {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </Select>
+          {multiBranch && (
+            <Select label="Add these people to branch" value={branchId} onChange={e => setBranchId(e.target.value)}>
+              {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </Select>
+          )}
           <p className="mb-3 text-sm text-mist-600">Match your columns to GatherHQ fields. We've guessed where we could.</p>
           <div className="grid gap-x-4 sm:grid-cols-2">
             {TARGETS.map(t => (

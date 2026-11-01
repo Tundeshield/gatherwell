@@ -1,6 +1,6 @@
 import { fb, col, docOut, docsOut, plain, getMany } from '../firebase.js'
 import { bad, forbidden, notFound, str, email as emailV, oneOf, int, uuid, isUuid } from '../http.js'
-import { requireCap, assertBranch, orgBranches, ROLE_LABELS, membershipId } from '../access.js'
+import { requireCap, assertBranch, orgBranches, ROLE_LABELS, membershipId, branchesEnabled } from '../access.js'
 import { randomToken, sha256, audit, sanitizeForm } from '../util.js'
 
 const INVITE_ROLES = ['admin', 'lead', 'usher', 'viewer']
@@ -80,6 +80,7 @@ export default function (r) {
   r.post('/branches', async ({ ctx, body }) => {
     requireCap(ctx, 'branches.create')
     const { db } = await fb()
+    if (!branchesEnabled(ctx.org, (await orgBranches(ctx)).length)) throw forbidden('Multiple branches is part of GatherHQ for church networks. Contact the GatherHQ team to switch it on.')
     const data = { name: str(body.name, { required: true, max: 120, name: 'Branch name' }), address: str(body.address, { max: 300 }), phone: str(body.phone, { max: 40 }),
       timezone: str(body.timezone, { max: 64 }), status: 'active', created_at: new Date(), updated_at: new Date() }
     const ref = await col(db, ctx.org.id, 'branches').add(data)

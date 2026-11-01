@@ -35,12 +35,12 @@ function Attention({ to, icon: Icon, count, label, tone = 'neutral', description
 }
 
 function GettingStarted({ data }) {
-  const { can, multiBranch } = useSession()
+  const { can, multiBranch, branchesEnabled } = useSession()
   const steps = [
     can('attendance.manage') && { done: !!data.latest || data.upcomingSessions?.length > 0, label: 'Create your first attendance session', hint: 'Get a QR code people scan to check in.', to: '/app/attendance?new=1', icon: CalendarCheck },
     can('people.edit') && { done: (data.people?.members || 0) + (data.people?.visitors || 0) > 0, label: 'Add or import your people', hint: 'Upload a spreadsheet — duplicates are caught for you.', to: '/app/people?import=1', icon: Upload },
     can('team.manage') && { done: false, label: 'Invite your team', hint: 'Give ushers and leaders just the access they need.', to: '/app/settings?tab=team', icon: UserCog },
-    can('branches.create') && { done: multiBranch, label: 'Add your other branches', hint: 'Each branch gets its own sessions and reports.', to: '/app/settings?tab=branches', icon: Building2 },
+    can('branches.create') && branchesEnabled && { done: multiBranch, label: 'Add your other branches', hint: 'Each branch gets its own sessions and reports.', to: '/app/settings?tab=branches', icon: Building2 },
   ].filter(Boolean)
   if (!steps.length || steps.every(s => s.done)) return null
   return (

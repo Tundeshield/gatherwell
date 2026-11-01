@@ -16,6 +16,12 @@ export default function Platform() {
   if (loading && !data) return <PageLoader />
   if (error) return <ErrorState error={error} onRetry={reload} />
 
+  async function setMulti(o, on) {
+    if (!(await confirm({ title: on ? `Turn on multiple branches for ${o.name}?` : `Turn off multiple branches for ${o.name}?`,
+      message: on ? 'They can add branches and campuses, give people branch access, and see reports by branch.' : 'They won’t be able to add new branches. Branches they already have keep working.',
+      confirmLabel: on ? 'Turn on' : 'Turn off' }))) return
+    try { await api.patch(`/platform/orgs/${o.id}`, { multiBranch: on }); toast(on ? `Multiple branches on for ${o.name}` : `Multiple branches off for ${o.name}`); reload() } catch (e) { toast(e.message, 'error') }
+  }
   async function setStatus(o, status) {
     const ok = await confirm({
       title: status === 'suspended' ? `Suspend ${o.name}?` : `Reactivate ${o.name}?`,
@@ -48,12 +54,15 @@ export default function Platform() {
             <SearchInput value={q} onChange={setQ} placeholder="Search church or owner" className="w-64" />
           </div>
           <Table>
-            <thead><tr><Th>Church</Th><Th>Owner</Th><Th>Status</Th><Th className="text-right">Branches</Th><Th className="text-right">People</Th><Th className="text-right">Sessions</Th><Th>Last check-in</Th><Th>Created</Th><Th /></tr></thead>
+            <thead><tr><Th>Church</Th><Th>Owner</Th><Th>Status</Th><Th>Multi-branch</Th><Th className="text-right">Branches</Th><Th className="text-right">People</Th><Th className="text-right">Sessions</Th><Th>Last check-in</Th><Th>Created</Th><Th /></tr></thead>
             <tbody>{rows.map(o => (
               <tr key={o.id}>
                 <Td><div className="font-medium text-ink">{o.name}</div><div className="text-xs text-mist-500">{o.country || '—'} · {o.plan}{o.plan === 'trial' && o.trial_ends_at ? ` until ${fmtDate(o.trial_ends_at)}` : ''}</div></Td>
                 <Td className="text-mist-600">{o.owner_email}</Td>
                 <Td><Badge tone={o.status === 'active' ? 'success' : o.status === 'suspended' ? 'warning' : 'neutral'}>{o.status}</Badge></Td>
+                <Td><button type="button" onClick={() => setMulti(o, !o.multi_branch)} aria-pressed={o.multi_branch}
+                  className={`rounded-full px-2.5 py-1 text-xs font-medium ${o.multi_branch ? 'bg-brand-50 text-brand-700 hover:bg-brand-100' : 'bg-mist-100 text-mist-600 hover:bg-mist-200'}`}>
+                  {o.multi_branch ? 'On' : 'Off'}</button></Td>
                 <Td className="tabular text-right">{o.branches}</Td><Td className="tabular text-right">{o.people.toLocaleString()}</Td><Td className="tabular text-right">{o.sessions}</Td>
                 <Td className="whitespace-nowrap text-mist-600">{o.last_checkin_at ? relative(o.last_checkin_at) : 'Never'}</Td>
                 <Td className="whitespace-nowrap text-mist-600">{fmtDate(o.created_at)}</Td>

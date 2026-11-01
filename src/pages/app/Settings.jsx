@@ -12,7 +12,7 @@ import { prepareImage } from '../../lib/image'
 
 const ROLE_HELP = {
   owner: 'Everything, including church settings and billing.',
-  admin: 'Manages people, attendance, events, follow-ups and team for their branches.',
+  admin: 'Manages people, attendance, events, follow-ups and the team.',
   lead: 'Runs attendance and events, edits people, handles follow-ups.',
   usher: 'Checks people in at sessions and events. No access to the people directory.',
   viewer: 'Sees the overview and reports. Read-only.',
@@ -138,7 +138,7 @@ function BranchPicker({ value, onChange, branches, allowAll }) {
 }
 
 function TeamTab() {
-  const { me, activeBranches, branchName } = useSession()
+  const { me, activeBranches, branchName, multiBranch } = useSession()
   const toast = useToast()
   const confirm = useConfirm()
   const { data, error, loading, reload } = useLoad(() => api.get('/team'), [])
@@ -176,7 +176,7 @@ function TeamTab() {
       <Select label="Role" value={f.role} onChange={e => setF(x => ({ ...x, role: e.target.value }))} hint={ROLE_HELP[f.role]}>
         {roles.filter(r => inviting ? r !== 'owner' : true).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
       </Select>
-      {f.role !== 'owner' && <BranchPicker value={f.branchIds} onChange={v => setF(x => ({ ...x, branchIds: v }))} branches={activeBranches} allowAll={!scoped} />}
+      {f.role !== 'owner' && multiBranch && <BranchPicker value={f.branchIds} onChange={v => setF(x => ({ ...x, branchIds: v }))} branches={activeBranches} allowAll={!scoped} />}
       {['admin', 'lead'].includes(f.role) && (me.membership.role === 'owner' || me.membership.canExport) && (
         <Checkbox label="Can export personal data" hint="Download people, attendance and registration lists as spreadsheets." checked={f.canExport} onChange={v => setF(x => ({ ...x, canExport: v }))} className="mb-2" />
       )}
@@ -192,12 +192,12 @@ function TeamTab() {
         </div>
         {loading && !data ? <Skeleton className="m-5 h-20" /> : (
           <Table>
-            <thead><tr><Th>Name</Th><Th>Role</Th><Th>Branches</Th><Th>Last signed in</Th><Th className="w-32" /></tr></thead>
+            <thead><tr><Th>Name</Th><Th>Role</Th>{multiBranch && <Th>Branches</Th>}<Th>Last signed in</Th><Th className="w-32" /></tr></thead>
             <tbody>{data.members.map(m => (
               <tr key={m.id} className={m.status === 'revoked' ? 'opacity-50' : ''}>
                 <Td><div className="font-medium text-ink">{m.name}{m.isMe && <span className="ml-1 font-normal text-mist-400">(you)</span>}</div><div className="text-xs text-mist-500">{m.email}</div></Td>
                 <Td><Badge tone={m.role === 'owner' ? 'gold' : 'neutral'}>{m.roleLabel}</Badge>{m.can_export && m.role !== 'owner' && <span className="ml-1.5 text-xs text-mist-500">can export</span>}</Td>
-                <Td className="max-w-[220px] truncate text-mist-600">{m.role === 'owner' ? 'All branches' : scopeText(m.branch_ids)}</Td>
+                {multiBranch && <Td className="max-w-[220px] truncate text-mist-600">{m.role === 'owner' ? 'All branches' : scopeText(m.branch_ids)}</Td>}
                 <Td className="whitespace-nowrap text-mist-600">{m.status === 'revoked' ? 'Access removed' : m.last_login_at ? relative(m.last_login_at) : 'Not yet'}</Td>
                 <Td className="text-right">{m.manageable && (m.status === 'active'
                   ? <div className="flex justify-end gap-1"><IconButton icon={Pencil} label={`Edit ${m.name}`} onClick={() => openEdit(m)} /><IconButton icon={Trash2} label={`Remove ${m.name}`} onClick={() => revoke(m)} /></div>
@@ -213,7 +213,7 @@ function TeamTab() {
           <ul className="divide-y divide-mist-100">
             {data.invites.map(i => (
               <li key={i.id} className="flex items-center gap-3 px-5 py-3 text-sm">
-                <span className="min-w-0 flex-1"><span className="font-medium text-ink">{i.email}</span><span className="block text-xs text-mist-500">{i.roleLabel} · {scopeText(i.branch_ids)} · expires {fmtDate(i.expires_at)}</span></span>
+                <span className="min-w-0 flex-1"><span className="font-medium text-ink">{i.email}</span><span className="block text-xs text-mist-500">{[i.roleLabel, multiBranch && scopeText(i.branch_ids)].filter(Boolean).join(' · ')} · expires {fmtDate(i.expires_at)}</span></span>
                 <Button size="sm" variant="ghost" onClick={() => cancelInvite(i)}>Cancel</Button>
               </li>
             ))}
@@ -241,7 +241,7 @@ function TeamTab() {
 }
 
 function UnitsTab() {
-  const { activeBranches, me } = useSession()
+  const { activeBranches, me, multiBranch } = useSession()
   const toast = useToast()
   const confirm = useConfirm()
   const { data, error, loading, reload } = useLoad(() => api.get('/units'), [])
@@ -275,7 +275,7 @@ function UnitsTab() {
             <li key={u.id} className="flex items-center gap-3 px-5 py-3.5">
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-ink">{u.name}</div>
-                <div className="text-xs text-mist-500">{[`${u.member_count} people`, u.branch_name || 'All branches', u.leader_name && `Led by ${u.leader_name}`].filter(Boolean).join(' · ')}</div>
+                <div className="text-xs text-mist-500">{[`${u.member_count} people`, multiBranch && (u.branch_name || 'All branches'), u.leader_name && `Led by ${u.leader_name}`].filter(Boolean).join(' · ')}</div>
               </div>
               <a href={`/app/people?unit=${u.id}`} className="text-sm text-brand-700 hover:underline">View people</a>
               <IconButton icon={Pencil} label={`Edit ${u.name}`} onClick={() => setEdit(u)} />
@@ -289,7 +289,7 @@ function UnitsTab() {
         {err && <Notice tone="danger" className="mb-4">{err}</Notice>}
         <Input label="Name" value={f.name || ''} onChange={e => setF(x => ({ ...x, name: e.target.value }))} required />
         <Textarea label="Responsibilities" value={f.description || ''} onChange={e => setF(x => ({ ...x, description: e.target.value }))} rows={2} />
-        {edit === 'new' && (
+        {edit === 'new' && multiBranch && (
           <Select label="Branch" value={f.branchId || ''} onChange={e => setF(x => ({ ...x, branchId: e.target.value }))}>
             {!scoped && <option value="">All branches</option>}
             {activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -480,11 +480,11 @@ function EmailTab() {
 }
 
 export default function Settings() {
-  const { can } = useSession()
+  const { can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
   const tabs = [
     can('org.manage') && ['church', 'Church'],
-    can('branches.manage') && ['branches', 'Branches'],
+    can('branches.manage') && branchesEnabled && ['branches', 'Branches'],
     can('team.manage') && ['team', 'Team'],
     can('messages.manage') && ['email', 'Email'],
     can('units.manage') && ['units', 'Service units'],
