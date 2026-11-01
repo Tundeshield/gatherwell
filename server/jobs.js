@@ -64,10 +64,12 @@ async function runJourney({ now, deadline }) {
 }
 
 // --- Monday brief ---------------------------------------------------------------------
+// Owners, admins and attendance leads get the brief.
+export const BRIEF_ROLES = ['owner', 'admin', 'lead']
 export async function briefRecipients(org) {
   const { db } = await fb()
   const ms = await db.collection('memberships').where('org_id', '==', org.id).where('status', '==', 'active').get()
-  const admins = ms.docs.map(d => d.data()).filter(m => ['owner', 'admin'].includes(m.role))
+  const admins = ms.docs.map(d => d.data()).filter(m => BRIEF_ROLES.includes(m.role))
   const users = await Promise.all(admins.map(m => db.collection('users').doc(m.user_id).get()))
   return users.filter(u => u.exists && u.data().email && !u.data().brief_opt_out).map(u => ({ id: u.id, email: u.data().email, name: u.data().name }))
 }

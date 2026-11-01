@@ -1,4 +1,4 @@
-import { fb, col, docOut, plain, toDate, getMany } from '../firebase.js'
+import { fb, col, docOut, plain, toDate, getMany, F } from '../firebase.js'
 import { bad, notFound, str, oneOf, uuid, date, isUuid } from '../http.js'
 import { requireCap, branchFilter } from '../access.js'
 import { audit, rateLimit, shortId } from '../util.js'
@@ -15,6 +15,7 @@ const dailyLimit = () => Number(process.env.EMAIL_DAILY_LIMIT || 2000)
 
 export function providerFor(channel) {
   if (channel === 'email') return emailProvider() ? 'resend' : null
+  if (channel === 'whatsapp') return 'one-tap' // opened one by one in WhatsApp; nothing to connect
   return { sms: process.env.SMS_PROVIDER, whatsapp: process.env.WHATSAPP_PROVIDER }[channel] || null
 }
 
@@ -73,7 +74,7 @@ const escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;',
 const out = (m) => {
   const blocks = m.channel === 'email' ? cleanBlocks(m.blocks?.length ? m.blocks : blocksFromBody(m.body)) : []
   return { id: m.id, channel: m.channel, subject: m.subject || null, preheader: m.preheader || null, body: m.body || '', blocks, audience: m.audience, status: m.status,
-    recipient_count: m.recipient_count || 0, sent_count: m.sent_count || 0, failed_count: m.failed_count || 0, last_error: m.last_error || null,
+    recipient_count: m.recipient_count || 0, sent_count: m.channel === 'whatsapp' && m.status === 'sending' ? (m.wa_done || []).length : (m.sent_count || 0), failed_count: m.failed_count || 0, last_error: m.last_error || null,
     created_by_name: m.created_by_name || null, created_at: m.created_at, updated_at: m.updated_at, sent_at: m.sent_at || null }
 }
 
@@ -169,7 +170,7 @@ export default function (r) {
     const people = await audiencePeople(ctx, audience)
     const sorted = [...people].sort((a, b) => String(a.first_name).localeCompare(String(b.first_name)))
     return {
-      picked: audience.mode === 'people' ? sorted.map(p => ({ id: p.id, name: [p.first_name, p.last_name].filter(Boolean).join(' '), email: !!p.email && !p.email_opt_out })) : undefined,
+      picked: audience.mode === 'people' ? sorted.map(p => ({ id: p.id, name: [p.first_name, p.last_name].filter(Boolean).join(' '), email: !!p.email && !p.email_opt_out, phone: !!p.phone_norm })) : undefined,
       counts: { total: people.length, with_phone: people.filter(p => p.phone_norm).length, with_email: emailRecipients(people).length, unsubscribed: people.filter(p => p.email && p.email_opt_out).length },
       sample: sorted.slice(0, 8).map(s => [s.first_name, s.last_name ? s.last_name[0] + '.' : ''].join(' ').trim()),
     }
@@ -329,6 +330,48 @@ export default function (r) {
     await ref.update(patch)
     if (finished) await audit(ctx, 'message.sent', 'message', m.id, { sent, failed })
     return progress({ ...d, ...patch, sent_count: sent, failed_count: failed })
+  })
+
+  // --- WhatsApp: one-tap sending ------------------------------------------------------
+  // WhatsApp doesn't allow bulk sending from ordinary accounts, so the team opens each chat
+  // with the message ready and ticks people off as they go.
+  async function whatsappList(db, ctx, m) {
+    if (m.channel !== 'whatsapp') throw bad('This isn’t a WhatsApp message.')
+    const seen = new Set()
+    const people = (await audiencePeople(ctx, cleanAudience(m.audience)))
+      .filter(p => p.phone_norm && !seen.has(p.phone_norm) && seen.add(p.phone_norm))
+      .sort((a, b) => String(a.first_name).localeCompare(String(b.first_name)))
+    return people.map(p => ({ id: p.id, first_name: p.first_name, last_name: p.last_name || null, phone: p.phone || null, phone_norm: p.phone_norm }))
+  }
+  r.get('/messages/:id/whatsapp', async ({ ctx, params }) => {
+    requireCap(ctx, 'messages.manage')
+    const { db } = await fb()
+    const m = await loadMessage(db, ctx, params.id)
+    return { message: out(m), recipients: await whatsappList(db, ctx, m), done: m.wa_done || [] }
+  })
+  r.post('/messages/:id/whatsapp/done', async ({ ctx, params, body }) => {
+    requireCap(ctx, 'messages.manage')
+    const { db } = await fb()
+    const m = await loadMessage(db, ctx, params.id)
+    if (m.channel !== 'whatsapp' || m.status === 'sent') throw bad('This message is already finished.')
+    const pid = uuid(body.personId, { required: true })
+    const ref = col(db, ctx.org.id, 'messages').doc(m.id)
+    const patch = { wa_done: body.done === false ? F.remove(pid) : F.union(pid), updated_at: new Date() }
+    if (m.status === 'draft') Object.assign(patch, { status: 'sending', started_at: new Date(), started_by_name: ctx.user.name, recipient_count: (await whatsappList(db, ctx, m)).length })
+    await ref.update(patch)
+    const fresh = (await ref.get()).data()
+    return { done: fresh.wa_done || [] }
+  })
+  r.post('/messages/:id/whatsapp/finish', async ({ ctx, params }) => {
+    requireCap(ctx, 'messages.manage')
+    const { db } = await fb()
+    const m = await loadMessage(db, ctx, params.id)
+    if (m.channel !== 'whatsapp') throw bad('This isn’t a WhatsApp message.')
+    const total = (await whatsappList(db, ctx, m)).length
+    const sent = (m.wa_done || []).length
+    await col(db, ctx.org.id, 'messages').doc(m.id).update({ status: 'sent', sent_at: new Date(), sent_count: sent, recipient_count: total, updated_at: new Date() })
+    await audit(ctx, 'message.whatsapp_finished', 'message', m.id, { sent, total })
+    return { sent, total }
   })
 
   // Recipient list, for sending through another tool.

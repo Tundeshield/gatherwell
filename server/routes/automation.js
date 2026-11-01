@@ -7,7 +7,7 @@ import { audit, rateLimit } from '../util.js'
 import { cleanBlocks } from '../../shared/email.js'
 import { JOURNEY_STEPS, journeyFor, whatsappFor, WHATSAPP_KINDS } from '../../shared/automation.js'
 import { emailProvider, fromAddress, sendEmails, siteOrigin } from '../email.js'
-import { journeyMessage, buildBrief, sendBrief } from '../jobs.js'
+import { journeyMessage, buildBrief, sendBrief, BRIEF_ROLES } from '../jobs.js'
 
 export default function (r) {
   r.get('/automation', async ({ ctx }) => {
@@ -82,7 +82,7 @@ export default function (r) {
   r.get('/me/notifications', { auth: 'user' }, async ({ ctx }) => {
     const { db } = await fb()
     const u = (await db.collection('users').doc(ctx.user.id).get()).data() || {}
-    return { brief: !u.brief_opt_out, canReceiveBrief: ['owner', 'admin'].includes(ctx.membership?.role) }
+    return { brief: !u.brief_opt_out, canReceiveBrief: BRIEF_ROLES.includes(ctx.membership?.role) }
   })
   r.patch('/me/notifications', { auth: 'user' }, async ({ ctx, body }) => {
     const { db } = await fb()

@@ -668,7 +668,7 @@ function AutomationsTab() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-xl">
             <h2 className="text-[15px] font-semibold text-ink">Monday Pastor’s Brief</h2>
-            <p className="mt-1 text-sm text-mist-500">Every Monday at 7am, owners and admins get last week at a glance: attendance against the usual, first-time visitors by name, regulars who haven’t been seen for two weeks, overdue follow-ups, birthdays and upcoming events.</p>
+            <p className="mt-1 text-sm text-mist-500">Every Monday at 7am, owners, admins and attendance leads get last week at a glance: attendance against the usual, first-time visitors by name, regulars who haven’t been seen for two weeks, overdue follow-ups, birthdays and upcoming events.</p>
           </div>
           <div className="flex gap-2">
             <Button size="sm" variant="secondary" onClick={openPreview} loading={busy === 'preview'}>Preview</Button>

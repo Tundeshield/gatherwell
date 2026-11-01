@@ -25,6 +25,7 @@ const FollowUps = lazyPage(() => import('./pages/app/FollowUps'))
 const Reports = lazyPage(() => import('./pages/app/Reports'))
 const Messages = lazyPage(() => import('./pages/app/Messages'))
 const MessageEditor = lazyPage(() => import('./pages/app/MessageEditor'))
+const WhatsAppSend = lazyPage(() => import('./pages/app/WhatsAppSend'))
 const Settings = lazyPage(() => import('./pages/app/Settings'))
 const Platform = lazyPage(() => import('./pages/app/Platform'))
 
@@ -77,6 +78,7 @@ export default function App() {
                 <Route path="messages" element={<RequireAuth cap="messages.manage"><Messages /></RequireAuth>} />
                 <Route path="messages/new" element={<RequireAuth cap="messages.manage"><MessageEditor /></RequireAuth>} />
                 <Route path="messages/:id" element={<RequireAuth cap="messages.manage"><MessageEditor /></RequireAuth>} />
+                <Route path="messages/:id/whatsapp" element={<RequireAuth cap="messages.manage"><WhatsAppSend /></RequireAuth>} />
                 <Route path="settings" element={<Settings />} />
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

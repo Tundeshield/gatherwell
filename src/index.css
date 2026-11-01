@@ -20,6 +20,13 @@
     @apply w-full rounded-lg border border-mist-200 bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors
       placeholder:text-mist-400 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-mist-50 disabled:text-mist-400;
   }
+  /* Dropdowns: our own chevron with breathing room from the edge. */
+  select.field {
+    @apply appearance-none bg-no-repeat pr-10;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2369736E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.85rem center;
+    background-size: 16px 16px;
+  }
   .field-error { @apply border-red-400 focus:border-red-500 focus:ring-red-100; }
   .label { @apply mb-1.5 block text-sm font-medium text-ink; }
   .hint { @apply mt-1 text-xs text-mist-400; }

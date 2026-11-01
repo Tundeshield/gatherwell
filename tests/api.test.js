@@ -800,3 +800,27 @@ test('automations: welcome journey emails, Monday brief timing, opt-outs, WhatsA
     delete process.env.RESEND_API_KEY; delete process.env.EMAIL_FROM_DOMAIN
   }
 })
+
+test('WhatsApp one-tap sending: list, tick off, finish', async () => {
+  const c = client()
+  await signup(c, { orgName: 'WA Church', name: 'W Owner', email: 'w@wa.test', password: 'password123' })
+  const branchId = (await c.get('/me')).data.branches[0].id
+  const ids = []
+  for (const [f, ph] of [['Ada', '08011112221'], ['Bayo', '08011112222'], ['NoPhone', null]]) {
+    const r = await c.post('/people', { firstName: f, lastName: 'W', phone: ph || undefined, branchId, status: 'member' }); ids.push(r.data.id)
+  }
+  let r = await c.post('/messages', { channel: 'whatsapp', body: 'Hi {first_name}!', audience: { statuses: ['member'] } })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const id = r.data.id
+  r = await c.get(`/messages/${id}/whatsapp`)
+  assert.deepEqual(r.data.recipients.map(p => p.first_name), ['Ada', 'Bayo'], 'only people with a phone')
+  r = await c.post(`/messages/${id}/whatsapp/done`, { personId: ids[0] })
+  assert.deepEqual(r.data.done, [ids[0]])
+  r = await c.get('/messages')
+  const m = r.data.rows.find(x => x.id === id)
+  assert.deepEqual([m.status, m.sent_count, m.recipient_count], ['sending', 1, 2])
+  r = await c.post(`/messages/${id}/whatsapp/finish`)
+  assert.deepEqual(r.data, { sent: 1, total: 2 })
+  r = await c.post(`/messages/${id}/whatsapp/done`, { personId: ids[1] })
+  assert.equal(r.status, 400, 'finished messages are closed')
+})

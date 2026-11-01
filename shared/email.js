@@ -98,9 +98,10 @@ export function renderEmail({ org = {}, branding = {}, subject = '', preheader =
     }
   }
 
+  // The church's logo heads the email when it has one; the church name is already in the sender and footer.
   const header = br.logoUrl
-    ? `<img src="${esc(br.logoUrl)}" alt="${esc(churchName)}" height="56" style="display:block;height:56px;width:auto;max-width:240px;border:0">`
-    : `<span style="font-size:20px;font-weight:700;color:#243447">${esc(churchName)}</span>`
+    ? `<tr><td style="background:#FFFFFF;padding:28px 32px 8px"><img src="${esc(br.logoUrl)}" alt="${esc(churchName)}" height="56" style="display:block;height:56px;width:auto;max-width:240px;border:0"></td></tr>`
+    : ''
   const footerLines = [
     br.footer && esc(br.footer).replace(/\n/g, '<br>'),
     br.website && `<a href="${esc(br.website)}" style="color:#5B6B7A">${esc(br.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>`,
@@ -113,8 +114,8 @@ export function renderEmail({ org = {}, branding = {}, subject = '', preheader =
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F3F4F0"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
 <tr><td style="height:6px;background:${color};border-radius:12px 12px 0 0;font-size:0;line-height:0">&nbsp;</td></tr>
-<tr><td style="background:#FFFFFF;padding:28px 32px 8px">${header}</td></tr>
-<tr><td style="background:#FFFFFF;padding:20px 32px 16px;border-radius:0 0 12px 12px">${parts.join('\n') || '<p style="margin:0 0 16px;font-size:16px;color:#8A97A3">Your message will appear here.</p>'}</td></tr>
+${header}
+<tr><td style="background:#FFFFFF;padding:${br.logoUrl ? '20px' : '32px'} 32px 16px;border-radius:0 0 12px 12px">${parts.join('\n') || '<p style="margin:0 0 16px;font-size:16px;color:#8A97A3">Your message will appear here.</p>'}</td></tr>
 <tr><td style="padding:20px 32px;font-size:12px;line-height:1.6;color:#5B6B7A;text-align:center">${footerLines.join('<br><br>')}</td></tr>
 </table></td></tr></table></body></html>`
 

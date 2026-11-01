@@ -20,7 +20,9 @@ function smsInfo(text) {
   return { n: text.length, parts: text.length <= single ? 1 : Math.ceil(text.length / multi), unicode }
 }
 
-function PeoplePicker({ picked, onAdd, onRemove }) {
+function PeoplePicker({ picked, onAdd, onRemove, channel }) {
+  const reachableBy = (p) => (channel === 'email' ? p.email : p.phone)
+  const missing = channel === 'email' ? 'no email' : 'no phone'
   const [term, setTerm] = useState('')
   const q = useDebounced(term, 250)
   const [results, setResults] = useState([])
@@ -38,10 +40,10 @@ function PeoplePicker({ picked, onAdd, onRemove }) {
           <ul className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-mist-200 bg-white p-1 shadow-pop">
             {results.map(p => (
               <li key={p.id}>
-                <button type="button" disabled={chosen.has(p.id)} onClick={() => { onAdd({ id: p.id, name: personName(p), email: !!p.email && !p.email_opt_out }); setTerm('') }}
+                <button type="button" disabled={chosen.has(p.id)} onClick={() => { onAdd({ id: p.id, name: personName(p), email: !!p.email && !p.email_opt_out, phone: !!p.phone_norm }); setTerm('') }}
                   className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-mist-50 disabled:opacity-40">
                   <span className="min-w-0 flex-1"><span className="block truncate font-medium text-ink">{personName(p)}</span>
-                    <span className="block truncate text-xs text-mist-500">{p.email || 'No email address'}</span></span>
+                    <span className="block truncate text-xs text-mist-500">{(channel === 'email' ? p.email : p.phone) || (channel === 'email' ? 'No email address' : 'No phone number')}</span></span>
                   {chosen.has(p.id) ? <Check size={15} className="text-brand-700" /> : <Plus size={15} className="text-mist-400" />}
                 </button>
               </li>
@@ -52,14 +54,14 @@ function PeoplePicker({ picked, onAdd, onRemove }) {
       {picked.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {picked.map(p => (
-            <span key={p.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${p.email ? 'border-mist-200 bg-white text-ink' : 'border-amber-200 bg-amber-50 text-amber-800'}`}
-              title={p.email ? undefined : 'No email address, so they won’t receive it'}>
-              {p.name}{!p.email && ' (no email)'}
+            <span key={p.id} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${reachableBy(p) ? 'border-mist-200 bg-white text-ink' : 'border-amber-200 bg-amber-50 text-amber-800'}`}
+              title={reachableBy(p) ? undefined : `${missing}, so they won’t receive it`}>
+              {p.name}{!reachableBy(p) && ` (${missing})`}
               <button type="button" onClick={() => onRemove(p.id)} aria-label={`Remove ${p.name}`} className="opacity-60 hover:opacity-100"><X size={12} /></button>
             </span>
           ))}
         </div>
-      ) : <p className="mt-2 text-xs text-mist-500">Search and add the exact people who should get this email.</p>}
+      ) : <p className="mt-2 text-xs text-mist-500">Search and add the exact people who should get this message.</p>}
     </div>
   )
 }
@@ -80,7 +82,7 @@ function AudiencePicker({ audience, setAudience, channel, preview, picked, setPi
         <Segmented size="sm" value={mode} onChange={setMode} options={[{ value: 'filters', label: <><Users size={14} /> A group</> }, { value: 'people', label: <><UserCheck size={14} /> Pick people</> }]} />
       </div>
       {mode === 'people' ? (
-        <PeoplePicker picked={picked} onAdd={(p) => { setPicked(x => [...x, p]); setAudience(a => ({ ...a, people: [...(a.people || []), p.id] })) }}
+        <PeoplePicker channel={channel} picked={picked} onAdd={(p) => { setPicked(x => [...x, p]); setAudience(a => ({ ...a, people: [...(a.people || []), p.id] })) }}
           onRemove={(id) => { setPicked(x => x.filter(p => p.id !== id)); setAudience(a => ({ ...a, people: (a.people || []).filter(x => x !== id) })) }} />
       ) : (
         <>
@@ -114,7 +116,7 @@ function AudiencePicker({ audience, setAudience, channel, preview, picked, setPi
       )}
       {preview && (mode === 'filters' || picked.length > 0) && (
         <p className="mt-3 rounded-lg bg-mist-50 px-3 py-2 text-sm text-mist-600">
-          <span className="font-semibold text-ink">{reachable.toLocaleString()}</span> of {preview.counts.total.toLocaleString()} {preview.counts.total === 1 ? 'person' : 'people'} can be reached by {CHANNELS[channel][0].toLowerCase()}
+          <span className="font-semibold text-ink">{reachable.toLocaleString()}</span> of {preview.counts.total.toLocaleString()} {preview.counts.total === 1 ? 'person' : 'people'} can be reached by {channel === 'whatsapp' ? 'WhatsApp' : CHANNELS[channel][0].toLowerCase()}
           {channel === 'email' && preview.counts.unsubscribed > 0 && <>, not counting {preview.counts.unsubscribed} who unsubscribed</>}.
           {mode === 'filters' && preview.sample.length > 0 && <span className="block text-xs text-mist-400">Including {preview.sample.join(', ')}{preview.counts.total > preview.sample.length ? '…' : ''}</span>}
         </p>
@@ -229,6 +231,17 @@ export default function MessageEditor() {
     try { const r = await api.post('/messages/test', { subject, preheader, blocks: cleanBlocks }); toast(`Test sent to ${r.to}`) }
     catch (e) { setError(e.message) } finally { setTesting(false) }
   }
+  const waRef = useRef(null)
+  function insertWa(tag) {
+    const el = waRef.current
+    const pos = el && typeof el.selectionStart === 'number' ? el.selectionStart : body.length
+    setBody(b => b.slice(0, pos) + tag + b.slice(pos))
+    setTimeout(() => { try { el.focus(); el.setSelectionRange(pos + tag.length, pos + tag.length) } catch { /* ignore */ } }, 0)
+  }
+  async function startWhatsapp() {
+    const m = await save({ quiet: true })
+    if (m) navigate(`/app/messages/${m.id}/whatsapp`)
+  }
   async function review() {
     if (!subject.trim()) { setError('Add a subject before sending.'); return }
     if (!cleanBlocks.some(b => b.type !== 'divider' && (b.text || b.label || b.url))) { setError('Add some content before sending.'); return }
@@ -240,6 +253,7 @@ export default function MessageEditor() {
   if (!loaded || !settings.data) return <PageLoader />
   const s = settings.data
   const sms = smsInfo(body)
+  const waPreview = body.trim() ? body.replace(/\{first_name\}/g, samplePerson.first_name).replace(/\{last_name\}/g, '').replace(/\{church_name\}/g, me.org.name).replace(/\{my_name\}/g, String(me.user.name || '').split(' ')[0]) : ''
 
   return (
     <div>
@@ -250,6 +264,7 @@ export default function MessageEditor() {
         {channel === 'email' && <Button variant="secondary" icon={FlaskConical} onClick={sendTest} loading={testing} disabled={!s.connected}
           title={s.connected ? `Send a test to ${me.user?.email || 'you'}` : 'Available once email sending is switched on'}>Send test to me</Button>}
         {channel === 'email' && <Button icon={Send} onClick={review}>Review and send</Button>}
+        {channel === 'whatsapp' && <Button icon={Send} onClick={startWhatsapp} disabled={!body.trim()}>Start sending</Button>}
       </div>
 
       {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
@@ -263,7 +278,7 @@ export default function MessageEditor() {
         <div className="space-y-4">
           <div className="flex gap-2">
             {Object.entries(CHANNELS).map(([k, [label, Icon]]) => {
-              const soon = k !== 'email'
+              const soon = k === 'sms'
               return (
                 <button key={k} type="button" onClick={() => !soon && setChannel(k)} aria-pressed={channel === k} disabled={soon && channel !== k}
                   title={soon ? `${label} is coming soon` : undefined}
@@ -286,6 +301,20 @@ export default function MessageEditor() {
 
               <EmailBlocksEditor blocks={blocks} setBlocks={setBlocks} />
             </>
+          ) : channel === 'whatsapp' ? (
+            <section className="panel px-5 py-4">
+              <label htmlFor="wa-body" className="label">Message</label>
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-mist-500">Personalise:</span>
+                {[['{first_name}', 'First name'], ['{church_name}', 'Church name'], ['{my_name}', 'Your name']].map(([tag, label]) => (
+                  <button key={tag} type="button" onMouseDown={e => e.preventDefault()} onClick={() => insertWa(tag)}
+                    className="rounded-full border border-mist-200 bg-white px-2.5 py-1 text-xs font-medium text-mist-600 hover:border-brand-300 hover:text-brand-700">+ {label}</button>
+                ))}
+              </div>
+              <textarea id="wa-body" ref={waRef} value={body} onChange={e => setBody(e.target.value)} rows={7} className="field" maxLength={4000}
+                placeholder="e.g. Hi {first_name}! Choir rehearsal moves to 5pm this Saturday. See you there 🎶" />
+              <p className="hint">You’ll send it one person at a time: GatherHQ opens each chat in WhatsApp with their own copy ready, you tap Send, then come back for the next. WhatsApp doesn’t allow sending to everyone at once from a normal account.</p>
+            </section>
           ) : (
             <section className="panel px-5 py-4">
               <label htmlFor="msg-body" className="label">Message</label>
@@ -297,6 +326,18 @@ export default function MessageEditor() {
           )}
         </div>
 
+        {channel === 'whatsapp' && (
+          <div className="xl:sticky xl:top-6">
+            <p className="mb-3 text-sm font-medium text-ink">Preview</p>
+            <div className="rounded-2xl bg-[#EFE7DD] p-5">
+              <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-xl rounded-tr-sm bg-[#D9FDD3] px-3.5 py-2.5 text-[15px] leading-snug text-[#111B21] shadow-sm">
+                {waPreview || <span className="text-[#667781]">Your message will appear here.</span>}
+                <span className="mt-1 block text-right text-[11px] text-[#667781]">now ✓✓</span>
+              </div>
+            </div>
+            <p className="mt-3 text-center text-xs text-mist-500">Showing {samplePerson.first_name}’s copy.</p>
+          </div>
+        )}
         {channel === 'email' && (
           <div className="xl:sticky xl:top-6">
             <EmailPreview org={me.org} branding={s.branding} subject={subject} preheader={preheader} blocks={cleanBlocks} person={samplePerson} fromAddress={s.fromAddress} />

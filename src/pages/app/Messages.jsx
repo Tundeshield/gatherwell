@@ -24,6 +24,7 @@ export default function Messages() {
     try { await api.del(`/messages/${m.id}`); toast('Draft deleted'); reload() } catch (e) { toast(e.message, 'error') }
   }
   async function resume(m) {
+    if (m.channel === 'whatsapp') { navigate(`/app/messages/${m.id}/whatsapp`); return }
     setResuming(m.id)
     try { const p = await runSend(m.id); toast(p.status === 'sent' ? `Sent to ${p.sent.toLocaleString()} people` : (p.error || 'Sending stopped'), p.status === 'sent' ? 'success' : 'error') }
     catch (e) { toast(e.message, 'error') } finally { setResuming(null); reload() }
