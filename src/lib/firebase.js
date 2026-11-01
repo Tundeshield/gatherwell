@@ -45,7 +45,12 @@ const MESSAGES = {
   'auth/weak-password': 'Choose a stronger password (at least 8 characters).',
   'auth/requires-recent-login': 'Please sign in again, then retry.',
 }
-export function authMessage(e) { return MESSAGES[e?.code] || e?.message || 'Sign-in failed. Please try again.' }
+export function authMessage(e) {
+  const code = String(e?.code || '')
+  // The Firebase web key only allows some addresses (for example gatherhq.org but not admin.gatherhq.org).
+  if (/referer|unauthorized-domain|api-key-not-valid|app-not-authorized/.test(code)) return `Sign-in isn't allowed from ${window.location.hostname} yet (${code.replace('auth/', '')}). Add this address to the Firebase key's allowed websites.`
+  return MESSAGES[code] || e?.message || 'Sign-in failed. Please try again.'
+}
 
 export async function signInWithPassword(email, password) {
   // Local demo server only (no Firebase web settings): it converts these into a stand-in token.
