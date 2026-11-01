@@ -7,6 +7,7 @@ import { useLoad, PageLoader, ErrorState, Button, Badge, PERSON_TONE, Avatar, Mo
 import { fmtDate, fmtDay, relative, personName, STATUS_LABELS, REASON_LABELS } from '../../lib/format'
 import PersonForm from '../../components/PersonForm'
 import NewFollowup from '../../components/NewFollowup'
+import { TagChip, TagPicker, useTags, loadTags } from '../../components/Tags'
 
 export default function PersonDetail() {
   const { id } = useParams()
@@ -15,6 +16,11 @@ export default function PersonDetail() {
   const toast = useToast()
   const confirm = useConfirm()
   const { data, error, loading, reload } = useLoad(() => api.get(`/people/${id}`), [id])
+  const { byId } = useTags()
+  async function toggleTag(tag, on) {
+    try { await api.post('/people/tags', { ids: [id], [on ? 'add' : 'remove']: [tag.id] }); reload(); loadTags(true) }
+    catch (e) { toast(e.message, 'error') }
+  }
   const [editing, setEditing] = useState(false)
   const [followup, setFollowup] = useState(false)
 
@@ -43,6 +49,10 @@ export default function PersonDetail() {
               <Badge tone={PERSON_TONE[p.status]}>{STATUS_LABELS[p.status]}</Badge>
               {p.unit_name && <span>{p.unit_name}</span>}
               {p.owner_name && <span>Cared for by {p.owner_name}</span>}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {(p.tags || []).map(t => <TagChip key={t} tag={byId.get(t)} onRemove={can('people.edit') ? () => toggleTag(byId.get(t), false) : undefined} />)}
+              {can('people.edit') && <TagPicker selected={p.tags || []} onToggle={toggleTag} label={(p.tags || []).length ? 'Tag' : 'Add a tag'} />}
             </div>
           </div>
         </div>

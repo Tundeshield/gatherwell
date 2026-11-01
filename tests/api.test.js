@@ -666,3 +666,49 @@ test('quick check-in (default): phone number alone checks a returning person in'
   r = await pub.post(`/public/g/${g2.public_token}/checkin`, { mode: 'returning', phone: '08055550001', firstName: 'Wrong' })
   assert.equal(r.status, 400)
 })
+
+test('tags: create, tag people in bulk, filter lists and email audiences, hand-pick people', async () => {
+  const c = client()
+  await signup(c, { orgName: 'Tag Church', name: 'T Owner', email: 't@tag.test', password: 'password123', timezone: 'Africa/Lagos' })
+  const branchId = (await c.get('/me')).data.branches[0].id
+  const ids = {}
+  for (const [f, e, status] of [['Ada', 'ada@t.test', 'member'], ['Bayo', 'bayo@t.test', 'member'], ['Chi', 'chi@t.test', 'visitor'], ['Dan', 'dan@t.test', 'member']]) {
+    const r = await c.post('/people', { firstName: f, lastName: 'T', email: e, phone: `0809${String(Object.keys(ids).length).padStart(7, '0')}`, branchId, status })
+    assert.equal(r.status, 200, JSON.stringify(r.data)); ids[f] = r.data.id
+  }
+  let r = await c.post('/tags', { name: 'Choir' }); const choir = r.data.id
+  r = await c.post('/tags', { name: 'choir' }); assert.equal(r.data.id, choir, 'same name, different case reuses the tag')
+  r = await c.post('/tags', { name: 'Youth' }); const youth = r.data.id
+  r = await c.post('/people/tags', { ids: [ids.Ada, ids.Bayo], add: [choir] }); assert.equal(r.data.updated, 2)
+  r = await c.post('/people/tags', { ids: [ids.Bayo, ids.Chi], add: [youth] }); assert.equal(r.data.updated, 2)
+  r = await c.get('/tags')
+  assert.deepEqual(r.data.map(t => [t.name, t.count]), [['Choir', 2], ['Youth', 2]])
+
+  r = await c.get(`/people?tags=${choir}`)
+  assert.deepEqual(r.data.rows.map(p => p.first_name).sort(), ['Ada', 'Bayo'])
+  r = await c.get(`/people?tags=${choir},${youth}&status=member`)
+  assert.deepEqual(r.data.rows.map(p => p.first_name).sort(), ['Ada', 'Bayo'], 'any of the tags, combined with other filters')
+  assert.deepEqual(r.data.rows.find(p => p.first_name === 'Bayo').tags.sort(), [choir, youth].sort())
+
+  r = await c.post('/messages/audience', { audience: { tags: [youth], statuses: [] } })
+  assert.equal(r.data.counts.with_email, 2)
+  r = await c.post('/messages/audience', { audience: { tags: [youth], statuses: ['visitor'] } })
+  assert.equal(r.data.counts.with_email, 1)
+  r = await c.post('/messages/audience', { audience: { mode: 'people', people: [ids.Dan, ids.Ada, 'nonexistent1'] } })
+  assert.equal(r.data.counts.total, 2)
+  assert.equal(r.data.counts.with_email, 2)
+
+  // Removing a tag from people, then deleting a tag removes it everywhere
+  r = await c.post('/people/tags', { ids: [ids.Ada], remove: [choir] })
+  r = await c.get(`/people?tags=${choir}`); assert.equal(r.data.total, 1)
+  r = await c.del(`/tags/${youth}`); assert.equal(r.data.removedFrom, 2)
+  r = await c.get(`/people/${ids.Bayo}`); assert.deepEqual(r.data.person.tags, [choir])
+
+  // Other churches can't use or see these tags
+  const other = client()
+  await signup(other, { orgName: 'Other Church', name: 'O Owner', email: 'o@other.test', password: 'password123' })
+  r = await other.post('/people/tags', { ids: [ids.Ada], add: [choir] })
+  assert.equal(r.status, 400)
+  r = await other.get('/tags'); assert.ok(!r.data.some(t => t.id === choir))
+  r = await other.get(`/people/${ids.Ada}`); assert.equal(r.status, 404)
+})

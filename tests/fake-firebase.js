@@ -52,7 +52,7 @@ function hasIndex(collectionGroup, fields) {
 }
 function checkIndex(group, filters, orders, isCount = false) {
   const eq = filters.filter(f => f.op === '==' || f.op === 'in').map(f => f.field)
-  const arr = filters.filter(f => f.op === 'array-contains')
+  const arr = filters.filter(f => f.op === 'array-contains' || f.op === 'array-contains-any')
   const range = filters.filter(f => ['<', '<=', '>', '>='].includes(f.op))
   const rangeFields = [...new Set(range.map(f => f.field))]
   if (rangeFields.length > 1) throw firestoreError(9, 'Fake Firestore: range filters on more than one field need special indexes — avoid.')
@@ -114,6 +114,7 @@ class Query {
   async add(data) { const ref = this.doc(); await ref.set(data); return ref }
   where(field, op, value) {
     if (op === 'in' && (!Array.isArray(value) || value.length > 30)) throw firestoreError(3, "'in' needs an array of at most 30 values")
+    if (op === 'array-contains-any' && (!Array.isArray(value) || value.length > 30)) throw firestoreError(3, "'array-contains-any' needs an array of at most 30 values")
     return this._with({ filters: [...this.s.filters, { field, op, value }] })
   }
   orderBy(field, dir = 'asc') { return this._with({ orders: [...this.s.orders, { field, dir }] }) }
@@ -134,6 +135,7 @@ class Query {
           case '==': return compare(v, f.value) === 0 && (v !== undefined || f.value === null)
           case 'in': return f.value.some(x => compare(v, x) === 0 && v !== undefined)
           case 'array-contains': return Array.isArray(v) && v.includes(f.value)
+          case 'array-contains-any': return Array.isArray(v) && f.value.some(x => v.includes(x))
           case '<': return v !== undefined && v !== null && compare(v, f.value) < 0
           case '<=': return v !== undefined && v !== null && compare(v, f.value) <= 0
           case '>': return v !== undefined && v !== null && compare(v, f.value) > 0

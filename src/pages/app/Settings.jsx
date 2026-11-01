@@ -8,6 +8,7 @@ import { fmtDate, relative } from '../../lib/format'
 import { COUNTRIES } from '../public/Signup'
 import { changePassword } from '../../lib/firebase'
 import EmailPreview from '../../components/EmailPreview'
+import { TagChip, TAG_STYLES, TAG_COLORS, useTags, loadTags } from '../../components/Tags'
 import { prepareImage } from '../../lib/image'
 
 const ROLE_HELP = {
@@ -479,6 +480,67 @@ function EmailTab() {
   )
 }
 
+
+function TagsTab() {
+  const { tags, reload } = useTags()
+  const toast = useToast()
+  const confirm = useConfirm()
+  const [edit, setEdit] = useState(null)
+  const [f, setF] = useState({ name: '', color: 'forest' })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => { if (edit) { setF(edit === 'new' ? { name: '', color: TAG_COLORS[tags.length % TAG_COLORS.length] } : { name: edit.name, color: edit.color }); setErr('') } }, [edit]) // eslint-disable-line
+  async function save() {
+    setBusy(true); setErr('')
+    try { edit === 'new' ? await api.post('/tags', f) : await api.patch(`/tags/${edit.id}`, f); await reload(); setEdit(null); toast('Tag saved') }
+    catch (e) { setErr(e.message) } finally { setBusy(false) }
+  }
+  async function remove(t) {
+    if (!(await confirm({ title: `Delete the tag “${t.name}”?`, message: `It will be removed from ${t.count} ${t.count === 1 ? 'person' : 'people'}. The people themselves are not affected.`, confirmLabel: 'Delete tag', danger: true }))) return
+    try { await api.del(`/tags/${t.id}`); await loadTags(true); toast('Tag deleted') } catch (e) { toast(e.message, 'error') }
+  }
+  return (
+    <section className="panel overflow-hidden">
+      <div className="flex items-start justify-between gap-4 border-b border-mist-100 px-6 py-4">
+        <div>
+          <h2 className="text-[15px] font-semibold text-ink">Tags</h2>
+          <p className="text-sm text-mist-500">Labels for grouping people, like “Choir”, “Youth” or “Newsletter”. Use them to filter the People list and choose who gets an email.</p>
+        </div>
+        <Button size="sm" icon={Plus} onClick={() => setEdit('new')}>New tag</Button>
+      </div>
+      {tags.length === 0 ? (
+        <EmptyState icon={Layers} title="No tags yet">Create a tag here, or tick people on the People page and choose “Tag or update”.</EmptyState>
+      ) : (
+        <ul className="divide-y divide-mist-100">
+          {tags.map(t => (
+            <li key={t.id} className="flex items-center gap-3 px-6 py-3">
+              <TagChip tag={t} />
+              <span className="flex-1 text-sm text-mist-500">{t.count} {t.count === 1 ? 'person' : 'people'}</span>
+              <a href={`/app/people?tag=${t.id}`} className="text-sm text-brand-700 hover:underline">View people</a>
+              <IconButton icon={Pencil} label={`Edit ${t.name}`} onClick={() => setEdit(t)} />
+              <IconButton icon={Trash2} label={`Delete ${t.name}`} onClick={() => remove(t)} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <Modal open={!!edit} onClose={() => setEdit(null)} title={edit === 'new' ? 'New tag' : 'Edit tag'} size="sm"
+        footer={<><Button variant="secondary" onClick={() => setEdit(null)}>Cancel</Button><Button onClick={save} loading={busy} disabled={!f.name.trim()}>Save</Button></>}>
+        {err && <Notice tone="danger" className="mb-4">{err}</Notice>}
+        <Input label="Name" value={f.name} onChange={e => setF(x => ({ ...x, name: e.target.value }))} maxLength={40} autoFocus />
+        <p className="label">Colour</p>
+        <div className="flex flex-wrap gap-2">
+          {TAG_COLORS.map(c => (
+            <button key={c} type="button" onClick={() => setF(x => ({ ...x, color: c }))} aria-pressed={f.color === c}
+              className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${TAG_STYLES[c]} ${f.color === c ? 'outline outline-2 outline-offset-2 outline-ink' : ''}`}>
+              {f.name.trim() || 'Tag'}
+            </button>
+          ))}
+        </div>
+      </Modal>
+    </section>
+  )
+}
+
 export default function Settings() {
   const { can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
@@ -487,13 +549,14 @@ export default function Settings() {
     can('branches.manage') && branchesEnabled && ['branches', 'Branches'],
     can('team.manage') && ['team', 'Team'],
     can('messages.manage') && ['email', 'Email'],
+    can('people.edit') && ['tags', 'Tags'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, tags: TagsTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

@@ -7,6 +7,7 @@ import { useLoad, useDebounced, PageHeader, Button, SearchInput, Badge, PERSON_T
 import { fmtDate, relative, personName, STATUS_LABELS } from '../../lib/format'
 import PersonForm from '../../components/PersonForm'
 import ImportPeople from '../../components/ImportPeople'
+import { TagList, TagChip, useTags, loadTags } from '../../components/Tags'
 
 const LIMIT = 50
 
@@ -22,6 +23,8 @@ export default function People() {
   const attendance = params.get('attendance') || ''
   const unit = params.get('unit') || ''
   const followup = params.get('followup') || ''
+  const tag = params.get('tag') || ''
+  const { tags: allTags, byId: tagsById } = useTags()
   const firstVisit = params.get('firstVisit') || ''
   const sort = params.get('sort') || 'name'
   const offset = Number(params.get('offset') || 0)
@@ -35,15 +38,15 @@ export default function People() {
   useEffect(() => { if ((params.get('q') || '') !== q) setParam('q', q) }, [q]) // eslint-disable-line
 
   const filters = useMemo(() => ({
-    q, status, attendance, unit, followup, sort, offset, limit: LIMIT, branch,
+    q, status, attendance, unit, followup, sort, offset, limit: LIMIT, branch, tags: tag || undefined,
     firstVisitSince: firstVisit ? new Date(Date.now() - Number(firstVisit) * 86400000).toISOString() : undefined,
-  }), [q, status, attendance, unit, followup, sort, offset, branch, firstVisit])
+  }), [q, status, attendance, unit, followup, sort, offset, branch, firstVisit, tag])
   const { data, error, loading, reload } = useLoad(() => api.get(`/people${qs(filters)}`), [JSON.stringify(filters)])
   const units = useLoad(() => api.get('/units'), [])
   useEffect(() => setSelected(new Set()), [JSON.stringify(filters)]) // eslint-disable-line
 
   const activeFilters = [status && STATUS_LABELS[status], attendance && { recent: 'Seen recently', absent: 'Not seen recently', never: 'Never checked in' }[attendance],
-    firstVisit && `First visit in last ${firstVisit} days`, followup && 'Open follow-up', unit && units.data?.find(u => u.id === unit)?.name].filter(Boolean)
+    firstVisit && `First visit in last ${firstVisit} days`, followup && 'Open follow-up', unit && units.data?.find(u => u.id === unit)?.name, tag && `Tag: ${tagsById.get(tag)?.name || '…'}`].filter(Boolean)
   const clearFilters = () => setParams(new URLSearchParams(q ? { q } : {}), { replace: true })
   const weeks = me.org.settings?.absenceWeeks || 3
 
@@ -84,6 +87,12 @@ export default function People() {
               {units.data.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
+          {allTags.length > 0 && (
+            <select aria-label="Tag" value={tag} onChange={e => setParam('tag', e.target.value)} className="field h-10 w-auto">
+              <option value="">Any tag</option>
+              {allTags.map(t => <option key={t.id} value={t.id}>{t.name} ({t.count})</option>)}
+            </select>
+          )}
           <select aria-label="Sort" value={sort} onChange={e => setParam('sort', e.target.value)} className="field h-10 w-auto sm:ml-auto">
             <option value="name">Sort: Name</option>
             <option value="last_seen">Sort: Last attended</option>
@@ -101,7 +110,7 @@ export default function People() {
         {selected.size > 0 && (
           <div className="flex items-center gap-3 border-b border-brand-100 bg-brand-50 px-4 py-2 text-sm">
             <span className="font-medium text-brand-800">{selected.size} selected</span>
-            <Button size="sm" variant="secondary" onClick={() => setBulk(true)}>Change status or unit</Button>
+            <Button size="sm" variant="secondary" onClick={() => setBulk(true)}>Tag or update</Button>
             <button className="text-brand-700 hover:underline" onClick={() => setSelected(new Set())}>Clear</button>
           </div>
         )}
@@ -134,6 +143,7 @@ export default function People() {
                         <span className="min-w-0">
                           <span className="block truncate font-medium text-ink">{personName(p)}</span>
                           {p.unit_name && <span className="block truncate text-xs text-mist-500">{p.unit_name}</span>}
+                          {p.tags?.length > 0 && <span className="mt-0.5 block"><TagList ids={p.tags} byId={tagsById} /></span>}
                         </span>
                         {p.open_followups > 0 && <Badge tone="warning">Follow-up</Badge>}
                       </Link>
@@ -158,30 +168,57 @@ export default function People() {
       <ImportPeople open={importing} onClose={() => { setImporting(false); if (params.get('import')) setParam('import', '') }} onDone={() => reload()} />
       <DeleteAll open={wiping} onExport={can('export') ? exportCsv : null} onClose={() => setWiping(false)}
         onDone={(n) => { setWiping(false); setSelected(new Set()); toast(`Deleted ${n.toLocaleString()} ${n === 1 ? 'person' : 'people'}`); reload() }} />
-      <BulkEdit open={bulk} ids={[...selected]} units={units.data || []} onClose={() => setBulk(false)} onDone={(n) => { setBulk(false); setSelected(new Set()); toast(`${n} updated`); reload() }} />
+      <BulkEdit open={bulk} ids={[...selected]} units={units.data || []} tags={allTags} onClose={() => setBulk(false)} onDone={(n) => { setBulk(false); setSelected(new Set()); toast(`${n} updated`); reload() }} />
     </div>
   )
 }
 
-function BulkEdit({ open, ids, units, onClose, onDone }) {
+function BulkEdit({ open, ids, units, tags, onClose, onDone }) {
   const [status, setStatus] = useState('')
   const [unitId, setUnitId] = useState('__keep')
+  const [addTag, setAddTag] = useState('')
+  const [removeTag, setRemoveTag] = useState('')
+  const [newTag, setNewTag] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => { if (open) { setStatus(''); setUnitId('__keep'); setAddTag(''); setRemoveTag(''); setNewTag(''); setError('') } }, [open])
+  const changed = status || unitId !== '__keep' || addTag || removeTag
   async function save() {
     setBusy(true); setError('')
     try {
-      const body = { ids }
-      if (status) body.status = status
-      if (unitId !== '__keep') body.unitId = unitId || null
-      const r = await api.post('/people/bulk', body)
-      onDone(r.updated)
+      let n = 0
+      if (status || unitId !== '__keep') {
+        const body = { ids }
+        if (status) body.status = status
+        if (unitId !== '__keep') body.unitId = unitId || null
+        n = (await api.post('/people/bulk', body)).updated
+      }
+      if (addTag || removeTag) {
+        let add = addTag
+        if (addTag === '__new') add = (await api.post('/tags', { name: newTag })).id
+        n = (await api.post('/people/tags', { ids, add: add ? [add] : [], remove: removeTag ? [removeTag] : [] })).updated
+        loadTags(true)
+      }
+      onDone(n)
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return (
     <Modal open={open} onClose={onClose} title={`Update ${ids.length} ${ids.length === 1 ? 'person' : 'people'}`} size="sm"
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={busy} disabled={!status && unitId === '__keep'}>Apply changes</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={busy} disabled={!changed || (addTag === '__new' && !newTag.trim())}>Apply changes</Button></>}>
       {error && <p className="mb-3 text-sm text-red-700">{error}</p>}
+      <Select label="Add a tag" value={addTag} onChange={e => setAddTag(e.target.value)}>
+        <option value="">Don’t add a tag</option>
+        {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        <option value="__new">+ New tag…</option>
+      </Select>
+      {addTag === '__new' && <Input label="New tag name" value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="e.g. Choir, Youth, Newsletter" maxLength={40} autoFocus />}
+      {tags.length > 0 && (
+        <Select label="Remove a tag" value={removeTag} onChange={e => setRemoveTag(e.target.value)}>
+          <option value="">Don’t remove a tag</option>
+          {tags.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </Select>
+      )}
+      <div className="my-4 border-t border-mist-100" />
       <Select label="Status" value={status} onChange={e => setStatus(e.target.value)}>
         <option value="">Keep current</option>
         {Object.entries(STATUS_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

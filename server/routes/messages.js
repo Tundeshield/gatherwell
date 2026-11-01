@@ -1,4 +1,4 @@
-import { fb, col, docOut, plain, toDate } from '../firebase.js'
+import { fb, col, docOut, plain, toDate, getMany } from '../firebase.js'
 import { bad, notFound, str, oneOf, uuid, date, isUuid } from '../http.js'
 import { requireCap, branchFilter } from '../access.js'
 import { audit, rateLimit, shortId } from '../util.js'
@@ -18,18 +18,31 @@ export function providerFor(channel) {
   return { sms: process.env.SMS_PROVIDER, whatsapp: process.env.WHATSAPP_PROVIDER }[channel] || null
 }
 
+// Who a message goes to: either a group described by filters (tags, status, unit, attendance),
+// or people picked by hand.
 function cleanAudience(a = {}) {
   return {
+    mode: a.mode === 'people' ? 'people' : 'filters',
     branch: a.branch && isUuid(a.branch) ? a.branch : null,
     statuses: (Array.isArray(a.statuses) ? a.statuses : []).filter(s => STATUSES.includes(s) && s !== 'archived'),
     unit: a.unit && isUuid(a.unit) ? a.unit : null,
     segment: oneOf(a.segment, ['all', 'first_timers_30d', 'absent', 'recent'], { name: 'Segment', fallback: 'all' }),
+    tags: [...new Set((Array.isArray(a.tags) ? a.tags : []).filter(isUuid))].slice(0, 30),
+    people: [...new Set((Array.isArray(a.people) ? a.people : []).filter(isUuid))].slice(0, 1000),
   }
 }
 
 async function audiencePeople(ctx, audience) {
+  if (audience.mode === 'people') {
+    if (!audience.people.length) return []
+    const { db } = await fb()
+    const snaps = await getMany(db, audience.people.map(id => col(db, ctx.org.id, 'people').doc(id)))
+    return snaps.filter(s => s.exists).map(s => ({ id: s.id, ...plain(s.data()) }))
+      .filter(p => p.status !== 'archived' && (!ctx.branchScope || ctx.branchScope.includes(p.branch_id)))
+  }
   await branchFilter(ctx, audience.branch)
-  const q = { branch: audience.branch || undefined, unit: audience.unit || undefined, status: audience.statuses.length ? audience.statuses.join(',') : undefined }
+  const q = { branch: audience.branch || undefined, unit: audience.unit || undefined, status: audience.statuses.length ? audience.statuses.join(',') : undefined,
+    tags: audience.tags.length ? audience.tags.join(',') : undefined }
   if (audience.segment === 'absent') q.attendance = 'absent'
   if (audience.segment === 'recent') q.attendance = 'recent'
   if (audience.segment === 'first_timers_30d') q.firstVisitSince = new Date(Date.now() - 30 * 86400000).toISOString()
@@ -152,9 +165,11 @@ export default function (r) {
 
   r.post('/messages/audience', async ({ ctx, body }) => {
     requireCap(ctx, 'messages.manage')
-    const people = await audiencePeople(ctx, cleanAudience(body.audience))
+    const audience = cleanAudience(body.audience)
+    const people = await audiencePeople(ctx, audience)
     const sorted = [...people].sort((a, b) => String(a.first_name).localeCompare(String(b.first_name)))
     return {
+      picked: audience.mode === 'people' ? sorted.map(p => ({ id: p.id, name: [p.first_name, p.last_name].filter(Boolean).join(' '), email: !!p.email && !p.email_opt_out })) : undefined,
       counts: { total: people.length, with_phone: people.filter(p => p.phone_norm).length, with_email: emailRecipients(people).length, unsubscribed: people.filter(p => p.email && p.email_opt_out).length },
       sample: sorted.slice(0, 8).map(s => [s.first_name, s.last_name ? s.last_name[0] + '.' : ''].join(' ').trim()),
     }

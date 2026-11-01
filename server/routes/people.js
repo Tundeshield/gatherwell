@@ -34,7 +34,7 @@ function rowOut(snapOrObj, lk) {
     branch_id: p.branch_id || null, unit_id: p.unit_id || null, first_visit_at: p.first_visit_at || null, last_seen_at: p.last_seen_at || null,
     visit_count: p.visit_count || 0, created_at: p.created_at, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null,
     open_followups: p.open_followups || 0, phone_norm: p.phone_norm || null, gender: p.gender || null, birthday: p.birthday || null, joined_at: p.joined_at || null,
-    email_opt_out: !!p.email_opt_out,
+    email_opt_out: !!p.email_opt_out, tags: p.tags || [],
   }
 }
 
@@ -49,6 +49,7 @@ function matches(ctx, p, f, branches, weeks) {
   if (f.attendance === 'never' && p.last_seen_at) return false
   if (f.firstVisitSince && !(p.first_time_at && ms(p.first_time_at) >= new Date(f.firstVisitSince).getTime())) return false
   if (f.followup === 'open' && !p.has_open_followup) return false
+  if (f.tags?.length && !(p.tags || []).some(t => f.tags.includes(t))) return false
   return true
 }
 
@@ -60,6 +61,7 @@ function parseFilters(query) {
     attendance: ['recent', 'absent', 'never'].includes(query.attendance) ? query.attendance : null,
     firstVisitSince: query.firstVisitSince ? date(query.firstVisitSince) : null,
     followup: query.followup === 'open' ? 'open' : null,
+    tags: (Array.isArray(query.tags) ? query.tags : String(query.tags || '').split(',')).filter(isUuid).slice(0, 30),
     sort: SORTS[query.sort] ? query.sort : 'name',
     branch: query.branch,
   }
@@ -83,6 +85,15 @@ export async function findPeople(ctx, query, { limit = 50, offset = 0, all = fal
     let rows = qs.docs.map(d => ({ id: d.id, ...plain(d.data()) }))
       .filter(p => (digits.length >= 4 && token === digits.replace(/^0+/, '')) || words.every(w => (p.search || []).includes(w.slice(0, 20))))
       .filter(p => matches(ctx, p, f, branches, weeks))
+    const [field, dir] = SORTS[f.sort]
+    rows.sort((a, b) => { const x = a[field] ?? '', y = b[field] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'desc' ? -1 : 1) })
+    return { rows: all ? rows : rows.slice(offset, offset + limit), total: rows.length }
+  }
+
+  if (f.tags.length) {
+    // Tagged people (anyone with at least one of the tags), then exact filtering in memory.
+    const qs = await people.where('tags', 'array-contains-any', f.tags).limit(cap || 20000).get()
+    const rows = qs.docs.map(d => ({ id: d.id, ...plain(d.data()) })).filter(p => matches(ctx, p, f, branches, weeks))
     const [field, dir] = SORTS[f.sort]
     rows.sort((a, b) => { const x = a[field] ?? '', y = b[field] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * (dir === 'desc' ? -1 : 1) })
     return { rows: all ? rows : rows.slice(offset, offset + limit), total: rows.length }
