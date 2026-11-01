@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Users, CalendarCheck, HeartHandshake, CalendarDays, MessageSquare, BarChart3, Settings, LogOut, Menu, X, ChevronsUpDown, Check, Building2, ShieldCheck } from 'lucide-react'
 import { useSession } from '../lib/session'
+import { PageLoader } from './ui'
 import Logo from './Logo'
+import PageErrorBoundary from './PageErrorBoundary'
 
 const NAV = [
   { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -152,7 +154,9 @@ export default function AppShell() {
           </div>
         )}
         <div className="mx-auto max-w-page px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <Outlet />
+          <PageErrorBoundary resetKey={location.pathname}>
+            <Suspense fallback={<PageLoader />}><Outlet /></Suspense>
+          </PageErrorBoundary>
         </div>
       </main>
     </div>

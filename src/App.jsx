@@ -1,30 +1,32 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+import { lazyPage } from './lib/lazyPage'
+import PageErrorBoundary from './components/PageErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { SessionProvider, useSession } from './lib/session'
 import { ToastProvider, ConfirmProvider, PageLoader } from './components/ui'
 import AppShell from './components/AppShell'
 
-const Landing = lazy(() => import('./pages/public/Landing'))
-const Login = lazy(() => import('./pages/public/Login'))
-const Signup = lazy(() => import('./pages/public/Signup'))
-const AcceptInvite = lazy(() => import('./pages/public/AcceptInvite'))
-const CheckIn = lazy(() => import('./pages/public/CheckIn'))
-const EventRegister = lazy(() => import('./pages/public/EventRegister'))
-const NoOrg = lazy(() => import('./pages/public/NoOrg'))
+const Landing = lazyPage(() => import('./pages/public/Landing'))
+const Login = lazyPage(() => import('./pages/public/Login'))
+const Signup = lazyPage(() => import('./pages/public/Signup'))
+const AcceptInvite = lazyPage(() => import('./pages/public/AcceptInvite'))
+const CheckIn = lazyPage(() => import('./pages/public/CheckIn'))
+const EventRegister = lazyPage(() => import('./pages/public/EventRegister'))
+const NoOrg = lazyPage(() => import('./pages/public/NoOrg'))
 
-const Overview = lazy(() => import('./pages/app/Overview'))
-const People = lazy(() => import('./pages/app/People'))
-const PersonDetail = lazy(() => import('./pages/app/PersonDetail'))
-const Attendance = lazy(() => import('./pages/app/Attendance'))
-const SessionDetail = lazy(() => import('./pages/app/SessionDetail'))
-const Events = lazy(() => import('./pages/app/Events'))
-const EventDetail = lazy(() => import('./pages/app/EventDetail'))
-const FollowUps = lazy(() => import('./pages/app/FollowUps'))
-const Reports = lazy(() => import('./pages/app/Reports'))
-const Messages = lazy(() => import('./pages/app/Messages'))
-const MessageEditor = lazy(() => import('./pages/app/MessageEditor'))
-const Settings = lazy(() => import('./pages/app/Settings'))
-const Platform = lazy(() => import('./pages/app/Platform'))
+const Overview = lazyPage(() => import('./pages/app/Overview'))
+const People = lazyPage(() => import('./pages/app/People'))
+const PersonDetail = lazyPage(() => import('./pages/app/PersonDetail'))
+const Attendance = lazyPage(() => import('./pages/app/Attendance'))
+const SessionDetail = lazyPage(() => import('./pages/app/SessionDetail'))
+const Events = lazyPage(() => import('./pages/app/Events'))
+const EventDetail = lazyPage(() => import('./pages/app/EventDetail'))
+const FollowUps = lazyPage(() => import('./pages/app/FollowUps'))
+const Reports = lazyPage(() => import('./pages/app/Reports'))
+const Messages = lazyPage(() => import('./pages/app/Messages'))
+const MessageEditor = lazyPage(() => import('./pages/app/MessageEditor'))
+const Settings = lazyPage(() => import('./pages/app/Settings'))
+const Platform = lazyPage(() => import('./pages/app/Platform'))
 
 function RequireAuth({ children, cap, platform = false }) {
   const { me, can } = useSession()
@@ -45,10 +47,12 @@ function GuestOnly({ children }) {
 }
 
 export default function App() {
+  const { pathname } = useLocation()
   return (
     <SessionProvider>
       <ToastProvider>
         <ConfirmProvider>
+          <PageErrorBoundary resetKey={pathname}>
           <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><PageLoader /></div>}>
             <Routes>
               <Route path="/" element={<Landing />} />
@@ -78,6 +82,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
+          </PageErrorBoundary>
         </ConfirmProvider>
       </ToastProvider>
     </SessionProvider>
