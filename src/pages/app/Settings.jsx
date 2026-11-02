@@ -13,6 +13,7 @@ import EmailBlocksEditor, { withKeys, stripKeys } from '../../components/EmailBl
 import { JOURNEY_STEPS, DELAY_OPTIONS, WHATSAPP_KINDS } from '../../../shared/automation.js'
 import { PLANS } from '../../../shared/plans.js'
 import ChildrenSettings from '../../components/children/ChildrenSettings'
+import { openCheckout } from '../../lib/paddle'
 import PlanCards, { IntervalToggle } from '../../components/PlanCards'
 import { prepareImage } from '../../lib/image'
 
@@ -772,27 +773,34 @@ function PrivacyTab() {
 function BillingTab() {
   const { refresh, me } = useSession()
   const toast = useToast()
-  const [params, setParams] = useSearchParams()
   const { data, error, reload } = useLoad(() => api.get('/billing'), [])
   const [interval, setInterval_] = useState('monthly')
   const [busy, setBusy] = useState('')
-  const [confirming, setConfirming] = useState(!!params.get('reference'))
-
-  // Back from Paystack: confirm the payment, then tidy the address bar.
-  useEffect(() => {
-    const ref = params.get('reference') || params.get('trxref')
-    if (!ref) return
-    api.post('/billing/confirm', { reference: ref })
-      .then(r => { if (r.ok) toast(`Thank you! You’re on the ${PLANS[r.plan]?.name} plan.`); else toast('Your payment didn’t go through. You haven’t been charged.', 'error') })
-      .catch(e => toast(e.message, 'error'))
-      .finally(() => { setConfirming(false); setParams({ tab: 'billing' }, { replace: true }); reload(); refresh() })
-  }, []) // eslint-disable-line
+  const [confirming, setConfirming] = useState(false)
   useEffect(() => { if (data?.interval) setInterval_(data.interval) }, [data?.interval])
+
+  // Paid in Paddle's checkout: confirm straight away (the payment notification can arrive a little later).
+  async function confirm(transactionId) {
+    setConfirming(true)
+    try {
+      let r = { ok: false }
+      for (let i = 0; i < 4 && !r.ok; i++) {
+        if (i) await new Promise(res => setTimeout(res, 2000))
+        r = await api.post('/billing/confirm', { transactionId })
+      }
+      if (r.ok) toast(`Thank you! You’re on the ${PLANS[r.plan]?.name} plan.`)
+      else toast('We’re still confirming your payment. It will show here in a minute.', 'info')
+    } catch (e) { toast(e.message, 'error') }
+    finally { setConfirming(false); reload(); refresh() }
+  }
 
   async function choose(plan) {
     setBusy(plan)
-    try { const r = await api.post('/billing/checkout', { plan, interval }); window.location.href = r.url }
-    catch (e) { toast(e.message, 'error'); setBusy('') }
+    try {
+      const r = await api.post('/billing/checkout', { plan, interval })
+      if (r.changed) { toast(`You’re now on the ${PLANS[r.plan].name} plan, ${r.interval}.`); setBusy(''); reload(); refresh(); return }
+      await openCheckout({ ...r, onComplete: (id) => { setBusy(''); confirm(id) }, onClose: () => setBusy('') })
+    } catch (e) { toast(e.message, 'error'); setBusy('') }
   }
   async function manage() {
     setBusy('manage')
@@ -835,7 +843,7 @@ function BillingTab() {
             return <Button className="w-full" variant={key === 'church' ? 'primary' : 'secondary'} disabled={same || !data.ready} loading={busy === key} onClick={() => choose(key)}>
               {same ? 'Your current plan' : paid ? `Switch to ${PLANS[key].name}` : `Choose ${PLANS[key].name}`}</Button>
           }} />
-          <p className="mt-4 text-center text-xs text-mist-500">Prices in US dollars. Secure card payment by Paystack. {me.org.branchesEnabled ? '' : 'The Church network plan also switches on multiple branches.'}</p>
+          <p className="mt-4 text-center text-xs text-mist-500">Prices in US dollars, plus sales tax or VAT where it applies. Secure checkout by Paddle, our reseller, who sends your receipts and invoices. {me.org.branchesEnabled ? '' : 'The Church network plan also switches on multiple branches.'}</p>
         </section>
       )}
     </div>

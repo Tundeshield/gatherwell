@@ -881,7 +881,7 @@ test('data rights: person export, complete deletion, email consent, church expor
   assert.ok(String(r.data).includes('Sade R'), 'the event keeps its registration, without the link')
 })
 
-test('billing: trial, Paystack checkout, webhooks, read-only after expiry, network unlocks branches', async () => {
+test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan changes, network unlocks branches', async () => {
   const crypto = await import('node:crypto')
   const c = client()
   await signup(c, { orgName: 'Pay Church', name: 'Pat Owner', email: 'pat@pay.test', password: 'password123' })
@@ -890,74 +890,100 @@ test('billing: trial, Paystack checkout, webhooks, read-only after expiry, netwo
   assert.equal(me.org.billing.state, 'trialing')
   assert.ok(me.org.billing.daysLeft >= 30)
   let r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-  assert.equal(r.status, 400, 'no payments before Paystack is connected')
+  assert.equal(r.status, 400, 'no payments before Paddle is connected')
 
   // An expired church is never locked out while payments aren't connected
   const setOrg = (patch) => { const k = `orgs/${orgId}`; fake.db._store.set(k, { ...fake.db._store.get(k), ...patch }) }
   setOrg({ billing: { status: 'cancelled', next_payment_date: new Date(Date.now() - 86400e3).toISOString() } })
   r = await c.post('/people', { firstName: 'Free', phone: '08050000001', branchId }); assert.equal(r.status, 200)
 
-  process.env.PAYSTACK_SECRET_KEY = 'sk_test_x'
+  Object.assign(process.env, { PADDLE_API_KEY: 'pdl_sdbx_test', PADDLE_CLIENT_TOKEN: 'test_client', PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_secret', PADDLE_ENV: 'sandbox' })
   const calls = []
+  const sub = { id: 'sub_1', status: 'active', customer_id: 'ctm_1', custom_data: { org_id: orgId, plan: 'church', interval: 'monthly' }, items: [{ price: { id: 'pri_church_month' } }], next_billed_at: new Date(Date.now() + 30 * 86400e3).toISOString(), current_billing_period: { ends_at: new Date(Date.now() + 30 * 86400e3).toISOString() }, scheduled_change: null }
   const realFetch = globalThis.fetch
   globalThis.fetch = async (u, init = {}) => {
-    if (!String(u).startsWith('https://api.paystack.co')) return realFetch(u, init)
-    const path = String(u).replace('https://api.paystack.co', ''); calls.push([init.method || 'GET', path, init.body && JSON.parse(init.body)])
-    const ok = (data) => new Response(JSON.stringify({ status: true, data }), { status: 200, headers: { 'content-type': 'application/json' } })
-    if (path.startsWith('/plan?')) return ok([])
-    if (path === '/plan') return ok({ plan_code: `PLN_${JSON.parse(init.body).interval}_${JSON.parse(init.body).amount}` })
-    if (path === '/customer') return ok({ customer_code: 'CUS_pay' })
-    if (path === '/transaction/initialize') return ok({ authorization_url: 'https://checkout.paystack.com/abc', reference: 'ref_1' })
-    if (path.startsWith('/transaction/verify/')) return ok({ status: 'success', paid_at: new Date().toISOString(), metadata: { org_id: orgId, plan: 'church', interval: 'monthly' }, customer: { customer_code: 'CUS_pay' }, authorization: { last4: '4081', card_type: 'visa', exp_month: '12', exp_year: '2030' } })
-    if (path.includes('/manage/link')) return ok({ link: 'https://paystack.com/manage/xyz' })
-    return new Response(JSON.stringify({ status: false, message: 'not mocked' }), { status: 404 })
+    if (!String(u).startsWith('https://sandbox-api.paddle.com')) return realFetch(u, init)
+    const path = String(u).replace('https://sandbox-api.paddle.com', ''); const body = init.body && JSON.parse(init.body)
+    calls.push([init.method || 'GET', path, body])
+    const ok = (data, status = 200) => new Response(JSON.stringify({ data }), { status, headers: { 'content-type': 'application/json' } })
+    if (path.startsWith('/products?')) return ok([])
+    if (path === '/products') return ok({ id: `pro_${body.custom_data.gatherhq_plan}` }, 201)
+    if (path.startsWith('/prices?')) return ok([])
+    if (path === '/prices') return ok({ id: `pri_${body.product_id.slice(4)}_${body.billing_cycle.interval}` }, 201)
+    if (path === '/transactions/txn_1') return ok({ id: 'txn_1', status: 'completed', customer_id: 'ctm_1', subscription_id: 'sub_1', custom_data: { org_id: orgId, plan: 'church', interval: 'monthly' }, payments: [{ status: 'captured', method_details: { card: { type: 'visa', last4: '4242', expiry_month: 12, expiry_year: 2030 } } }] })
+    if (path === '/transactions/txn_other') return ok({ id: 'txn_other', status: 'completed', custom_data: { org_id: 'someone-else' } })
+    if (path === '/subscriptions/sub_1' && init.method === 'PATCH') { sub.items = [{ price: { id: body.items[0].price_id } }]; return ok(sub) }
+    if (path === '/subscriptions/sub_1') return ok(sub)
+    if (path === '/customers/ctm_1/portal-sessions') return ok({ urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_1' } } }, 201)
+    return new Response(JSON.stringify({ error: { detail: 'not mocked' } }), { status: 404 })
   }
-  const hook = (evt, sign = true) => {
+  const hook = (evt, sign = true, ts = Math.floor(Date.now() / 1000)) => {
     const raw = JSON.stringify(evt)
-    const sig = sign ? crypto.createHmac('sha512', 'sk_test_x').update(raw).digest('hex') : 'bad'
-    return handle(new Request('http://test.local/api/webhooks/paystack', { method: 'POST', headers: { 'content-type': 'application/json', 'x-paystack-signature': sig }, body: raw }))
+    const sig = sign ? `ts=${ts};h1=${crypto.createHmac('sha256', 'pdl_ntfset_secret').update(`${ts}:${raw}`).digest('hex')}` : `ts=${ts};h1=bad`
+    return handle(new Request('http://test.local/api/webhooks/paddle', { method: 'POST', headers: { 'content-type': 'application/json', 'paddle-signature': sig }, body: raw }))
   }
+  let n = 0
+  const evt = (type, data, at = new Date().toISOString()) => ({ event_id: `evt_${++n}`, event_type: type, occurred_at: at, data })
   try {
     // Expired and payments connected: read-only
     r = await c.post('/people', { firstName: 'Blocked', phone: '08050000002', branchId })
     assert.equal(r.status, 402); assert.equal(r.data.details.code, 'billing_required')
     assert.equal((await c.get('/people')).status, 200, 'can still view')
-    const g = Object.entries(Object.fromEntries(fake.db._store)).find(([k, v]) => k.startsWith(`orgs/${orgId}/people/`))
-    const pid = g[0].split('/').pop()
-    assert.equal((await c.del(`/people/${pid}`)).status, 200, 'can still erase people')
+    const g = Object.entries(Object.fromEntries(fake.db._store)).find(([k]) => k.startsWith(`orgs/${orgId}/people/`))
+    assert.equal((await c.del(`/people/${g[0].split('/').pop()}`)).status, 200, 'can still erase people')
 
-    // Checkout creates the Paystack plan and customer once
+    // Checkout: product and price created once in Paddle, then reused
     r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
     assert.equal(r.status, 200, JSON.stringify(r.data))
-    assert.equal(r.data.url, 'https://checkout.paystack.com/abc')
-    const init = calls.find(x => x[1] === '/transaction/initialize')[2]
-    assert.deepEqual([init.currency, init.amount, init.plan, init.metadata.org_id], ['USD', 1900, 'PLN_monthly_1900', orgId])
+    assert.deepEqual([r.data.environment, r.data.token, r.data.priceId, r.data.customData.org_id, r.data.customer.email], ['sandbox', 'test_client', 'pri_church_month', orgId, 'pat@pay.test'])
+    const price = calls.find(x => x[1] === '/prices')[2]
+    assert.deepEqual([price.unit_price.amount, price.unit_price.currency_code, price.billing_cycle.interval], ['1900', 'USD', 'month'])
+    assert.equal(calls.find(x => x[1] === '/products')[2].tax_category, 'saas')
     await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-    assert.equal(calls.filter(x => x[1] === '/plan').length, 1, 'plan reused')
-    assert.equal(calls.filter(x => x[1] === '/customer').length, 1, 'customer reused')
+    assert.equal(calls.filter(x => x[1] === '/prices').length, 1, 'price reused')
 
-    // Returning from Paystack confirms the payment
-    r = await c.post('/billing/confirm', { reference: 'ref_1' })
-    assert.equal(r.data.ok, true)
+    // After paying: confirm the transaction (only this church's)
+    assert.equal((await c.post('/billing/confirm', { transactionId: 'txn_other' })).data.ok, false)
+    r = await c.post('/billing/confirm', { transactionId: 'txn_1' })
+    assert.equal(r.data.ok, true, JSON.stringify(r.data))
     me = (await c.get('/me')).data
-    assert.equal(me.org.billing.state, 'active')
-    r = await c.get('/billing'); assert.equal(r.data.card.last4, '4081')
+    assert.equal(me.org.billing.state, 'active'); assert.equal(me.org.billing.plan, 'church')
+    r = await c.get('/billing'); assert.equal(r.data.card.last4, '4242'); assert.equal(r.data.hasSubscription, true)
     assert.equal((await c.post('/people', { firstName: 'Paid', phone: '08050000003', branchId })).status, 200, 'unlocked')
+    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://customer-portal.paddle.com/cpl_1')
 
-    // Webhooks: signed only, once each
-    assert.equal((await hook({ event: 'subscription.create', data: { subscription_code: 'SUB_1', email_token: 't', next_payment_date: new Date(Date.now() + 30 * 86400e3).toISOString(), customer: { customer_code: 'CUS_pay' }, plan: { plan_code: 'PLN_monthly_1900' } } }, false)).status, 401)
-    r = await hook({ event: 'subscription.create', data: { subscription_code: 'SUB_1', email_token: 't', next_payment_date: new Date(Date.now() + 30 * 86400e3).toISOString(), customer: { customer_code: 'CUS_pay' }, plan: { plan_code: 'PLN_monthly_1900' } } })
+    // Webhooks: signed and recent only, each processed once
+    assert.equal((await hook(evt('subscription.updated', sub), false)).status, 401)
+    assert.equal((await hook(evt('subscription.updated', sub), true, Math.floor(Date.now() / 1000) - 3600)).status, 401, 'replayed old notification refused')
+    const failed = evt('transaction.payment_failed', { id: 'txn_2', customer_id: 'ctm_1', subscription_id: 'sub_1', custom_data: { org_id: orgId }, payments: [{ error_code: 'declined' }] })
+    assert.equal((await hook(failed)).status, 200)
+    assert.equal((await (await hook(failed)).json()).duplicate, true)
+    r = await hook(evt('subscription.past_due', { ...sub, status: 'past_due' }))
     assert.equal(r.status, 200)
-    r = await c.get('/billing'); assert.equal(r.data.hasSubscription, true)
-    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://paystack.com/manage/xyz')
-    await hook({ event: 'invoice.payment_failed', data: { id: 9, description: 'Card declined', customer: { customer_code: 'CUS_pay' } } })
-    r = await c.get('/billing'); assert.equal(r.data.state, 'past_due'); assert.equal(r.data.lastError, 'Card declined')
+    r = await c.get('/billing'); assert.equal(r.data.state, 'past_due'); assert.match(r.data.lastError, /declined/)
     assert.equal((await c.post('/people', { firstName: 'Grace', phone: '08050000004', branchId })).status, 200, 'grace period')
+    // An older event arriving late doesn't undo a newer one
+    await hook(evt('subscription.updated', { ...sub, status: 'active' }, new Date(Date.now() - 86400e3).toISOString()))
+    assert.equal((await c.get('/billing')).data.state, 'past_due')
+    await hook(evt('subscription.updated', { ...sub, status: 'active' }))
+    assert.equal((await c.get('/billing')).data.state, 'active')
 
-    // Upgrading to the network plan switches on branches
-    await hook({ event: 'charge.success', data: { id: 77, paid_at: new Date().toISOString(), metadata: { org_id: orgId, plan: 'network', interval: 'yearly' }, customer: { customer_code: 'CUS_pay' }, authorization: { last4: '1111' } } })
+    // Cancelling keeps the plan until the end of the paid period
+    const end = new Date(Date.now() + 10 * 86400e3).toISOString()
+    await hook(evt('subscription.updated', { ...sub, scheduled_change: { action: 'cancel', effective_at: end } }))
+    r = await c.get('/billing'); assert.equal(r.data.state, 'active'); assert.equal(r.data.cancelling, true)
+
+    // Switching plan changes the Paddle subscription directly, and the network plan switches on branches
+    r = await c.post('/billing/checkout', { plan: 'network', interval: 'yearly' })
+    assert.equal(r.data.changed, true, JSON.stringify(r.data))
+    const patch = calls.find(x => x[0] === 'PATCH')[2]
+    assert.equal(patch.items[0].price_id, 'pri_network_year'); assert.equal(patch.scheduled_change, null, 'undoes the cancellation')
     me = (await c.get('/me')).data
     assert.equal(me.org.billing.plan, 'network'); assert.equal(me.org.branchesEnabled, true)
+
+    // A cancelled subscription that has ended locks changes again
+    await hook(evt('subscription.canceled', { ...sub, status: 'canceled', canceled_at: new Date(Date.now() - 3600e3).toISOString() }))
+    assert.equal((await c.get('/billing')).data.state, 'expired')
 
     // A free (complimentary) church is never charged
     r = await S.ops.patch(`/platform/orgs/${orgId}`, { plan: 'free' })
@@ -965,13 +991,13 @@ test('billing: trial, Paystack checkout, webhooks, read-only after expiry, netwo
     assert.equal((await c.get('/me')).data.org.billing.state, 'free')
   } finally {
     globalThis.fetch = realFetch
-    delete process.env.PAYSTACK_SECRET_KEY
+    for (const k of ['PADDLE_API_KEY', 'PADDLE_CLIENT_TOKEN', 'PADDLE_WEBHOOK_SECRET', 'PADDLE_ENV']) delete process.env[k]
   }
 })
 
 test('admin console: revenue, church controls, users and support', async () => {
   const realFetch = globalThis.fetch
-  process.env.PAYSTACK_SECRET_KEY = 'sk_test_console'
+  Object.assign(process.env, { PADDLE_API_KEY: 'k', PADDLE_CLIENT_TOKEN: 't' })
   try {
     const c = client()
     await signup(c, { orgName: 'Console Church', name: 'Kemi Owner', email: 'kemi@console.test', password: 'password123' })
@@ -1028,7 +1054,7 @@ test('admin console: revenue, church controls, users and support', async () => {
     assert.equal((await S.ops.patch(`/platform/users/${opsId}`, { platformAdmin: false })).status, 400)
   } finally {
     globalThis.fetch = realFetch
-    delete process.env.PAYSTACK_SECRET_KEY
+    delete process.env.PADDLE_API_KEY; delete process.env.PADDLE_CLIENT_TOKEN
   }
 })
 

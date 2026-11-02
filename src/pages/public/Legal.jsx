@@ -11,7 +11,7 @@ const SUBPROCESSORS = [
   ['Google LLC (Firebase, Google Cloud)', 'Database, sign-in and file storage for all GatherHQ data', 'Google Cloud data centres'],
   ['Netlify, Inc.', 'Hosting the website and running the application', 'United States and global edge network'],
   ['Resend, Inc.', 'Delivering emails a church sends through GatherHQ, and account emails', 'European Union (Ireland)'],
-  ['Paystack Payments Ltd', 'Taking subscription payments from churches (billing details only, never member data)', 'Nigeria and other Paystack regions'],
+  ['Paddle.com Market Ltd', 'Selling GatherHQ subscriptions as our reseller and merchant of record, including tax and invoices (billing details only, never member data)', 'United Kingdom'],
 ]
 
 function H({ children }) { return <h2 className="mb-3 mt-10 text-[19px] font-semibold text-ink">{children}</h2> }

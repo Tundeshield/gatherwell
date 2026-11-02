@@ -123,7 +123,7 @@ export default function AdminChurch() {
               {bd.card && <Row label="Card">{bd.card.brand} •••• {bd.card.last4}{bd.card.exp ? ` · ${bd.card.exp}` : ''}</Row>}
               {bd.last_payment_at && <Row label="Last payment">{fmtDate(bd.last_payment_at)}</Row>}
               {bd.email && <Row label="Billing email">{bd.email}</Row>}
-              {bd.customer_code && <Row label="Paystack customer"><span className="font-mono text-xs">{bd.customer_code}</span></Row>}
+              {bd.customer_code && <Row label="Paddle customer"><span className="font-mono text-xs">{bd.customer_code}</span></Row>}
               {bd.last_error && b.state === 'past_due' && <Row label="Last error"><span className="text-red-700">{bd.last_error}</span></Row>}
             </dl>
             {!isFree && (

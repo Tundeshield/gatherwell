@@ -112,7 +112,7 @@ export default function (r) {
       trial_ends_at: plain(d.trial_ends_at) || null, terms_accepted_at: plain(d.terms_accepted_at) || null, dpa_accepted_at: plain(d.dpa_accepted_at) || null,
       timezone: d.timezone || null,
       billing_detail: { plan: b.plan || null, interval: b.interval || null, status: b.status || null, manual: !!b.manual, email: b.email || null,
-        customer_code: b.customer_code || null, subscription_code: b.subscription_code || null, card: b.card || null,
+        customer_code: b.customer_id || null, subscription_code: b.subscription_id || null, card: b.card || null,
         next_payment_date: plain(b.next_payment_date) || null, last_payment_at: plain(b.last_payment_at) || null, last_error: b.last_error || null },
       counts: { events: events.data().count, messages: messages.data().count },
       branch_list: branches.docs.map(x => ({ id: x.id, name: x.data().name })),
@@ -161,7 +161,7 @@ export default function (r) {
       const until = new Date(body.manualPlan.until)
       if (!plan) throw bad('Choose a plan.')
       if (isNaN(until) || until <= new Date()) throw bad('Choose a paid-until date in the future.')
-      if (d.billing?.subscription_code && d.billing?.status === 'active' && !d.billing?.manual) throw bad('This church already pays by card. Ask them to cancel that first, or change it in Paystack.')
+      if (d.billing?.subscription_id && d.billing?.provider === 'paddle' && d.billing?.status === 'active' && !d.billing?.manual) throw bad('This church already pays by card through Paddle. Ask them to cancel that first (Settings › Billing › Update card or cancel).')
       const update = { billing: { ...(d.billing || {}), plan, interval, status: 'active', manual: true, next_payment_date: until.toISOString(), updated_at: new Date() }, updated_at: new Date() }
       if (plan === 'network') update.features = { ...(d.features || {}), branches: true }
       await ref.update(update)
