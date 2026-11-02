@@ -91,7 +91,7 @@ async function accept(db, inv, invRef, user) {
 }
 
 // Version of the Terms, Privacy Policy and DPA people agree to (matches src/pages/public/Legal.jsx).
-export const TERMS_VERSION = '2026-11-01'
+export const TERMS_VERSION = '2026-11-02'
 
 export default function (r) {
   r.post('/auth/signup', { auth: 'public' }, async ({ req, body }) => {

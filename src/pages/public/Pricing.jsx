@@ -9,6 +9,7 @@ import { useSession } from '../../lib/session'
 const FAQ = [
   ['What happens after the free trial?', `You get ${TRIAL_DAYS} days with everything included, no card needed. Then choose a plan. If you don’t, nothing is deleted: you can still view and download everything, and check-in keeps working.`],
   ['Can I cancel any time?', 'Yes. Cancel from Settings › Billing and your plan runs until the end of the period you’ve paid for.'],
+  ['Can I get a refund?', 'Yes. If you ask within 30 days of any payment, we refund it in full, no questions asked. See our Refund Policy.'],
   ['Is there a limit on people or team members?', 'No. Both plans include unlimited people, check-ins and team members.'],
   ['What’s the difference between the plans?', 'Single church is for one congregation. Church network adds multiple branches or campuses, with branch-level access for your team and reports across the whole church.'],
   ['Who owns our data?', 'Your church does. You can download all of it at any time, and we sign a Data Processing Agreement with every church.'],

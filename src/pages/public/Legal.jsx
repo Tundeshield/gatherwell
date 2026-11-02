@@ -2,10 +2,14 @@ import { useEffect } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import Logo from '../../components/Logo'
 
-export const LEGAL_VERSION = '2026-11-01'
-const UPDATED = '1 November 2026'
+export const LEGAL_VERSION = '2026-11-02'
+const UPDATED = '2 November 2026'
 const CONTACT = 'privacy@gatherhq.org'
+const HELLO = 'hello@gatherhq.org'
+export const COMPANY = 'Avelon Health Technologies Limited'
+const COMPANY_FULL = `${COMPANY}, a company registered in Nigeria (RC 8342636), of Plot 5, Block 23, Oba Alake Road, Ibara Housing Estate, Abeokuta, Ogun State, Nigeria`
 const Mail = () => <a href={`mailto:${CONTACT}`} className="link">{CONTACT}</a>
+const Hello = () => <a href={`mailto:${HELLO}`} className="link">{HELLO}</a>
 
 const SUBPROCESSORS = [
   ['Google LLC (Firebase, Google Cloud)', 'Database, sign-in and file storage for all GatherHQ data', 'Google Cloud data centres'],
@@ -21,7 +25,7 @@ function UL({ items }) { return <ul className="mb-4 list-disc space-y-1.5 pl-5 l
 function Privacy() {
   return (
     <>
-      <P>This policy explains how GatherHQ (“we”, “us”) handles personal information. GatherHQ is software that churches use to record attendance, welcome visitors, follow up with people and run events.</P>
+      <P>This policy explains how GatherHQ handles personal information. GatherHQ is software that churches use to record attendance, welcome visitors, follow up with people and run events. GatherHQ is operated by {COMPANY_FULL} (“we”, “us”).</P>
       <H>Who is responsible for what</H>
       <UL items={[
         <><b>Church data.</b> When a church uses GatherHQ, the church decides what information it collects about its members, visitors and volunteers, and why. The church is the <i>data controller</i>. We process that information only on the church’s behalf and on its instructions, as its <i>data processor</i>, under our <Link to="/legal/dpa" className="link">Data Processing Agreement</Link>. If you’re a member or visitor of a church, please contact your church first about your information; we will help them respond.</>,
@@ -32,7 +36,7 @@ function Privacy() {
         'Account holders: name, email address, password (stored securely by Google Firebase; we never see it), church name, country, role, and a record of activity in the account.',
         'Church records, as entered by a church or by people checking in: names, phone numbers, email addresses, attendance, event registrations, answers to check-in questions, follow-up notes, tags and similar details the church chooses to record.',
         'Technical information: a sign-in cookie, IP address and basic request logs used for security and to prevent abuse.',
-        'Billing: when paid plans start, our payment provider collects card or bank details directly. We only receive confirmation of payment.',
+        'Billing: subscriptions are sold by our reseller Paddle (Paddle.com Market Ltd), which collects payment details directly and is responsible for its own handling of them. We receive the name, email, country, and the card type and last four digits, never full card numbers.',
       ]} />
       <H>How we use it</H>
       <UL items={[
@@ -64,7 +68,7 @@ function Privacy() {
 function Terms() {
   return (
     <>
-      <P>These terms apply when a church or person uses GatherHQ. By creating an account you agree to them on behalf of yourself and your church.</P>
+      <P>These terms are an agreement between you (and the church you act for) and {COMPANY_FULL} (“GatherHQ”, “we”, “us”). They apply when a church or person uses GatherHQ. By creating an account you agree to them on behalf of yourself and your church.</P>
       <H>The service</H>
       <P>GatherHQ provides tools for attendance, visitor follow-up, events and messaging for churches. We may improve or change features over time, and will give reasonable notice before removing anything significant that you rely on.</P>
       <H>Your account</H>
@@ -82,7 +86,13 @@ function Terms() {
       <H>Acceptable use</H>
       <P>Don’t use GatherHQ to send spam or messages to people who haven’t agreed to hear from you, to store information you have no right to hold, to harass anyone, to break the law, or to try to access another church’s data or disrupt the service. We may suspend accounts that do.</P>
       <H>Plans and payment</H>
-      <P>GatherHQ is currently free. When paid plans begin, we will tell you the price in advance; you can choose a plan or export your data and leave. Paid plans renew automatically until cancelled, and payments are processed by our payment provider.</P>
+      <UL items={[
+        <>Every church starts with a 30-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep making changes; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
+        'Paid plans are billed monthly or yearly in advance and renew automatically until cancelled. You can cancel at any time in Settings › Billing; your plan stays active until the end of the period you have paid for.',
+        'Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns. Prices may have sales tax or VAT added where it applies, and Paddle issues the receipts and invoices.',
+        <>Refunds are covered by our <Link to="/legal/refunds" className="link">Refund Policy</Link>.</>,
+        'If we change a price, we will tell you at least 30 days before it applies to your next renewal.',
+      ]} />
       <H>Availability</H>
       <P>We work hard to keep GatherHQ available and secure, but the service is provided “as is” and we can’t promise it will always be uninterrupted or error-free.</P>
       <H>Liability</H>
@@ -98,7 +108,7 @@ function Terms() {
 function Dpa() {
   return (
     <>
-      <P>This Data Processing Agreement (“DPA”) forms part of the GatherHQ Terms of Service between the church using GatherHQ (the “Controller”) and GatherHQ (the “Processor”). It reflects the requirements of Article 28 of the UK and EU General Data Protection Regulation and similar laws. A church owner can record acceptance in GatherHQ under Settings › Data & privacy.</P>
+      <P>This Data Processing Agreement (“DPA”) forms part of the GatherHQ Terms of Service between the church using GatherHQ (the “Controller”) and {COMPANY_FULL}, which operates GatherHQ (the “Processor”). It reflects the requirements of Article 28 of the UK and EU General Data Protection Regulation and similar laws. A church owner can record acceptance in GatherHQ under Settings › Data & privacy.</P>
       <H>1. What is processed</H>
       <UL items={[
         <><b>Subject matter and purpose:</b> providing GatherHQ, including recording attendance and events, managing follow-ups, and sending messages the Controller writes.</>,
@@ -134,9 +144,30 @@ function Dpa() {
   )
 }
 
+function Refunds() {
+  return (
+    <>
+      <P>We want every church to be glad it chose GatherHQ. If you’re not, you can have your money back.</P>
+      <H>30-day money-back guarantee</H>
+      <P>If you ask within 30 days of any payment, we will refund that payment in full, for any reason, with no questions asked. This applies to monthly and yearly plans.</P>
+      <H>How to ask for a refund</H>
+      <UL items={[
+        <>Email <Hello /> from the address on your account, or reply to the receipt you received from Paddle, our reseller.</>,
+        'Paddle processes the refund to the original payment method. How long it takes to appear depends on your bank or card provider.',
+        'After a refund your plan ends, and your church can still view and download everything it has recorded.',
+      ]} />
+      <H>Cancelling</H>
+      <P>You can cancel at any time in Settings › Billing. Your plan stays active until the end of the period you have paid for, and you won’t be charged again. Cancelling on its own doesn’t refund a payment; if you’d like one within 30 days of paying, just ask.</P>
+      <H>Contact</H>
+      <P>GatherHQ is operated by {COMPANY_FULL}. Questions about payments or refunds: <Hello />.</P>
+    </>
+  )
+}
+
 const DOCS = {
   privacy: ['Privacy Policy', Privacy],
   terms: ['Terms of Service', Terms],
+  refunds: ['Refund Policy', Refunds],
   dpa: ['Data Processing Agreement', Dpa],
 }
 
@@ -150,7 +181,7 @@ export default function Legal() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
           <Link to="/"><Logo size={26} /></Link>
           <nav className="flex gap-4 text-sm">
-            {Object.entries(DOCS).map(([k, [t]]) => <NavLink key={k} to={`/legal/${k}`} className={({ isActive }) => isActive ? 'font-medium text-brand-700' : 'text-mist-500 hover:text-ink'}>{t.replace(' of Service', '').replace('Data Processing Agreement', 'DPA')}</NavLink>)}
+            {Object.entries(DOCS).map(([k, [t]]) => <NavLink key={k} to={`/legal/${k}`} className={({ isActive }) => isActive ? 'font-medium text-brand-700' : 'text-mist-500 hover:text-ink'}>{t.replace(' of Service', '').replace(' Policy', '').replace('Data Processing Agreement', 'DPA').replace('Refund', 'Refunds')}</NavLink>)}
           </nav>
         </div>
       </header>
@@ -173,10 +204,11 @@ export function LegalFooter({ className = '' }) {
           <Link to="/pricing" className="hover:text-ink">Pricing</Link>
           <Link to="/legal/privacy" className="hover:text-ink">Privacy</Link>
           <Link to="/legal/terms" className="hover:text-ink">Terms</Link>
+          <Link to="/legal/refunds" className="hover:text-ink">Refunds</Link>
           <Link to="/legal/dpa" className="hover:text-ink">Data Processing Agreement</Link>
           <a href={`mailto:${CONTACT}`} className="hover:text-ink">{CONTACT}</a>
         </nav>
-        <span>© {new Date().getFullYear()} GatherHQ</span>
+        <span>© {new Date().getFullYear()} {COMPANY}</span>
       </div>
     </footer>
   )
