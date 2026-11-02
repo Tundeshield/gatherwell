@@ -25,6 +25,7 @@ async function orgRow(db, o, since) {
   return {
     id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, country: d.country || null,
     multi_branch: !!d.features?.branches || branches.data().count > 1, billing,
+    children: !!d.features?.children,
     mrr: billing.state === 'active' || billing.state === 'past_due' ? monthlyValue(billing.plan, billing.interval) : 0,
     created_at: plain(d.created_at), branches: branches.data().count, people: people.data().count, sessions: sessions.data().count, team: team.data().count,
     owner_email: owner.docs[0]?.data().user_email || null, owner_name: owner.docs[0]?.data().user_name || null,
@@ -166,6 +167,14 @@ export default function (r) {
       await ref.update(update)
       await log('platform.manual_plan', { plan, interval, until: until.toISOString() })
       return { id: o.id, plan, until: until.toISOString() }
+    }
+    // Switch children's church on or off for a church.
+    if (body.children !== undefined) {
+      const on = body.children === true
+      await ref.update({ features: { ...(d.features || {}), children: on }, updated_at: new Date() })
+      if (on) { const { seedRooms } = await import('./children.js'); await seedRooms(db, o.id) }
+      await log(on ? 'platform.children_on' : 'platform.children_off')
+      return { id: o.id, children: on }
     }
     // Switch multiple branches on or off for a church.
     if (body.multiBranch !== undefined) {

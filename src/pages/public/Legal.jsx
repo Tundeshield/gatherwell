@@ -54,6 +54,7 @@ function Privacy() {
       <P>Depending on where you live, you may have the right to access, correct, delete, restrict or object to the use of your personal information, to move it elsewhere, and to complain to a data protection authority (in the UK, the ICO). For church records, contact your church: GatherHQ gives churches the tools to download or delete a person’s information. For your GatherHQ account, or if your church is unable to help, contact us at <Mail />. Every email a church sends through GatherHQ includes an unsubscribe link.</P>
       <H>Children</H>
       <P>Churches may record information about children, for example in children’s ministry. Churches are responsible for obtaining any consent required from a parent or guardian. GatherHQ accounts are only for adults.</P>
+      <P>When a church uses children’s check-in, it may record a child’s name, date of birth, class, allergies and medical notes, the parents linked to them, who else may collect them, and when they were checked in and picked up. Allergies and medical notes are only visible to the church’s children’s team and administrators; allergies are printed on the child’s name label so teachers can see them. A parent can ask the church to see, correct or erase their child’s record at any time.</P>
       <H>Changes and contact</H>
       <P>We will post any changes here and update the date above, and tell account holders by email about significant changes. Questions: <Mail />.</P>
     </>

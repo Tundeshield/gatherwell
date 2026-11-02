@@ -153,6 +153,8 @@ export default function AdminChurch() {
             <h2 className="pt-1 text-[15px] font-semibold text-ink">Features</h2>
             <Toggle label="Multiple branches" hint={o.branches > 1 ? `${o.branches} branches: ${o.branch_list.map(x => x.name).join(', ')}` : 'Lets them add branches and campuses.'}
               checked={o.multi_branch} onChange={on => ask({ title: on ? 'Turn on multiple branches?' : 'Turn off multiple branches?', message: on ? 'They can add branches and campuses, give people branch access, and see reports by branch.' : 'They won’t be able to add new branches. Branches they already have keep working.', confirmLabel: on ? 'Turn on' : 'Turn off' }, { multiBranch: on }, on ? 'Multiple branches on' : 'Multiple branches off')} />
+            <Toggle label="Children’s church" hint="Check-in with labels and pickup codes. Churches can also switch this on themselves."
+              checked={!!o.children} onChange={on => ask({ title: on ? 'Turn on children’s church?' : 'Turn off children’s church?', message: on ? 'Adds a Children page to their menu with check-in, classes and pickup.' : 'Their Children page disappears. Nothing is deleted.', confirmLabel: on ? 'Turn on' : 'Turn off' }, { children: on }, on ? 'Children’s church on' : 'Children’s church off')} />
           </section>
 
           <section className="panel px-5 py-4">

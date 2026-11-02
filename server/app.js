@@ -15,13 +15,16 @@ import publicRoutes from './routes/public.js'
 import tagRoutes from './routes/tags.js'
 import automationRoutes from './routes/automation.js'
 import billingRoutes from './routes/billing.js'
+import childrenRoutes from './routes/children.js'
 import { isExpired } from './billing.js'
 
 // What an account whose trial has ended may still do: pay, manage its account, and erase people.
-const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/]
+const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/,
+  // Children must always be checked in safely and handed back, even after a trial ends.
+  /^\/children\/(lookup|register|checkin|pickup|pickup\/lookup)$/, /^\/children\/rooms\/[^/]+\/adults$/]
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes]) {
   register(router)
 }
 

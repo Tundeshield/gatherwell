@@ -1,6 +1,7 @@
 // The Monday Pastor's Brief: last week at a glance, with names, emailed to owners and admins.
 import { fb, col, plain, toDate, ms } from './firebase.js'
 import { startOfDayInTz } from './util.js'
+import { dayKey } from './routes/children.js'
 
 const DAY = 86400e3
 const name = (p) => [p.first_name, p.last_name].filter(Boolean).join(' ')
@@ -48,6 +49,18 @@ export async function briefData(org, now = new Date()) {
 
   const events = eventsQs.docs.map(d => plain(d.data())).filter(e => e.status === 'published')
 
+  // Children's church (only when the church uses it). Counted apart from adult attendance.
+  let children = null
+  if (org.features?.children) {
+    const [kq, cq] = await Promise.all([
+      C('kidsCheckins').where('day', '>=', dayKey(tz, from)).where('day', '<', dayKey(tz, to)).get(),
+      C('children').get(),
+    ])
+    const ks = kq.docs.map(d => d.data())
+    const missing = cq.docs.map(d => d.data()).filter(c => c.status !== 'archived' && c.last_checkin_at && now - ms(c.last_checkin_at) >= 21 * DAY && now - ms(c.last_checkin_at) < 120 * DAY)
+    children = { checkins: ks.length, children: new Set(ks.map(k => k.child_id)).size, firstTime: ks.filter(k => k.first_time).length, missing: missing.map(c => [c.first_name, c.last_name].filter(Boolean).join(' ')) }
+  }
+
   return {
     from, to, tz, total, prevAvg: Math.round(prevAvg), change: pct(total, prevAvg), sessions: sessions.length,
     firstTimers: firstTimers.length, firstTimeVisits: sessions.reduce((a, g) => a + (g.first_timers || 0), 0),
@@ -58,7 +71,7 @@ export async function briefData(org, now = new Date()) {
       birthdays: birthdays.map(p => `${name(p)}, ${new Date(`2000-${String(p.birthday).slice(5, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}`),
       events: events.map(e => `${e.name}, ${new Date(e.starts_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz })}${e.capacity ? ` (${e.registered || 0}/${e.capacity} registered)` : ` (${e.registered || 0} registered)`}`),
     },
-    openFollowups: open.length, overdueFollowups: overdue.length,
+    openFollowups: open.length, overdueFollowups: overdue.length, children,
   }
 }
 
@@ -85,6 +98,12 @@ export function briefEmail(org, d, appUrl) {
   blocks.push({ type: 'divider' }, { type: 'heading', text: 'Follow-ups' })
   blocks.push({ type: 'text', text: d.openFollowups === 0 ? 'No open follow-ups. Well done!' :
     `${fmt(d.openFollowups)} open, ${fmt(d.overdueFollowups)} overdue.${d.lists.overdue.length ? `\n\nOverdue:\n${list(d.lists.overdue.slice(0, 8), d.lists.overdue.length - 8)}` : ''}` })
+  if (d.children) {
+    const c = d.children
+    blocks.push({ type: 'divider' }, { type: 'heading', text: 'Children’s church' })
+    blocks.push({ type: 'text', text: c.checkins === 0 ? 'No children were checked in last week.'
+      : `${fmt(c.children)} ${c.children === 1 ? 'child' : 'children'} came last week${c.firstTime ? `, ${c.firstTime} for the first time` : ''}.${c.missing.length ? `\n\nHaven’t come in 3 weeks:\n${list(c.missing.slice(0, 10), c.missing.length - 10)}` : ''}` })
+  }
   if (d.lists.birthdays.length) section('Birthdays this week', d.lists.birthdays, '')
   if (d.lists.events.length) section('Coming up', d.lists.events, '')
   blocks.push({ type: 'button', label: 'Open GatherHQ', url: `${appUrl}/app` })

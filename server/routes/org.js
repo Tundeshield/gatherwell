@@ -5,13 +5,14 @@ import { toCsv, csvResponse } from '../domain.js'
 import { requireCap, assertBranch, orgBranches, ROLE_LABELS, membershipId, branchesEnabled } from '../access.js'
 import { randomToken, sha256, audit, sanitizeForm } from '../util.js'
 
-const INVITE_ROLES = ['admin', 'lead', 'usher', 'viewer']
+const INVITE_ROLES = ['admin', 'lead', 'usher', 'viewer', 'kids']
 
 function assignableRoles(ctx) {
   const m = ctx.membership
-  if (m.role === 'owner') return ['owner', 'admin', 'lead', 'usher', 'viewer']
-  if (m.role === 'admin' && !m.branch_ids) return ['admin', 'lead', 'usher', 'viewer']
-  if (m.role === 'admin') return ['lead', 'usher', 'viewer']
+  const kids = ctx.org?.features?.children ? ['kids'] : []
+  if (m.role === 'owner') return ['owner', 'admin', 'lead', 'usher', 'viewer', ...kids]
+  if (m.role === 'admin' && !m.branch_ids) return ['admin', 'lead', 'usher', 'viewer', ...kids]
+  if (m.role === 'admin') return ['lead', 'usher', 'viewer', ...kids]
   return []
 }
 

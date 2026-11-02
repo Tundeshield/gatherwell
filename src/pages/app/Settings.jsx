@@ -12,6 +12,7 @@ import { TagChip, TAG_STYLES, TAG_COLORS, useTags, loadTags } from '../../compon
 import EmailBlocksEditor, { withKeys, stripKeys } from '../../components/EmailBlocksEditor'
 import { JOURNEY_STEPS, DELAY_OPTIONS, WHATSAPP_KINDS } from '../../../shared/automation.js'
 import { PLANS } from '../../../shared/plans.js'
+import ChildrenSettings from '../../components/children/ChildrenSettings'
 import PlanCards, { IntervalToggle } from '../../components/PlanCards'
 import { prepareImage } from '../../lib/image'
 
@@ -21,8 +22,9 @@ const ROLE_HELP = {
   lead: 'Runs attendance and events, edits people, handles follow-ups.',
   usher: 'Checks people in at sessions and events. No access to the people directory.',
   viewer: 'Sees the overview and reports. Read-only.',
+  kids: 'Children’s church only: check-in, classes and pickup, including children’s allergies and medical notes.',
 }
-const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', lead: 'Attendance lead', usher: 'Usher', viewer: 'Viewer' }
+const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', lead: 'Attendance lead', usher: 'Usher', viewer: 'Viewer', kids: 'Children’s team' }
 
 function ChurchTab() {
   const { me, refresh } = useSession()
@@ -841,7 +843,7 @@ function BillingTab() {
 }
 
 export default function Settings() {
-  const { can, branchesEnabled } = useSession()
+  const { me, can, branchesEnabled } = useSession()
   const [params, setParams] = useSearchParams()
   const tabs = [
     can('org.manage') && ['church', 'Church'],
@@ -852,13 +854,14 @@ export default function Settings() {
     can('people.edit') && ['tags', 'Tags'],
     can('units.manage') && ['units', 'Service units'],
     can('attendance.manage') && ['templates', 'Templates'],
+    (can('org.manage') || (me.org.childrenEnabled && can('children.manage'))) && ['children', 'Children'],
     can('org.manage') && ['billing', 'Billing'],
     can('org.manage') && ['privacy', 'Data & privacy'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, billing: BillingTab, units: UnitsTab, templates: TemplatesTab, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, billing: BillingTab, units: UnitsTab, templates: TemplatesTab, children: ChildrenSettings, account: AccountTab, activity: ActivityTab }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

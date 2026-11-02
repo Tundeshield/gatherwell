@@ -30,6 +30,10 @@ const MessageEditor = lazyPage(() => import('./pages/app/MessageEditor'))
 const WhatsAppSend = lazyPage(() => import('./pages/app/WhatsAppSend'))
 const Settings = lazyPage(() => import('./pages/app/Settings'))
 const AdminApp = lazyPage(() => import('./pages/admin/AdminApp'))
+const Children = lazyPage(() => import('./pages/app/Children'))
+const ChildrenCheckin = lazyPage(() => import('./pages/app/ChildrenCheckin'))
+const ChildrenRoom = lazyPage(() => import('./pages/app/ChildrenRoom'))
+const ChildrenPickup = lazyPage(() => import('./pages/app/ChildrenPickup'))
 import { isAdminHost } from './lib/host'
 
 function RequireAuth({ children, cap, platform = false }) {
@@ -41,6 +45,20 @@ function RequireAuth({ children, cap, platform = false }) {
   if (!me.org) return <Navigate to="/welcome" replace />
   if (cap && !can(cap)) return <Navigate to="/app" replace />
   return children
+}
+
+// Children's church pages exist only when the church has switched it on.
+function RequireChildren({ children, cap = 'children.view' }) {
+  const { me, can } = useSession()
+  if (!me?.org?.childrenEnabled || !can(cap)) return <Navigate to="/app" replace />
+  return children
+}
+
+// The children's team only uses children's church, so they land there.
+function Home() {
+  const { me, can } = useSession()
+  if (me.org?.childrenEnabled && can('children.view') && !can('reports.view') && !can('attendance.view')) return <Navigate to="/app/children" replace />
+  return <Overview />
 }
 
 function AdminGuest({ children }) {
@@ -86,8 +104,12 @@ export default function App() {
               <Route path="/platform" element={<Navigate to="/admin" replace />} />
               <Route path="/admin/*" element={<AdminApp />} />
 
+              <Route path="/app/children/checkin" element={<RequireAuth><RequireChildren cap="children.checkin"><ChildrenCheckin /></RequireChildren></RequireAuth>} />
+              <Route path="/app/children/pickup" element={<RequireAuth><RequireChildren cap="children.checkin"><ChildrenPickup /></RequireChildren></RequireAuth>} />
+              <Route path="/app/children/rooms/:id" element={<RequireAuth><RequireChildren><ChildrenRoom /></RequireChildren></RequireAuth>} />
               <Route path="/app" element={<RequireAuth><AppShell /></RequireAuth>}>
-                <Route index element={<Overview />} />
+                <Route index element={<Home />} />
+                <Route path="children" element={<RequireChildren><Children /></RequireChildren>} />
                 <Route path="people" element={<RequireAuth cap="people.view"><People /></RequireAuth>} />
                 <Route path="people/:id" element={<RequireAuth cap="people.view"><PersonDetail /></RequireAuth>} />
                 <Route path="attendance" element={<RequireAuth cap="attendance.view"><Attendance /></RequireAuth>} />

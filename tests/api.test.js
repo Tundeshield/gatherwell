@@ -777,11 +777,14 @@ test('automations: welcome journey emails, Monday brief timing, opt-outs, WhatsA
     assert.match(sent.at(-1).subject, /^\[Test\]/)
 
     // Monday brief: only on Monday from 7am Lagos time, once a week
-    let monday = new Date(Date.now() + 3600e3)
+    // Next week's Monday, so the test passes whatever day it runs (a run on a Monday evening has already sent this week's)
+    let monday = new Date(Date.now() + 2 * 86400e3)
     const local = (d) => new Date(d.getTime() + tzOffsetMs('Africa/Lagos', d))
     while (!(local(monday).getUTCDay() === 1 && local(monday).getUTCHours() === 7)) monday = new Date(monday.getTime() + 3600e3)
     monday = new Date(monday.getTime() + 30 * 60e3)
-    const toJoy = () => sent.filter(e => e.to[0] === 'joy@journey.test' && /Monday brief/.test(e.subject))
+    // Earlier steps run the scheduler at the real time, which on a Monday morning sends this week's brief: count from here.
+    const before = sent.filter(e => e.to[0] === 'joy@journey.test' && /Monday brief/.test(e.subject)).length
+    const toJoy = () => sent.filter(e => e.to[0] === 'joy@journey.test' && /Monday brief/.test(e.subject)).slice(before)
     await runScheduled({ now: new Date(monday.getTime() - 2 * 3600e3) })
     assert.equal(toJoy().length, 0, 'not before 7am')
     await runScheduled({ now: monday })
@@ -1027,4 +1030,95 @@ test('admin console: revenue, church controls, users and support', async () => {
     globalThis.fetch = realFetch
     delete process.env.PAYSTACK_SECRET_KEY
   }
+})
+
+test('children’s church: off by default, family check-in, matching codes, pickup, privacy', async () => {
+  const c = client()
+  await signup(c, { orgName: 'Little Lambs Church', name: 'Grace Owner', email: 'owner@lambs.test', password: 'password123' })
+  let me = (await c.get('/me')).data
+  const branchId = me.branches[0].id
+  assert.equal(me.org.childrenEnabled, false, 'off by default')
+  assert.equal((await c.get('/children/rooms')).status, 403)
+  assert.ok(!(await c.get('/team')).data.assignableRoles.includes('kids'), 'no children’s team role until switched on')
+
+  let r = await c.patch('/children/settings', { enabled: true })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  r = await c.get('/children/rooms')
+  assert.equal(r.data.rooms.length, 4)
+  const toddlers = r.data.rooms.find(x => x.name.startsWith('Toddlers'))
+
+  const yearsAgo = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); d.setDate(d.getDate() - 10); return d.toISOString().slice(0, 10) }
+  r = await c.post('/children/register', { parent: { firstName: 'Funmi', lastName: 'Adeyemi', phone: '08035554417' }, children: [
+    { firstName: 'Ife', lastName: 'Adeyemi', birthDate: yearsAgo(3), allergies: 'Peanuts' }, { firstName: 'Tolu', lastName: 'Adeyemi', birthDate: yearsAgo(6) },
+  ] })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.equal(r.data.children.length, 2)
+  const parentId = r.data.guardian.id
+  const ife = r.data.children.find(x => x.firstName === 'Ife')
+  assert.equal(ife.room.id, toddlers.id)
+
+  // Phone lookup finds the family; children aren't in the people directory
+  r = await c.post('/children/lookup', { phone: '0803 555 4417' })
+  assert.equal(r.data.found, true); assert.equal(r.data.children.length, 2)
+  const kidIds = r.data.children.map(x => x.id)
+  r = await c.get('/people')
+  assert.ok(!r.data.rows.some(p => p.first_name === 'Ife'), 'children stay out of the people list')
+
+  // Check-in: one code for the family, alerts carried to the label, first-time follow-up for the parent
+  r = await c.post('/children/checkin', { guardianId: parentId, childIds: kidIds })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const code = r.data.code
+  assert.match(code, /^[A-Z0-9]{3}$/)
+  assert.ok(r.data.checkins.every(k => k.code === code))
+  assert.equal(r.data.checkins.find(k => k.firstName === 'Ife').alert, 'Peanuts')
+  r = await c.get('/followups')
+  assert.ok(JSON.stringify(r.data).includes('children’s church for the first time'), JSON.stringify(r.data).slice(0, 300))
+  r = await c.post('/children/checkin', { guardianId: parentId, childIds: [ife.id] })
+  assert.equal(r.data.checkins[0].alreadyCheckedIn, true)
+
+  // Another parent can't check in children that aren't theirs
+  const other = await c.post('/people', { firstName: 'Stranger', phone: '08030000999', branchId })
+  assert.equal((await c.post('/children/checkin', { guardianId: other.data.id || other.data.person?.id, childIds: [ife.id] })).status, 400)
+
+  r = await c.get('/children/today')
+  assert.equal(r.data.totals.here, 2); assert.equal(r.data.totals.firstTime, 2)
+  assert.equal(r.data.rooms.find(x => x.id === toddlers.id).here, 1)
+  r = await c.post(`/children/rooms/${toddlers.id}/adults`, { adults: 1 })
+  assert.equal(r.status, 200)
+  r = await c.get(`/children/rooms/${toddlers.id}/today`)
+  assert.equal(r.data.room.adults, 1); assert.equal(r.data.checkins.length, 1)
+
+  // Adult attendance numbers are untouched
+  r = await c.get('/me'); assert.equal(r.status, 200)
+
+  // Pickup: the code must match
+  r = await c.post('/children/pickup/lookup', { code: code === 'AAA' ? 'CCC' : 'AAA' })
+  assert.equal(r.data.found, false)
+  r = await c.post('/children/pickup/lookup', { code: code.toLowerCase() })
+  assert.equal(r.data.found, true); assert.equal(r.data.checkins.length, 2)
+  assert.ok(r.data.checkins[0].allowed.includes('Funmi Adeyemi'))
+  const ifeCk = r.data.checkins.find(k => k.firstName === 'Ife')
+  assert.equal((await c.post('/children/pickup', { checkinIds: [ifeCk.id], code: 'XXX' })).status, 409, 'wrong code refused')
+  r = await c.post('/children/pickup', { checkinIds: [ifeCk.id], code })
+  assert.equal(r.status, 200)
+  r = await c.get('/children/today')
+  assert.equal(r.data.totals.here, 1); assert.equal(r.data.totals.pickedUp, 1)
+
+  // Family view and the children's team role
+  r = await c.get(`/children/family/${parentId}`)
+  assert.equal(r.data.children.length, 2); assert.ok(r.data.children[0].days.length >= 1)
+  assert.ok((await c.get('/team')).data.assignableRoles.includes('kids'))
+
+  // Erasing the parent unlinks them from the children and scrubs pickup records
+  assert.equal((await c.del(`/people/${parentId}`)).status, 200)
+  r = await c.get('/children')
+  assert.ok(r.data.rows.every(k => k.guardians.length === 0))
+  r = await c.get('/children/today')
+  assert.ok(r.data.latest.every(k => k.guardianName === null))
+  assert.equal((await c.del(`/children/${ife.id}`)).status, 200)
+  assert.equal((await c.get('/children')).data.rows.length, 1)
+
+  // Switching off hides it again without deleting anything
+  await c.patch('/children/settings', { enabled: false })
+  assert.equal((await c.get('/children')).status, 403)
 })

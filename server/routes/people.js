@@ -362,6 +362,10 @@ export default function (r) {
     for (const rg of (await C('registrations').where('person_id', '==', p.id).get()).docs) ops.push(b => b.update(rg.ref, { person_id: null }))
     // Any welcome-journey emails still waiting to go out.
     for (const step of ['welcome', 'second', 'third']) ops.push(b => b.delete(db.collection('jobs').doc(`${ctx.org.id}_${p.id}_${step}`)))
+    // Children's church: unlink them as a parent and remove their name and number from pickup records.
+    const [kidsQs, kidCks] = await Promise.all([C('children').where('guardian_ids', 'array-contains', p.id).get(), C('kidsCheckins').where('guardian_id', '==', p.id).get()])
+    for (const k of kidsQs.docs) ops.push(b => b.update(k.ref, { guardian_ids: (k.data().guardian_ids || []).filter(x => x !== p.id) }))
+    for (const k of kidCks.docs) ops.push(b => b.update(k.ref, { guardian_id: null, guardian_name: null, guardian_phone: null }))
     if (p.phone_norm) ops.push(b => b.delete(C('phones').doc(p.phone_norm)))
     ops.push(b => b.delete(ref))
     for (let i = 0; i < ops.length; i += 400) { const b = db.batch(); ops.slice(i, i + 400).forEach(op => op(b)); await b.commit() }

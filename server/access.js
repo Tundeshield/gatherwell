@@ -6,21 +6,25 @@ import { parseCookies, unauthorized, forbidden, notFound, isUuid } from './http.
 export const SESSION_COOKIE = 'gw_session'
 export const SESSION_DAYS = 14 // Firebase session cookies last at most 14 days
 
-export const ROLES = ['owner', 'admin', 'lead', 'usher', 'viewer']
-export const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', lead: 'Attendance lead', usher: 'Usher', viewer: 'Viewer' }
+export const ROLES = ['owner', 'admin', 'lead', 'usher', 'viewer', 'kids']
+export const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', lead: 'Attendance lead', usher: 'Usher', viewer: 'Viewer', kids: 'Children’s team' }
 
 // Capabilities by role. 'export' additionally requires membership.can_export unless owner.
 const CAPS = {
   owner: ['org.manage', 'branches.manage', 'branches.create', 'team.manage', 'people.view', 'people.edit', 'people.delete',
     'attendance.view', 'attendance.manage', 'attendance.record', 'events.view', 'events.manage', 'events.checkin',
-    'followups.view', 'followups.manage', 'reports.view', 'messages.manage', 'units.manage', 'export'],
+    'followups.view', 'followups.manage', 'reports.view', 'messages.manage', 'units.manage', 'export',
+    'children.view', 'children.checkin', 'children.edit', 'children.manage'],
   admin: ['branches.manage', 'team.manage', 'people.view', 'people.edit', 'people.delete',
     'attendance.view', 'attendance.manage', 'attendance.record', 'events.view', 'events.manage', 'events.checkin',
-    'followups.view', 'followups.manage', 'reports.view', 'messages.manage', 'units.manage', 'export'],
+    'followups.view', 'followups.manage', 'reports.view', 'messages.manage', 'units.manage', 'export',
+    'children.view', 'children.checkin', 'children.edit', 'children.manage'],
   lead: ['people.view', 'people.edit', 'attendance.view', 'attendance.manage', 'attendance.record',
     'events.view', 'events.manage', 'events.checkin', 'followups.view', 'followups.manage', 'reports.view', 'export'],
   usher: ['attendance.view', 'attendance.record', 'events.view', 'events.checkin'],
   viewer: ['reports.view', 'attendance.view', 'events.view'],
+  // Children's church team: check-in, classrooms, pickup and children's records (including allergies). Nothing else.
+  kids: ['children.view', 'children.checkin', 'children.edit'],
 }
 
 export function capsFor(m) {

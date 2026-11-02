@@ -65,7 +65,7 @@ export async function mePayload(ctx) {
     user: ctx.user,
     org: o && {
       id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
-      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), billing: { ...billingStatus(o), ready: billingEnabled() }, dpaAcceptedAt: plain(o.dpa_accepted_at) || null, dpaAcceptedBy: o.dpa_accepted_by || null, branchesEnabled: branchesEnabled(o, allBranches.length), settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
+      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), billing: { ...billingStatus(o), ready: billingEnabled() }, dpaAcceptedAt: plain(o.dpa_accepted_at) || null, dpaAcceptedBy: o.dpa_accepted_by || null, branchesEnabled: branchesEnabled(o, allBranches.length), childrenEnabled: !!o.features?.children, kidsLabels: o.settings?.kidsLabels || 'print', settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
     membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,

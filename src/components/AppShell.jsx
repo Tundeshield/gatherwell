@@ -1,7 +1,7 @@
 import { adminUrl } from '../lib/host'
 import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, CalendarCheck, HeartHandshake, CalendarDays, MessageSquare, BarChart3, Settings, LogOut, Menu, X, ChevronsUpDown, Check, Building2, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Users, CalendarCheck, HeartHandshake, CalendarDays, MessageSquare, BarChart3, Settings, LogOut, Menu, X, ChevronsUpDown, Check, Building2, ShieldCheck, Baby } from 'lucide-react'
 import { useSession } from '../lib/session'
 import { PageLoader } from './ui'
 import Logo from './Logo'
@@ -11,6 +11,7 @@ const NAV = [
   { to: '/app', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/app/people', label: 'People', icon: Users, cap: 'people.view' },
   { to: '/app/attendance', label: 'Attendance', icon: CalendarCheck, cap: 'attendance.view' },
+  { to: '/app/children', label: 'Children', icon: Baby, cap: 'children.view', children: true },
   { to: '/app/follow-ups', label: 'Follow-ups', icon: HeartHandshake, cap: 'followups.view' },
   { to: '/app/events', label: 'Events', icon: CalendarDays, cap: 'events.view' },
   { to: '/app/messages', label: 'Messages', icon: MessageSquare, cap: 'messages.manage' },
@@ -93,7 +94,7 @@ function OrgSwitcher() {
 function SidebarContent({ onNavigate }) {
   const { me, can, logout } = useSession()
   const navigate = useNavigate()
-  const items = NAV.filter(i => !i.cap || can(i.cap))
+  const items = NAV.filter(i => (!i.cap || can(i.cap)) && (!i.children || me.org?.childrenEnabled) && !(i.end && !can('reports.view') && !can('attendance.view') && can('children.view')))
   const link = ({ isActive }) =>
     `flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${isActive ? 'bg-brand-50 text-brand-700' : 'text-mist-600 hover:bg-mist-50 hover:text-ink'}`
   return (
