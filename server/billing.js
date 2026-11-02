@@ -35,6 +35,21 @@ async function billingDoc() {
   return { ref, prices: d.paddle?.[env()]?.prices || {}, products: d.paddle?.[env()]?.products || {}, all: d }
 }
 
+// Paddle's checkout buttons and highlights in GatherHQ forest green (set once per environment).
+export const CHECKOUT_COLOR = '#244E43'
+async function ensureCheckoutColor() {
+  const { ref, all } = await billingDoc()
+  const cur = all.paddle?.[env()] || {}
+  if (cur.checkout_color === CHECKOUT_COLOR) return
+  try {
+    await paddle('PATCH', '/settings/checkout-styles-overlay', { primary_checkout_color: CHECKOUT_COLOR })
+    await ref.set({ paddle: { ...(all.paddle || {}), [env()]: { ...cur, checkout_color: CHECKOUT_COLOR } } }, { merge: true })
+  } catch (e) {
+    // Never block a payment over styling (for example, an API key without checkout settings permission).
+    console.error('Could not set Paddle checkout colour', e.message)
+  }
+}
+
 // Finds or creates the Paddle product and price for one of our plans and intervals.
 export async function priceId(plan, interval) {
   const { ref, prices, products, all } = await billingDoc()
@@ -74,6 +89,7 @@ async function planFromPrice(id) {
  */
 export async function startCheckout({ org, user, plan, interval }) {
   const id = await priceId(plan, interval)
+  await ensureCheckoutColor()
   const b = org.billing || {}
   const st = billingStatus(org)
   if (b.subscription_id && b.provider === 'paddle' && (st.state === 'active' || st.state === 'past_due')) {

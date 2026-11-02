@@ -914,6 +914,7 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
     if (path === '/transactions/txn_other') return ok({ id: 'txn_other', status: 'completed', custom_data: { org_id: 'someone-else' } })
     if (path === '/subscriptions/sub_1' && init.method === 'PATCH') { sub.items = [{ price: { id: body.items[0].price_id } }]; return ok(sub) }
     if (path === '/subscriptions/sub_1') return ok(sub)
+    if (path === '/settings/checkout-styles-overlay') return ok({ primary_checkout_color: body.primary_checkout_color })
     if (path === '/customers/ctm_1/portal-sessions') return ok({ urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_1' } } }, 201)
     return new Response(JSON.stringify({ error: { detail: 'not mocked' } }), { status: 404 })
   }
@@ -941,6 +942,8 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
     assert.equal(calls.find(x => x[1] === '/products')[2].tax_category, 'saas')
     await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
     assert.equal(calls.filter(x => x[1] === '/prices').length, 1, 'price reused')
+    assert.equal(calls.filter(x => x[1] === '/settings/checkout-styles-overlay').length, 1, 'checkout colour set once')
+    assert.equal(calls.find(x => x[1] === '/settings/checkout-styles-overlay')[2].primary_checkout_color, '#244E43')
 
     // After paying: confirm the transaction (only this church's)
     assert.equal((await c.post('/billing/confirm', { transactionId: 'txn_other' })).data.ok, false)
