@@ -1032,18 +1032,14 @@ test('admin console: revenue, church controls, users and support', async () => {
   }
 })
 
-test('children’s church: off by default, family check-in, matching codes, pickup, privacy', async () => {
+test('children’s church: on by default, family check-in, matching codes, pickup, privacy', async () => {
   const c = client()
   await signup(c, { orgName: 'Little Lambs Church', name: 'Grace Owner', email: 'owner@lambs.test', password: 'password123' })
   let me = (await c.get('/me')).data
   const branchId = me.branches[0].id
-  assert.equal(me.org.childrenEnabled, false, 'off by default')
-  assert.equal((await c.get('/children/rooms')).status, 403)
-  assert.ok(!(await c.get('/team')).data.assignableRoles.includes('kids'), 'no children’s team role until switched on')
-
-  let r = await c.patch('/children/settings', { enabled: true })
+  assert.equal(me.org.childrenEnabled, true, 'on by default')
+  let r = await c.get('/children/rooms')
   assert.equal(r.status, 200, JSON.stringify(r.data))
-  r = await c.get('/children/rooms')
   assert.equal(r.data.rooms.length, 4)
   const toddlers = r.data.rooms.find(x => x.name.startsWith('Toddlers'))
 
@@ -1118,7 +1114,11 @@ test('children’s church: off by default, family check-in, matching codes, pick
   assert.equal((await c.del(`/children/${ife.id}`)).status, 200)
   assert.equal((await c.get('/children')).data.rows.length, 1)
 
-  // Switching off hides it again without deleting anything
+  // Switching off hides it without deleting anything; switching back on brings it all back
   await c.patch('/children/settings', { enabled: false })
   assert.equal((await c.get('/children')).status, 403)
+  assert.equal((await c.get('/me')).data.org.childrenEnabled, false)
+  assert.ok(!(await c.get('/team')).data.assignableRoles.includes('kids'))
+  await c.patch('/children/settings', { enabled: true })
+  assert.equal((await c.get('/children')).data.rows.length, 1)
 })

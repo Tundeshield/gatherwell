@@ -25,7 +25,7 @@ async function orgRow(db, o, since) {
   return {
     id: o.id, name: d.name, slug: d.slug, status: d.status, plan: d.plan, country: d.country || null,
     multi_branch: !!d.features?.branches || branches.data().count > 1, billing,
-    children: !!d.features?.children,
+    children: d.features?.children !== false,
     mrr: billing.state === 'active' || billing.state === 'past_due' ? monthlyValue(billing.plan, billing.interval) : 0,
     created_at: plain(d.created_at), branches: branches.data().count, people: people.data().count, sessions: sessions.data().count, team: team.data().count,
     owner_email: owner.docs[0]?.data().user_email || null, owner_name: owner.docs[0]?.data().user_name || null,

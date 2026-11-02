@@ -54,7 +54,7 @@ export default function ChildrenSettings() {
         <h2 className="text-[16px] font-semibold text-ink">Children’s church</h2>
         <p className="mt-1 text-sm text-mist-500">Safe check-in for children with name labels and matching pickup codes, a live view of every class, and pickup checks. Children are counted separately from adult attendance and aren’t added to your people list.</p>
         <div className="mt-2 border-t border-mist-100 pt-2">
-          <Toggle label="Use children’s church" hint={can('org.manage') ? 'Adds a Children page to the menu. Nothing else in GatherHQ changes.' : 'Only the church owner can change this.'} checked={on} onChange={v => can('org.manage') && toggle(v)} />
+          <Toggle label="Use children’s church" hint={can('org.manage') ? 'On for every church. Switch it off to hide the Children page; nothing is deleted.' : 'Only the church owner can change this.'} checked={on} onChange={v => can('org.manage') && toggle(v)} />
         </div>
       </section>
 

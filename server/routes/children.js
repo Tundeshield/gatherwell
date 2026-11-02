@@ -1,5 +1,5 @@
 // Children's church: classes (rooms), children linked to their parents, safe check-in with
-// matching pickup codes, and pickup. Switched off unless the church turns it on (org.features.children).
+// matching pickup codes, and pickup. On for every church unless it switches it off (org.features.children === false).
 // Children are kept apart from the people directory and from adult attendance numbers.
 // Allergies and medical notes are only returned to people with children.view (the children's team and admins).
 import crypto from 'node:crypto'
@@ -11,7 +11,7 @@ import { createPerson } from './people.js'
 import { createAutoFollowup } from '../domain.js'
 
 const DAY = 86400e3
-export const childrenEnabled = (org) => !!org?.features?.children
+export const childrenEnabled = (org) => org?.features?.children !== false
 
 export const DEFAULT_ROOMS = [
   { name: 'Crèche (0–1)', min_age: 0, max_age: 1, capacity: 8, ratio: 3 },
@@ -57,7 +57,9 @@ function requireOn(ctx) {
 }
 
 async function loadRooms(db, orgId) {
-  const qs = await col(db, orgId, 'kidsRooms').get()
+  let qs = await col(db, orgId, 'kidsRooms').get()
+  // Churches get the standard classes the first time children's church is used.
+  if (qs.empty) { await seedRooms(db, orgId); qs = await col(db, orgId, 'kidsRooms').get() }
   return qs.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.min_age - b.min_age)
 }
 

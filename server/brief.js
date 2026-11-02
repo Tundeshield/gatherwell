@@ -51,14 +51,15 @@ export async function briefData(org, now = new Date()) {
 
   // Children's church (only when the church uses it). Counted apart from adult attendance.
   let children = null
-  if (org.features?.children) {
+  if (org.features?.children !== false) {
     const [kq, cq] = await Promise.all([
       C('kidsCheckins').where('day', '>=', dayKey(tz, from)).where('day', '<', dayKey(tz, to)).get(),
       C('children').get(),
     ])
     const ks = kq.docs.map(d => d.data())
+    const used = !cq.empty
     const missing = cq.docs.map(d => d.data()).filter(c => c.status !== 'archived' && c.last_checkin_at && now - ms(c.last_checkin_at) >= 21 * DAY && now - ms(c.last_checkin_at) < 120 * DAY)
-    children = { checkins: ks.length, children: new Set(ks.map(k => k.child_id)).size, firstTime: ks.filter(k => k.first_time).length, missing: missing.map(c => [c.first_name, c.last_name].filter(Boolean).join(' ')) }
+    if (used) children = { checkins: ks.length, children: new Set(ks.map(k => k.child_id)).size, firstTime: ks.filter(k => k.first_time).length, missing: missing.map(c => [c.first_name, c.last_name].filter(Boolean).join(' ')) }
   }
 
   return {

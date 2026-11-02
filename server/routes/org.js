@@ -9,7 +9,7 @@ const INVITE_ROLES = ['admin', 'lead', 'usher', 'viewer', 'kids']
 
 function assignableRoles(ctx) {
   const m = ctx.membership
-  const kids = ctx.org?.features?.children ? ['kids'] : []
+  const kids = ctx.org?.features?.children !== false ? ['kids'] : []
   if (m.role === 'owner') return ['owner', 'admin', 'lead', 'usher', 'viewer', ...kids]
   if (m.role === 'admin' && !m.branch_ids) return ['admin', 'lead', 'usher', 'viewer', ...kids]
   if (m.role === 'admin') return ['lead', 'usher', 'viewer', ...kids]
