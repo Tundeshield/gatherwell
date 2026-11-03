@@ -8,12 +8,12 @@ export const PLANS = {
   church: {
     key: 'church', name: 'Single church', monthly: 19, yearly: 190,
     blurb: 'Everything one congregation needs to welcome visitors and care for every member.',
-    features: ['Unlimited people and team members', 'QR check-in and attendance reports', 'Visitor follow-ups and welcome emails', 'Monday Pastor’s Brief', 'Branded email and WhatsApp messages', 'Events with registration and tickets'],
+    features: ['Unlimited people and team members', 'QR check-in and attendance reports', 'Children’s check-in with name labels and pickup codes', 'Visitor follow-ups and welcome emails', 'Monday Pastor’s Brief', 'Branded emails and one-tap WhatsApp', 'Events with registration and tickets'],
   },
   network: {
     key: 'network', name: 'Church network', monthly: 59, yearly: 590,
     blurb: 'For churches with several branches or campuses, led as one.',
-    features: ['Everything in Single church', 'Unlimited branches and campuses', 'Branch-level team access', 'Reports across and by branch', 'Priority support'],
+    features: ['Everything in Single church', 'Unlimited branches and campuses', 'Branch-level team access', 'Reports across and by branch', 'Setup help for every branch'],
   },
 }
 export const INTERVALS = { monthly: 'Monthly', yearly: 'Yearly' }

@@ -1,7 +1,7 @@
 {
   "name": "GatherHQ",
   "short_name": "GatherHQ",
-  "description": "A better way to bring church life together.",
+  "description": "Know who came, welcome every visitor, follow up on WhatsApp and email, and check children in safely.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F6F7F3",

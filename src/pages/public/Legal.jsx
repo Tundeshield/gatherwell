@@ -70,7 +70,7 @@ function Terms() {
     <>
       <P>These terms are an agreement between you (and the church you act for) and {COMPANY_FULL} (“GatherHQ”, “we”, “us”). They apply when a church or person uses GatherHQ. By creating an account you agree to them on behalf of yourself and your church.</P>
       <H>The service</H>
-      <P>GatherHQ provides tools for attendance, visitor follow-up, events and messaging for churches. We may improve or change features over time, and will give reasonable notice before removing anything significant that you rely on.</P>
+      <P>GatherHQ provides tools for attendance, visitor follow-up, children’s check-in, events and messaging for churches. We may improve or change features over time, and will give reasonable notice before removing anything significant that you rely on.</P>
       <H>Your account</H>
       <UL items={[
         'The person who creates a church account is its owner and can invite others. Owners are responsible for who they give access to.',
@@ -87,7 +87,7 @@ function Terms() {
       <P>Don’t use GatherHQ to send spam or messages to people who haven’t agreed to hear from you, to store information you have no right to hold, to harass anyone, to break the law, or to try to access another church’s data or disrupt the service. We may suspend accounts that do.</P>
       <H>Plans and payment</H>
       <UL items={[
-        <>Every church starts with a 30-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep making changes; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
+        <>Every church starts with a 30-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep using GatherHQ; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
         'Paid plans are billed monthly or yearly in advance and renew automatically until cancelled. You can cancel at any time in Settings › Billing; your plan stays active until the end of the period you have paid for.',
         'Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns. Prices may have sales tax or VAT added where it applies, and Paddle issues the receipts and invoices.',
         <>Refunds are covered by our <Link to="/legal/refunds" className="link">Refund Policy</Link>.</>,
@@ -114,7 +114,7 @@ function Dpa() {
         <><b>Subject matter and purpose:</b> providing GatherHQ, including recording attendance and events, managing follow-ups, and sending messages the Controller writes.</>,
         <><b>Duration:</b> for as long as the Controller uses GatherHQ, plus the deletion period below.</>,
         <><b>People:</b> church members, visitors, volunteers, staff and event attendees, including children where the Controller records them.</>,
-        <><b>Data:</b> names, contact details, attendance and event records, check-in answers, tags, follow-up notes and any other details the Controller chooses to record. The Controller should not record special category data (such as health information) in GatherHQ unless it has a lawful basis to do so.</>,
+        <><b>Data:</b> names, contact details, attendance and event records, check-in answers, tags, follow-up notes and any other details the Controller chooses to record. The Controller should not record special category data (such as health information) in GatherHQ unless it has a lawful basis to do so. Children’s allergies and medical notes are health information: the Controller should record them only with a parent’s or guardian’s consent.</>,
       ]} />
       <H>2. Processor commitments</H>
       <UL items={[

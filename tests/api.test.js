@@ -75,7 +75,7 @@ test('sign-up creates org, branch and owner; /me reports caps', async () => {
   assert.equal(me.data.org.branchesEnabled, false)
   r = await S.a.post('/branches', { name: 'North' })
   assert.equal(r.status, 403)
-  assert.match(r.data.error, /church networks/)
+  assert.match(r.data.error, /Church network plan/)
   S.ops = client()
   await signup(S.ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherhq.test', password: 'password123' })
   r = await S.a.patch(`/platform/orgs/${me.data.org.id}`, { multiBranch: true })
@@ -931,6 +931,10 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
     assert.equal((await c.get('/people')).status, 200, 'can still view')
     const g = Object.entries(Object.fromEntries(fake.db._store)).find(([k]) => k.startsWith(`orgs/${orgId}/people/`))
     assert.equal((await c.del(`/people/${g[0].split('/').pop()}`)).status, 200, 'can still erase people')
+    // Strict after the trial: children's check-in stops too, but pickup always works
+    assert.equal((await c.post('/children/lookup', { phone: '08035554417' })).status, 402)
+    assert.equal((await c.post('/children/pickup/lookup', { code: 'KXM' })).status, 200, 'pickup still works')
+    assert.equal((await c.post('/gatherings', { name: 'Sunday', branchId, startsAt: new Date().toISOString() })).status, 402, 'no new sessions')
 
     // Checkout: product and price created once in Paddle, then reused
     r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
@@ -1147,4 +1151,17 @@ test('children’s church: on by default, family check-in, matching codes, picku
   assert.ok(!(await c.get('/team')).data.assignableRoles.includes('kids'))
   await c.patch('/children/settings', { enabled: true })
   assert.equal((await c.get('/children')).data.rows.length, 1)
+})
+
+test('trial reminders: 7, 3 and 1 day before, and on the day it ends', async () => {
+  const { trialStage, trialEmail } = await import('../server/jobs.js')
+  const stage = (daysLeft) => trialStage({ state: 'trialing', daysLeft })
+  assert.deepEqual([stage(20), stage(7), stage(5), stage(3), stage(2), stage(1)], [null, 'd7', 'd7', 'd3', 'd3', 'd1'])
+  const now = new Date()
+  assert.equal(trialStage({ state: 'expired', trialEndsAt: new Date(now - 86400e3).toISOString() }, now), 'ended')
+  assert.equal(trialStage({ state: 'expired', trialEndsAt: new Date(now - 10 * 86400e3).toISOString() }, now), null, 'not nagged forever')
+  assert.equal(trialStage({ state: 'expired', lapsed: true, trialEndsAt: new Date(now - 86400e3).toISOString() }, now), null, 'lapsed paid plans are different')
+  const e = trialEmail({ name: 'Grace Chapel', timezone: 'Africa/Lagos' }, 'd3', { trialEndsAt: new Date(now.getTime() + 3 * 86400e3).toISOString() }, 'https://gatherhq.org')
+  assert.equal(e.subject, 'Your GatherHQ trial ends in 3 days')
+  assert.ok(e.html.includes('https://gatherhq.org/app/settings?tab=billing'))
 })

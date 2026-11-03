@@ -20,8 +20,8 @@ import { isExpired } from './billing.js'
 
 // What an account whose trial has ended may still do: pay, manage its account, and erase people.
 const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/,
-  // Children must always be checked in safely and handed back, even after a trial ends.
-  /^\/children\/(lookup|register|checkin|pickup|pickup\/lookup)$/, /^\/children\/rooms\/[^/]+\/adults$/]
+  // Children already checked in must always be handed back safely, even if a trial ends mid-service.
+  /^\/children\/(pickup|pickup\/lookup)$/]
 
 const router = new Router()
 for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes]) {
@@ -67,7 +67,7 @@ export async function handle(req) {
 
     // After the free trial, an unpaid church can still view and download everything, but not make changes.
     if (mode === 'org' && !['GET', 'HEAD'].includes(method) && isExpired(ctx.org) && !READ_ONLY_ALLOWED.some(re => re.test(path) && (re.method ? re.method === method : true))) {
-      return json({ error: 'Your free trial has ended. Choose a plan in Settings › Billing to keep making changes. Everything you’ve recorded is safe, and check-in still works.', details: { code: 'billing_required' } }, 402)
+      return json({ error: 'Your free trial has ended. Choose a plan in Settings › Billing to keep using GatherHQ. Everything you’ve recorded is safe.', details: { code: 'billing_required' } }, 402)
     }
     const result = await route.handler({ req, url, params, body, raw, query: Object.fromEntries(url.searchParams), ctx })
     if (result instanceof Response) return result

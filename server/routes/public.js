@@ -6,6 +6,7 @@ import { rateLimit, normalizePhone, displayPhone, maskName, validateAnswers } fr
 import { recordCheckin } from '../domain.js'
 import { createPerson } from './people.js'
 import { createRegistration, eventStats } from './events.js'
+import { isExpired } from '../billing.js'
 
 const fold = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
 
@@ -35,6 +36,11 @@ async function loadPublicGathering(token) {
   return r
 }
 
+// A church whose trial has ended without a plan: public check-in and registration pause.
+function assertActive(org, what = 'Check-in') {
+  if (isExpired(org)) throw bad(`${what} isn’t available right now. Please see someone from the church.`, { code: 'billing_required' })
+}
+
 function assertOpen(g) {
   if (g.status !== 'open') throw bad(g.status === 'scheduled' ? 'Check-in has not opened yet.' : 'Check-in for this session has closed. Please see an usher.')
 }
@@ -61,6 +67,7 @@ export default function (r) {
   r.post('/public/g/:token/lookup', { auth: 'public' }, async ({ req, params, body }) => {
     await rateLimit(`lookup:${clientIp(req)}`, 30, 600)
     const { db, org, item: g } = await loadPublicGathering(params.token)
+    assertActive(org)
     assertOpen(g)
     const phoneNorm = normalizePhone(body.phone, org.settings?.defaultCountryCode)
     if (!phoneNorm) throw bad('Please enter a valid phone number.')
@@ -72,6 +79,7 @@ export default function (r) {
   r.post('/public/g/:token/checkin', { auth: 'public' }, async ({ req, params, body }) => {
     await rateLimit(`checkin:${clientIp(req)}`, 40, 600)
     const { db, org, item: g } = await loadPublicGathering(params.token)
+    assertActive(org)
     assertOpen(g)
     const cc = org.settings?.defaultCountryCode
 
@@ -146,6 +154,7 @@ export default function (r) {
     const res = await resolveLink(params.token, 'event')
     if (!res || res.item.status === 'draft') throw notFound('This event link is not valid.')
     const { org, item: e } = res
+    assertActive(org, 'Registration')
     const state = registrationState(e)
     if (state !== 'open') throw bad(state === 'not_yet' ? 'Registration has not opened yet.' : 'Registration for this event is closed.')
     const { answers, errors } = validateAnswers(e.form || [], body.answers || {})

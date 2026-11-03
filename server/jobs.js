@@ -8,7 +8,8 @@ import { emailProvider, fromAddress, sendEmails, unsubscribeUrl, siteOrigin } fr
 import { brandingFor } from './routes/messages.js'
 import { briefData, briefEmail } from './brief.js'
 import { tzOffsetMs, weekKey } from './util.js'
-import { isExpired } from './billing.js'
+import { isExpired, billingEnforced } from './billing.js'
+import { billingStatus } from '../shared/plans.js'
 
 const appOrigin = () => siteOrigin(null) || 'https://gatherhq.org'
 
@@ -130,11 +131,69 @@ async function runBriefs({ now, deadline }) {
   return { churches, emails }
 }
 
+// Trial reminders to church owners: 7, 3 and 1 day before the trial ends, and on the day it ends.
+// Only once churches can actually pay. Each reminder is sent once.
+export function trialStage(st, now = new Date()) {
+  if (st.state === 'trialing') return st.daysLeft <= 1 ? 'd1' : st.daysLeft <= 3 ? 'd3' : st.daysLeft <= 7 ? 'd7' : null
+  if (st.state === 'expired' && !st.lapsed && st.trialEndsAt && now - new Date(st.trialEndsAt) < 3 * 86400e3) return 'ended'
+  return null
+}
+
+export function trialEmail(org, stage, st, origin = appOrigin()) {
+  const url = `${origin}/app/settings?tab=billing`
+  const when = st.trialEndsAt ? new Date(st.trialEndsAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: org.timezone || 'Africa/Lagos' }) : ''
+  const days = { d7: '7 days', d3: '3 days', d1: '1 day' }[stage]
+  const subject = stage === 'ended' ? `Your GatherHQ trial has ended` : `Your GatherHQ trial ends in ${days}`
+  const blocks = stage === 'ended' ? [
+    { type: 'heading', text: 'Your free trial has ended' },
+    { type: 'text', text: `${org.name}’s free trial of GatherHQ ended on ${when}. Check-in, follow-ups and messages are paused until you choose a plan.\n\nEverything you’ve recorded is safe. Choose a plan and you’ll pick up exactly where you left off, from $19 a month, with a 30-day money-back guarantee.` },
+    { type: 'button', label: 'Choose a plan', url },
+  ] : [
+    { type: 'heading', text: `Your free trial ends in ${days}` },
+    { type: 'text', text: `${org.name}’s free trial of GatherHQ ends on ${when}. To keep checking people in, following up visitors and sending messages without a break, choose a plan before then.\n\nPlans start at $19 a month, or $190 a year (2 months free). Cancel any time, with a 30-day money-back guarantee.` },
+    { type: 'button', label: 'Choose a plan', url },
+  ]
+  return renderEmail({ org, branding: { fromName: 'GatherHQ' }, subject, preheader: subject, blocks, person: {},
+    unsubscribeUrl: url, footerReason: 'You get this because you own this church’s GatherHQ account.', unsubscribeLabel: 'Billing settings' })
+}
+
+async function runTrialReminders({ now, deadline }) {
+  const provider = emailProvider()
+  if (!provider || !billingEnforced()) return { sent: 0, waiting: true }
+  const { db } = await fb()
+  const orgs = await db.collection('orgs').where('status', '==', 'active').limit(5000).get()
+  let sent = 0
+  for (const o of orgs.docs) {
+    if (Date.now() > deadline) break
+    const org = { id: o.id, ...o.data() }
+    const st = billingStatus(org, now)
+    const stage = trialStage(st, now)
+    if (!stage || org.trial_reminders?.[stage]) continue
+    const claimed = await db.runTransaction(async (tx) => {
+      const cur = (await tx.get(o.ref)).data()
+      if (cur.trial_reminders?.[stage]) return false
+      tx.update(o.ref, { trial_reminders: { ...(cur.trial_reminders || {}), [stage]: now } })
+      return true
+    })
+    if (!claimed) continue
+    const ms = await db.collection('memberships').where('org_id', '==', org.id).where('status', '==', 'active').get()
+    const owners = ms.docs.map(d => d.data()).filter(m => m.role === 'owner')
+    const users = await Promise.all(owners.map(m => db.collection('users').doc(m.user_id).get()))
+    const to = users.filter(u => u.exists && u.data().email).map(u => u.data().email)
+    if (!to.length) continue
+    const email = trialEmail(org, stage, st)
+    const res = await sendEmails(provider, to.map(addr => ({ from: `GatherHQ <hello@${provider.domain}>`, to: [addr], subject: email.subject, html: email.html, text: email.text })))
+    sent += res.filter(r => r.ok).length
+  }
+  return { sent }
+}
+
 export async function runScheduled({ now = new Date(), budgetMs = 20000 } = {}) {
   const deadline = Date.now() + budgetMs
   const journey = await runJourney({ now, deadline }).catch(e => { console.error('Journey run failed', e); return { error: e.message } })
   const briefs = await runBriefs({ now, deadline }).catch(e => { console.error('Brief run failed', e); return { error: e.message } })
-  return { journey, briefs }
+  const trials = await runTrialReminders({ now, deadline }).catch(e => { console.error('Trial reminders failed', e); return { error: e.message } })
+  return { journey, briefs, trials }
 }
 
 export { toDate }

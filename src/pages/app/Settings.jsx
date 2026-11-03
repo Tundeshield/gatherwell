@@ -815,7 +815,7 @@ function BillingTab() {
     trialing: [`Free trial: ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left`, `Everything is included until ${fmt(data.trialEndsAt)}. Choose a plan any time; you won’t lose anything.`],
     active: [`${PLANS[data.plan]?.name || 'Paid'} plan${data.interval ? `, ${data.interval}` : ''}`, data.cancelling ? `Cancelled. Your plan stays active until ${fmt(data.renewsAt)}.` : data.renewsAt ? `Renews on ${fmt(data.renewsAt)}.` : 'Active.'],
     past_due: ['Payment needed', `${data.lastError || 'We couldn’t take your last payment.'} Update your card by ${fmt(data.graceEnds)} to keep making changes.`],
-    expired: ['No active plan', 'You can still view and download everything, and check-in still works. Choose a plan to make changes again.'],
+    expired: ['No active plan', 'Check-in and changes are paused. Everything you’ve recorded is safe, and you can still view and download it. Choose a plan to pick up where you left off.'],
   }[data.state] || ['', '']
   const paid = data.state === 'active' || data.state === 'past_due'
   return (
