@@ -86,7 +86,7 @@ function AddChildInline({ guardian, onAdded }) {
   return (
     <form className="panel space-y-3 px-4 py-4" onSubmit={async e => {
       e.preventDefault(); setBusy(true); setError('')
-      try { const c = await api.post('/children', { ...k, lastName: guardian.lastName, guardianIds: [guardian.id] }); onAdded(c.id); setOpen(false); setK({ firstName: '', birthDate: '', allergies: '' }) } catch (err) { setError(err.message) } finally { setBusy(false) }
+      try { const c = await api.post('/children', { ...k, lastName: guardian.lastName, guardianIds: [guardian.id] }); await onAdded(c.id); setOpen(false); setK({ firstName: '', birthDate: '', allergies: '' }) } catch (err) { setError(err.message) } finally { setBusy(false) }
     }}>
       {error && <Notice tone="danger">{error}</Notice>}
       <input className={input} placeholder="Child’s first name" aria-label="Child’s first name" value={k.firstName} onChange={e => setK({ ...k, firstName: e.target.value })} required />

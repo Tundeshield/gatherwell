@@ -20,7 +20,7 @@ export default function PersonDetail() {
   const { data, error, loading, reload } = useLoad(() => api.get(`/people/${id}`), [id])
   const { byId } = useTags()
   async function toggleTag(tag, on) {
-    try { await api.post('/people/tags', { ids: [id], [on ? 'add' : 'remove']: [tag.id] }); reload(); loadTags(true) }
+    try { await api.post('/people/tags', { ids: [id], [on ? 'add' : 'remove']: [tag.id] }); await reload(); loadTags(true) }
     catch (e) { toast(e.message, 'error') }
   }
   const [editing, setEditing] = useState(false)
@@ -33,7 +33,7 @@ export default function PersonDetail() {
   async function toggleConsent() {
     const resub = p.email_opt_out
     if (resub && !(await confirm({ title: `Resubscribe ${personName(p)}?`, message: 'Only do this if they have asked to receive your church’s emails again. The change is recorded in the activity log.', confirmLabel: 'Resubscribe' }))) return
-    try { await api.patch(`/people/${p.id}/email-consent`, { subscribed: resub }); toast(resub ? 'Resubscribed to emails' : 'Unsubscribed from emails'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch(`/people/${p.id}/email-consent`, { subscribed: resub }); await reload(); toast(resub ? 'Resubscribed to emails' : 'Unsubscribed from emails') } catch (e) { toast(e.message, 'error') }
   }
   async function remove() {
     const ok = await confirm({ title: `Delete ${personName(p)}?`, message: 'Their profile, attendance history, follow-ups and notes will be permanently removed, for example when they ask you to erase their data. Event registrations stay on the event but are no longer linked to them. To keep their history instead, change their status to Archived.', confirmLabel: 'Delete permanently', danger: true })
@@ -163,9 +163,9 @@ export default function PersonDetail() {
       </div>
 
       <Modal open={editing} onClose={() => setEditing(false)} title={`Edit ${personName(p)}`} size="lg">
-        <PersonForm person={p} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); toast('Changes saved'); reload() }} />
+        <PersonForm person={p} onCancel={() => setEditing(false)} onSaved={async () => { await reload(); setEditing(false); toast('Changes saved') }} />
       </Modal>
-      <NewFollowup open={followup} person={p} onClose={() => setFollowup(false)} onCreated={() => { setFollowup(false); toast('Follow-up created'); reload() }} />
+      <NewFollowup open={followup} person={p} onClose={() => setFollowup(false)} onCreated={async () => { await reload(); setFollowup(false); toast('Follow-up created') }} />
     </div>
   )
 }

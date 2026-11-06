@@ -89,13 +89,13 @@ function BranchesTab() {
   useEffect(() => { if (edit) { setF(edit === 'new' ? { name: '', address: '', phone: '' } : { name: edit.name, address: edit.address || '', phone: edit.phone || '' }); setErr('') } }, [edit])
   async function save() {
     setBusy(true); setErr('')
-    try { edit === 'new' ? await api.post('/branches', f) : await api.patch(`/branches/${edit.id}`, f); setEdit(null); toast('Branch saved'); reload(); refresh() }
+    try { edit === 'new' ? await api.post('/branches', f) : await api.patch(`/branches/${edit.id}`, f); await Promise.all([reload(), refresh()]); setEdit(null); toast('Branch saved') }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   async function toggleArchive(b) {
     const archiving = b.status === 'active'
     if (archiving && !(await confirm({ title: `Archive ${b.name}?`, message: 'It disappears from forms and new sessions, but its people and history are kept. You can restore it any time.', confirmLabel: 'Archive branch' }))) return
-    try { await api.patch(`/branches/${b.id}`, { status: archiving ? 'archived' : 'active' }); toast(archiving ? 'Branch archived' : 'Branch restored'); reload(); refresh() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch(`/branches/${b.id}`, { status: archiving ? 'archived' : 'active' }); await Promise.all([reload(), refresh()]); toast(archiving ? 'Branch archived' : 'Branch restored') } catch (e) { toast(e.message, 'error') }
   }
   if (error) return <ErrorState error={error} onRetry={reload} />
   return (
@@ -162,18 +162,18 @@ function TeamTab() {
   function openEdit(m) { setF({ role: m.role, branchIds: m.branch_ids, canExport: m.can_export }); setErr(''); setEditing(m) }
   async function invite() {
     setBusy(true); setErr('')
-    try { const r = await api.post('/team/invites', f); setLink(`${window.location.origin}${r.path}`); reload() } catch (e) { setErr(e.message) } finally { setBusy(false) }
+    try { const r = await api.post('/team/invites', f); await reload(); setLink(`${window.location.origin}${r.path}`) } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   async function saveMember() {
     setBusy(true); setErr('')
-    try { await api.patch(`/team/members/${editing.id}`, f); setEditing(null); toast('Access updated'); reload() } catch (e) { setErr(e.message) } finally { setBusy(false) }
+    try { await api.patch(`/team/members/${editing.id}`, f); await reload(); setEditing(null); toast('Access updated') } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   async function revoke(m) {
     if (!(await confirm({ title: `Remove ${m.name}'s access?`, message: "They'll be signed out and can no longer see this church. Their past activity stays in the records.", confirmLabel: 'Remove access', danger: true }))) return
-    try { await api.patch(`/team/members/${m.id}`, { status: 'revoked' }); toast('Access removed'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch(`/team/members/${m.id}`, { status: 'revoked' }); await reload(); toast('Access removed') } catch (e) { toast(e.message, 'error') }
   }
-  async function restore(m) { try { await api.patch(`/team/members/${m.id}`, { status: 'active' }); toast('Access restored'); reload() } catch (e) { toast(e.message, 'error') } }
-  async function cancelInvite(i) { try { await api.del(`/team/invites/${i.id}`); toast('Invitation cancelled'); reload() } catch (e) { toast(e.message, 'error') } }
+  async function restore(m) { try { await api.patch(`/team/members/${m.id}`, { status: 'active' }); await reload(); toast('Access restored') } catch (e) { toast(e.message, 'error') } }
+  async function cancelInvite(i) { try { await api.del(`/team/invites/${i.id}`); await reload(); toast('Invitation cancelled') } catch (e) { toast(e.message, 'error') } }
   const copy = async () => { try { await navigator.clipboard.writeText(link); toast('Link copied') } catch { toast('Copy the link manually', 'error') } }
   const scopeText = (ids) => !ids ? 'All branches' : ids.map(branchName).filter(Boolean).join(', ') || 'No branches'
 
@@ -261,12 +261,12 @@ function UnitsTab() {
   useEffect(() => { if (edit) { setF(edit === 'new' ? { name: '', description: '', branchId: scoped ? activeBranches[0]?.id : '' } : { name: edit.name, description: edit.description || '' }); setErr('') } }, [edit]) // eslint-disable-line
   async function save() {
     setBusy(true); setErr('')
-    try { edit === 'new' ? await api.post('/units', { ...f, branchId: f.branchId || null }) : await api.patch(`/units/${edit.id}`, f); setEdit(null); toast('Unit saved'); reload() }
+    try { edit === 'new' ? await api.post('/units', { ...f, branchId: f.branchId || null }) : await api.patch(`/units/${edit.id}`, f); await reload(); setEdit(null); toast('Unit saved') }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   async function remove(u) {
     if (!(await confirm({ title: `Delete ${u.name}?`, message: `${u.member_count} people will no longer be assigned to a unit. Their records are kept.`, confirmLabel: 'Delete unit', danger: true }))) return
-    try { await api.del(`/units/${u.id}`); toast('Unit deleted'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.del(`/units/${u.id}`); await reload(); toast('Unit deleted') } catch (e) { toast(e.message, 'error') }
   }
   if (error) return <ErrorState error={error} onRetry={reload} />
   return (
@@ -311,7 +311,7 @@ function UnitsTab() {
 function TemplatesTab() {
   const toast = useToast()
   const { data, error, loading, reload } = useLoad(() => api.get('/templates'), [])
-  async function remove(t) { try { await api.del(`/templates/${t.id}`); toast('Template deleted'); reload() } catch (e) { toast(e.message, 'error') } }
+  async function remove(t) { try { await api.del(`/templates/${t.id}`); await reload(); toast('Template deleted') } catch (e) { toast(e.message, 'error') } }
   if (error) return <ErrorState error={error} onRetry={reload} />
   return (
     <section className="panel overflow-hidden">
@@ -337,7 +337,7 @@ function AccountTab() {
     try {
       if (kind === 'name') await api.patch('/me', { name })
       else await changePassword(me.user.email, pw.currentPassword, pw.newPassword)
-      toast(kind === 'name' ? 'Name updated' : 'Password changed. Other devices were signed out.'); setPw({ currentPassword: '', newPassword: '' }); refresh()
+      await refresh(); setPw({ currentPassword: '', newPassword: '' }); toast(kind === 'name' ? 'Name updated' : 'Password changed. Other devices were signed out.')
     }
     catch (e) { setErr(e.message) } finally { setBusy('') }
   }
@@ -420,7 +420,7 @@ function EmailTab() {
   }
   async function save(e) {
     e.preventDefault(); setBusy(true); setErr('')
-    try { const b = await api.patch('/email/branding', f); setF(b); toast('Email branding saved'); reload(); refresh?.() }
+    try { const b = await api.patch('/email/branding', f); setF(b); await Promise.all([reload(), refresh?.()]); toast('Email branding saved') }
     catch (e2) { setErr(e2.message) } finally { setBusy(false) }
   }
 
@@ -555,7 +555,7 @@ function BriefPreference() {
   const { data, reload } = useLoad(() => api.get('/me/notifications'), [])
   if (!data?.canReceiveBrief) return null
   async function set(v) {
-    try { await api.patch('/me/notifications', { brief: v }); toast(v ? 'You’ll get the Monday brief' : 'Monday brief turned off'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch('/me/notifications', { brief: v }); await reload(); toast(v ? 'You’ll get the Monday brief' : 'Monday brief turned off') } catch (e) { toast(e.message, 'error') }
   }
   return (
     <section className="panel px-6 py-5">
@@ -577,7 +577,7 @@ function JourneyStep({ step, value, stats, connected, canEdit, onSaved }) {
   const draft = () => ({ ...f, blocks: stripKeys(blocks) })
   async function save(patch, label) {
     setBusy(label); setErr('')
-    try { await api.patch('/automation', { journey: { [step.key]: patch } }); onSaved(); toast(label === 'toggle' ? (patch.enabled ? `“${step.label}” email switched on` : `“${step.label}” email switched off`) : 'Email saved'); if (label === 'save') setOpen(false) }
+    try { await api.patch('/automation', { journey: { [step.key]: patch } }); await onSaved(); toast(label === 'toggle' ? (patch.enabled ? `“${step.label}” email switched on` : `“${step.label}” email switched off`) : 'Email saved'); if (label === 'save') setOpen(false) }
     catch (e) { setErr(e.message); toast(e.message, 'error') } finally { setBusy('') }
   }
   async function test() {
@@ -650,7 +650,7 @@ function AutomationsTab() {
   if (!data || !wa) return <Skeleton className="h-64" />
 
   async function setBrief(v) {
-    try { await api.patch('/automation', { briefEnabled: v }); toast(v ? 'Monday brief switched on' : 'Monday brief switched off'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch('/automation', { briefEnabled: v }); await reload(); toast(v ? 'Monday brief switched on' : 'Monday brief switched off') } catch (e) { toast(e.message, 'error') }
   }
   async function openPreview() {
     setBusy('preview')
@@ -662,7 +662,7 @@ function AutomationsTab() {
   }
   async function saveWa() {
     setBusy('wa')
-    try { await api.patch('/automation', { whatsapp: wa }); toast('WhatsApp messages saved'); reload() } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+    try { await api.patch('/automation', { whatsapp: wa }); await reload(); toast('WhatsApp messages saved') } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
   }
 
   return (
@@ -791,14 +791,14 @@ function BillingTab() {
       if (r.ok) toast(`Thank you! You’re on the ${PLANS[r.plan]?.name} plan.`)
       else toast('We’re still confirming your payment. It will show here in a minute.', 'info')
     } catch (e) { toast(e.message, 'error') }
-    finally { setConfirming(false); reload(); refresh() }
+    finally { await Promise.all([reload(), refresh()]); setConfirming(false) }
   }
 
   async function choose(plan) {
     setBusy(plan)
     try {
       const r = await api.post('/billing/checkout', { plan, interval })
-      if (r.changed) { toast(`You’re now on the ${PLANS[r.plan].name} plan, ${r.interval}.`); setBusy(''); reload(); refresh(); return }
+      if (r.changed) { await Promise.all([reload(), refresh()]); setBusy(''); toast(`You’re now on the ${PLANS[r.plan].name} plan, ${r.interval}.`); return }
       await openCheckout({ ...r, onComplete: (id) => { setBusy(''); confirm(id) }, onClose: () => setBusy('') })
     } catch (e) { toast(e.message, 'error'); setBusy('') }
   }

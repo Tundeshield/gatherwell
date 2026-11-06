@@ -48,7 +48,7 @@ export default function AdminChurch() {
   if (error) return <ErrorState error={error} onRetry={reload} />
 
   const patch = async (body, msg) => {
-    try { await api.patch(`/platform/orgs/${id}`, body); toast(msg); setModal(null); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch(`/platform/orgs/${id}`, body); await reload(); setModal(null); toast(msg) } catch (e) { toast(e.message, 'error') }
   }
   const ask = async (opts, body, msg) => { if (await confirm(opts)) await patch(body, msg) }
   const b = o.billing, bd = o.billing_detail

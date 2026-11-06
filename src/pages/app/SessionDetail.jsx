@@ -29,9 +29,9 @@ function ManualCheckin({ gatheringId, onDone }) {
     setBusy(label); setError('')
     try {
       const r = await api.post(`/gatherings/${gatheringId}/checkins`, body)
+      await onDone()
       toast(`${label} checked in${r.firstTime ? ' — first visit' : ''}`)
       setTerm(''); setResults([]); setAdding(false); setNf({ firstName: '', lastName: '', phone: '' })
-      onDone()
     } catch (e) { setError(e.message) } finally { setBusy(null) }
   }
 
@@ -81,7 +81,7 @@ function EditSession({ open, g, onClose, onSaved }) {
   const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
   async function save() {
     setBusy(true); setError('')
-    try { await api.patch(`/gatherings/${g.id}`, { ...f, startsAt: fromLocalInput(f.startsAt), endsAt: f.endsAt ? fromLocalInput(f.endsAt) : null }); onSaved() }
+    try { await api.patch(`/gatherings/${g.id}`, { ...f, startsAt: fromLocalInput(f.startsAt), endsAt: f.endsAt ? fromLocalInput(f.endsAt) : null }); await onSaved() }
     catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return (
@@ -124,11 +124,11 @@ export default function SessionDetail() {
   if (error) return <ErrorState error={error.status === 404 ? { message: "This session doesn't exist, or belongs to a branch you can't access." } : error} onRetry={reload} />
   const { gathering: g, stats, previous } = data
   const url = `${window.location.origin}/c/${g.public_token}`
-  const refresh = () => { reload(); attendees.reload() }
+  const refresh = () => Promise.all([reload(), attendees.reload()])
 
   async function setStatus(status) {
     setStatusBusy(true)
-    try { await api.patch(`/gatherings/${g.id}`, { status }); toast(status === 'open' ? 'Check-in is open' : status === 'closed' ? 'Check-in closed' : 'Session archived'); reload() }
+    try { await api.patch(`/gatherings/${g.id}`, { status }); await reload(); toast(status === 'open' ? 'Check-in is open' : status === 'closed' ? 'Check-in closed' : 'Session archived') }
     catch (e) { toast(e.message, 'error') } finally { setStatusBusy(false) }
   }
   async function remove() {
@@ -139,7 +139,7 @@ export default function SessionDetail() {
   async function removeCheckin(c) {
     const ok = await confirm({ title: `Remove ${personName(c)}'s check-in?`, message: 'Use this to correct a mistake. The change is recorded in the activity log.', confirmLabel: 'Remove check-in', danger: true })
     if (!ok) return
-    try { await api.del(`/gatherings/${g.id}/checkins/${c.id}`); toast('Check-in removed'); refresh() } catch (e) { toast(e.message, 'error') }
+    try { await api.del(`/gatherings/${g.id}/checkins/${c.id}`); await refresh(); toast('Check-in removed') } catch (e) { toast(e.message, 'error') }
   }
 
   const change = previous ? pctChange(stats.attendance, previous.attendance) : null
@@ -212,7 +212,7 @@ export default function SessionDetail() {
             disabledReason={isOpen ? null : g.status === 'scheduled' ? 'Check-in opens when you choose "Open check-in".' : 'Check-in is closed — scanning shows a closed message.'} />
         </aside>
       </div>
-      <EditSession open={editing} g={g} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); toast('Session updated'); reload() }} />
+      <EditSession open={editing} g={g} onClose={() => setEditing(false)} onSaved={async () => { await reload(); setEditing(false); toast('Session updated') }} />
     </div>
   )
 }

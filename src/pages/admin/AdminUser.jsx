@@ -29,7 +29,7 @@ export default function AdminUser() {
   async function setAdmin(on) {
     if (!(await confirm({ title: on ? `Give ${u.name} admin access?` : `Remove ${u.name}’s admin access?`,
       message: on ? 'They’ll be able to open this console, see every church, change plans and suspend churches.' : 'They’ll no longer be able to open this console.', confirmLabel: on ? 'Give access' : 'Remove access', danger: on }))) return
-    try { await api.patch(`/platform/users/${id}`, { platformAdmin: on }); toast(on ? 'Admin access given' : 'Admin access removed'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.patch(`/platform/users/${id}`, { platformAdmin: on }); await reload(); toast(on ? 'Admin access given' : 'Admin access removed') } catch (e) { toast(e.message, 'error') }
   }
 
   return (

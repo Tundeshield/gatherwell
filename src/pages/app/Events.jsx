@@ -34,7 +34,7 @@ export function EventForm({ open, event, onClose, onSaved }) {
     setBusy(true); setError('')
     const body = { ...f, branchId: f.branchId || null, capacity: f.capacity === '' ? null : Number(f.capacity), startsAt: fromLocalInput(f.startsAt), endsAt: fromLocalInput(f.endsAt),
       registrationOpensAt: fromLocalInput(f.registrationOpensAt), registrationClosesAt: fromLocalInput(f.registrationClosesAt) }
-    try { const saved = event ? await api.patch(`/events/${event.id}`, body) : await api.post('/events', body); onSaved(saved) }
+    try { const saved = event ? await api.patch(`/events/${event.id}`, body) : await api.post('/events', body); await onSaved(saved) }
     catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 

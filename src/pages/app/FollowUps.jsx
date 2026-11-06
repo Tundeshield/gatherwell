@@ -48,7 +48,7 @@ function FollowupDrawer({ id, onClose, onChanged }) {
 
   async function act(label, fn, msg) {
     setBusy(label)
-    try { await fn(); if (msg) toast(msg); await reload(); onChanged() } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
+    try { await fn(); if (msg) toast(msg); await Promise.all([reload(), onChanged?.()]) } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
   }
   const patch = (body, msg) => act('patch', () => api.patch(`/followups/${id}`, body), msg)
 
@@ -154,7 +154,7 @@ function AbsenceReview({ open, onClose, onDone }) {
 
   async function create() {
     setBusy(true); setErr('')
-    try { const r = await api.post('/followups/absence', { personIds: [...selected], assigneeUserId: assignee || null }); onDone(r.created) }
+    try { const r = await api.post('/followups/absence', { personIds: [...selected], assigneeUserId: assignee || null }); await onDone(r.created) }
     catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
   return (
@@ -246,7 +246,7 @@ export default function FollowUps() {
       </div>
       <FollowupDrawer id={openId} onClose={() => setParam('open', '')} onChanged={reload} />
       <AbsenceReview open={review} onClose={() => { setReview(false); if (params.get('review')) setParam('review', '') }}
-        onDone={(n) => { setReview(false); setParam('review', ''); toast(`${n} follow-up${n === 1 ? '' : 's'} created`); reload() }} />
+        onDone={async (n) => { await reload(); setReview(false); setParam('review', ''); toast(`${n} follow-up${n === 1 ? '' : 's'} created`) }} />
     </div>
   )
 }

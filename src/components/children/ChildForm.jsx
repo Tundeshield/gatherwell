@@ -64,19 +64,20 @@ export default function ChildForm({ open, onClose, child, rooms, defaultGuardian
     try {
       const body = { ...f, roomId: f.roomId || null, guardianIds: guardians.map(g => g.id) }
       const saved = child ? await api.patch(`/children/${child.id}`, body) : await api.post('/children', body)
-      toast(child ? 'Saved' : `${saved.firstName} added`)
-      onSaved?.(saved); onClose()
+      await onSaved?.(saved)
+      toast(child ? 'Saved' : `${saved.firstName} added`); onClose()
     } catch (e) { setErrors(e.details?.fields || {}); toast(e.message, 'error') } finally { setBusy(false) }
   }
   async function remove() {
     if (!(await confirm({ title: `Delete ${child.firstName}’s record?`, message: 'Their details and check-in history are erased. This can’t be undone.', confirmLabel: 'Delete', danger: true }))) return
-    try { await api.del(`/children/${child.id}`); toast('Deleted'); onSaved?.(null); onClose() } catch (e) { toast(e.message, 'error') }
+    setBusy(true)
+    try { await api.del(`/children/${child.id}`); await onSaved?.(null); toast('Deleted'); onClose() } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
 
   return (
     <Drawer open={open} onClose={onClose} title={child ? `Edit ${child.firstName}` : 'Add a child'}
       footer={<>
-        {child && can('children.manage') && <Button variant="ghost" className="mr-auto text-red-700" onClick={remove}>Delete</Button>}
+        {child && can('children.manage') && <Button variant="ghost" className="mr-auto text-red-700" onClick={remove} disabled={busy}>Delete</Button>}
         <Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={save} disabled={!f.firstName.trim()}>{child ? 'Save' : 'Add child'}</Button>
       </>}>
       <div className="grid gap-x-4 sm:grid-cols-2">

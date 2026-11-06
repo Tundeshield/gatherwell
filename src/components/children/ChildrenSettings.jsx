@@ -12,7 +12,7 @@ function RoomModal({ room, onClose, onSaved }) {
   const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
   async function save() {
     setBusy(true)
-    try { room?.id ? await api.patch(`/children/rooms/${room.id}`, f) : await api.post('/children/rooms', f); toast('Saved'); onSaved(); onClose() } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
+    try { room?.id ? await api.patch(`/children/rooms/${room.id}`, f) : await api.post('/children/rooms', f); await onSaved(); toast('Saved'); onClose() } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
   return (
     <Modal open onClose={onClose} title={room?.id ? `Edit ${room.name}` : 'Add a class'} footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={save} disabled={!f.name.trim()}>Save</Button></>}>
@@ -45,7 +45,7 @@ export default function ChildrenSettings() {
   }
   async function remove(r) {
     if (!(await confirm({ title: `Remove ${r.name}?`, message: 'Past check-ins keep their class. Children placed here by hand go back to their age group.', confirmLabel: 'Remove', danger: true }))) return
-    try { await api.del(`/children/rooms/${r.id}`); rooms.reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.del(`/children/rooms/${r.id}`); await rooms.reload(); toast(`${r.name} removed`) } catch (e) { toast(e.message, 'error') }
   }
 
   return (

@@ -26,7 +26,7 @@ export default function PersonForm({ person, onSaved, onCancel }) {
     const body = { ...f, unitId: f.unitId || null, gender: f.gender || null, birthday: f.birthday || null, joinedAt: f.joinedAt || null, ownerUserId: f.ownerUserId || null }
     try {
       const saved = person ? await api.patch(`/people/${person.id}`, body) : await api.post('/people', body)
-      onSaved(saved)
+      await onSaved(saved)
     } catch (err) { setError(err) } finally { setBusy(false) }
   }
 

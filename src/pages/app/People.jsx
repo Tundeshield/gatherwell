@@ -167,8 +167,8 @@ export default function People() {
       </Modal>
       <ImportPeople open={importing} onClose={() => { setImporting(false); if (params.get('import')) setParam('import', '') }} onDone={() => reload()} />
       <DeleteAll open={wiping} onExport={can('export') ? exportCsv : null} onClose={() => setWiping(false)}
-        onDone={(n) => { setWiping(false); setSelected(new Set()); toast(`Deleted ${n.toLocaleString()} ${n === 1 ? 'person' : 'people'}`); reload() }} />
-      <BulkEdit open={bulk} ids={[...selected]} units={units.data || []} tags={allTags} onClose={() => setBulk(false)} onDone={(n) => { setBulk(false); setSelected(new Set()); toast(`${n} updated`); reload() }} />
+        onDone={async (n) => { await reload(); setWiping(false); setSelected(new Set()); toast(`Deleted ${n.toLocaleString()} ${n === 1 ? 'person' : 'people'}`) }} />
+      <BulkEdit open={bulk} ids={[...selected]} units={units.data || []} tags={allTags} onClose={() => setBulk(false)} onDone={async (n) => { await reload(); setBulk(false); setSelected(new Set()); toast(`${n} updated`) }} />
     </div>
   )
 }
@@ -199,7 +199,7 @@ function BulkEdit({ open, ids, units, tags, onClose, onDone }) {
         n = (await api.post('/people/tags', { ids, add: add ? [add] : [], remove: removeTag ? [removeTag] : [] })).updated
         loadTags(true)
       }
-      onDone(n)
+      await onDone(n)
     } catch (e) { setError(e.message) } finally { setBusy(false) }
   }
   return (
@@ -247,7 +247,7 @@ function DeleteAll({ open, onExport, onClose, onDone }) {
         const r = await api.post('/people/delete-all', { confirm: text })
         removed += r.removed || 0
         setProgress(removed)
-        if (r.done) return onDone(removed)
+        if (r.done) return await onDone(removed)
       }
       setError('This is taking longer than expected. Please try again to finish.')
     } catch (e) { setError(e.message) } finally { setBusy(false) }

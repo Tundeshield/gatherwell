@@ -21,13 +21,13 @@ export default function Messages() {
 
   async function remove(m) {
     if (!(await confirm({ title: 'Delete this draft?', confirmLabel: 'Delete', danger: true }))) return
-    try { await api.del(`/messages/${m.id}`); toast('Draft deleted'); reload() } catch (e) { toast(e.message, 'error') }
+    try { await api.del(`/messages/${m.id}`); await reload(); toast('Draft deleted') } catch (e) { toast(e.message, 'error') }
   }
   async function resume(m) {
     if (m.channel === 'whatsapp') { navigate(`/app/messages/${m.id}/whatsapp`); return }
     setResuming(m.id)
     try { const p = await runSend(m.id); toast(p.status === 'sent' ? `Sent to ${p.sent.toLocaleString()} people` : (p.error || 'Sending stopped'), p.status === 'sent' ? 'success' : 'error') }
-    catch (e) { toast(e.message, 'error') } finally { setResuming(null); reload() }
+    catch (e) { toast(e.message, 'error') } finally { await reload(); setResuming(null) }
   }
 
   const s = settings.data

@@ -51,7 +51,7 @@ function WalkIn({ open, eventId, onClose, onDone }) {
   useEffect(() => { if (open) { setF({ firstName: '', lastName: '', phone: '', email: '' }); setError('') } }, [open])
   async function save(e) {
     e?.preventDefault(); setBusy(true); setError('')
-    try { await api.post(`/events/${eventId}/registrations`, { ...f, checkIn: true }); onDone() } catch (err) { setError(err.message) } finally { setBusy(false) }
+    try { await api.post(`/events/${eventId}/registrations`, { ...f, checkIn: true }); await onDone() } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
   const set = (k) => (e) => setF(x => ({ ...x, [k]: e.target.value }))
   return (
@@ -93,20 +93,20 @@ export default function EventDetail() {
   const { event: e, stats } = data
   const [tone, label] = EVENT_STATUS[e.status]
   const url = `${window.location.origin}/e/${e.public_token}`
-  const refresh = () => { reload(); regs.reload() }
+  const refresh = () => Promise.all([reload(), regs.reload()])
 
   async function checkIn(body) {
     setCodeBusy(true)
     try {
       const r = await api.post(`/events/${e.id}/checkin`, body)
       setLastResult({ ok: true, name: r.registration.name, already: r.already, waitlisted: r.wasWaitlisted, undo: body.undo })
-      setCode(''); refresh()
+      await refresh(); setCode('')
     } catch (err) { setLastResult({ ok: false, message: err.message }) } finally { setCodeBusy(false) }
   }
   async function setStatus(status, msg) {
     const ok = await confirm({ title: msg.title, message: msg.body, confirmLabel: msg.label, danger: status === 'cancelled' })
     if (!ok) return
-    try { await api.patch(`/events/${e.id}`, { status }); toast(`Event ${status}`); reload() } catch (err) { toast(err.message, 'error') }
+    try { await api.patch(`/events/${e.id}`, { status }); await reload(); toast(`Event ${status}`) } catch (err) { toast(err.message, 'error') }
   }
   async function remove() {
     const n = stats.registered + stats.waitlist
@@ -117,7 +117,7 @@ export default function EventDetail() {
   async function cancelReg(r) {
     const ok = await confirm({ title: `Cancel ${r.name}'s registration?`, message: e.capacity ? 'The next person on the waitlist will get their place.' : 'They can register again later.', confirmLabel: 'Cancel registration', danger: true })
     if (!ok) return
-    try { await api.patch(`/events/${e.id}/registrations/${r.id}`, { status: 'cancelled' }); toast('Registration cancelled'); refresh() } catch (err) { toast(err.message, 'error') }
+    try { await api.patch(`/events/${e.id}/registrations/${r.id}`, { status: 'cancelled' }); await refresh(); toast('Registration cancelled') } catch (err) { toast(err.message, 'error') }
   }
 
   const rows = regs.data?.rows || []
@@ -205,8 +205,8 @@ export default function EventDetail() {
         </aside>
       </div>
       {scanning && <Scanner onClose={() => setScanning(false)} onCode={(c) => { setScanning(false); checkIn({ code: c }) }} />}
-      <EventForm open={editing} event={e} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); toast('Event updated'); reload() }} />
-      <WalkIn open={walkIn} eventId={e.id} onClose={() => setWalkIn(false)} onDone={() => { setWalkIn(false); toast('Walk-in added and checked in'); refresh() }} />
+      <EventForm open={editing} event={e} onClose={() => setEditing(false)} onSaved={async () => { await reload(); setEditing(false); toast('Event updated') }} />
+      <WalkIn open={walkIn} eventId={e.id} onClose={() => setWalkIn(false)} onDone={async () => { await refresh(); setWalkIn(false); toast('Walk-in added and checked in') }} />
     </div>
   )
 }

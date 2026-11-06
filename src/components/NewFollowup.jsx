@@ -24,7 +24,7 @@ export default function NewFollowup({ open, person, onClose, onCreated }) {
   async function save(e) {
     e.preventDefault()
     setBusy(true); setError('')
-    try { await api.post('/followups', { personId: person.id, title, dueAt: fromLocalInput(dueAt), assigneeUserId: assignee || null }); onCreated() }
+    try { await api.post('/followups', { personId: person.id, title, dueAt: fromLocalInput(dueAt), assigneeUserId: assignee || null }); await onCreated() }
     catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
