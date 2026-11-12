@@ -16,6 +16,7 @@ import tagRoutes from './routes/tags.js'
 import automationRoutes from './routes/automation.js'
 import billingRoutes from './routes/billing.js'
 import childrenRoutes from './routes/children.js'
+import commsRoutes from './routes/comms.js'
 import { isExpired, billingEnabled } from './billing.js'
 import { appEnv, hostAllowed } from './env.js'
 import { COMMIT } from './version.js'
@@ -26,7 +27,7 @@ const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/o
   /^\/children\/(pickup|pickup\/lookup)$/]
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes]) {
   register(router)
 }
 

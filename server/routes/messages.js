@@ -21,7 +21,7 @@ export function providerFor(channel) {
 
 // Who a message goes to: either a group described by filters (tags, status, unit, attendance),
 // or people picked by hand.
-function cleanAudience(a = {}) {
+export function cleanAudience(a = {}) {
   return {
     mode: a.mode === 'people' ? 'people' : 'filters',
     branch: a.branch && isUuid(a.branch) ? a.branch : null,
@@ -33,7 +33,7 @@ function cleanAudience(a = {}) {
   }
 }
 
-async function audiencePeople(ctx, audience) {
+export async function audiencePeople(ctx, audience) {
   if (audience.mode === 'people') {
     if (!audience.people.length) return []
     const { db } = await fb()

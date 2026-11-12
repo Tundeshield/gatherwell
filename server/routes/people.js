@@ -285,6 +285,10 @@ export default function (r) {
       }
       tx.update(ref, patch)
     })
+    if (data.status !== existing.status && data.status === 'member') {
+      const { fireTrigger } = await import('../comms/engine.js')
+      await fireTrigger(ctx.org.id, 'became_member', { personId: existing.id }).catch(e => console.error('workflow trigger', e))
+    }
     if (data.status !== existing.status) {
       await audit(ctx, 'person.status_changed', 'person', existing.id, { from: existing.status, to: data.status, name: `${data.first_name} ${data.last_name || ''}`.trim() })
       if (existing.status === 'visitor' && data.status !== 'visitor') {

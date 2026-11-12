@@ -29,7 +29,7 @@ export async function recordCheckin({ org, gathering, personId, method, answers 
   const { db } = await fb()
   const C = (n) => col(db, org.id, n)
   const s = org.settings || {}
-  return db.runTransaction(async (tx) => {
+  const res = await db.runTransaction(async (tx) => {
     const ckRef = C('checkins').doc(`${gathering.id}_${personId}`)
     const pRef = C('people').doc(personId)
     const gRef = C('gatherings').doc(gathering.id)
@@ -94,8 +94,14 @@ export async function recordCheckin({ org, gathering, personId, method, answers 
       last_seen_at: lastSeen, updated_at: now, ...followupCounters(p, { add, remove }),
     })
     tx.update(gRef, { attendance: F.inc(1), first_timers: F.inc(firstTime ? 1 : 0), manual: F.inc(method === 'manual' ? 1 : 0) })
-    return { checkinId: ckRef.id, firstTime, alreadyCheckedIn: false }
+    return { checkinId: ckRef.id, firstTime, alreadyCheckedIn: false, visits, wasVisitor: p.status === 'visitor' }
   })
+  // Workflows that start on a first or second visit. Never allowed to break a check-in.
+  if (!res.alreadyCheckedIn && res.wasVisitor && (res.visits === 1 || res.visits === 2)) {
+    const { fireTrigger } = await import('./comms/engine.js')
+    await fireTrigger(org.id, res.visits === 1 ? 'first_visit' : 'second_visit', { personId }).catch(e => console.error('workflow trigger', e))
+  }
+  return res
 }
 
 // Creates an automatic follow-up unless one is already open for that person and reason.

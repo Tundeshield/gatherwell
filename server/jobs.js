@@ -1,4 +1,5 @@
-// Background work, run every 15 minutes by netlify/functions/scheduler.mjs:
+// Background work, run every minute by netlify/functions/scheduler.mjs:
+//  • scheduled messages, recurring messages and workflow steps (every run)
 //  • welcome-journey emails that have come due
 //  • the Monday Pastor's Brief, at 7am in each church's own timezone
 import { fb, col, toDate } from './firebase.js'
@@ -188,12 +189,16 @@ async function runTrialReminders({ now, deadline }) {
   return { sent }
 }
 
-export async function runScheduled({ now = new Date(), budgetMs = 20000 } = {}) {
+export async function runScheduled({ now = new Date(), budgetMs = 20000, legacy = true } = {}) {
   const deadline = Date.now() + budgetMs
+  // Communications (scheduled messages, workflows) run every minute so 10am means 10am.
+  const { runComms } = await import('./comms/engine.js')
+  const comms = await runComms({ now, deadline: Date.now() + Math.floor(budgetMs * 0.6) }).catch(e => { console.error('Comms run failed', e); return { error: e.message } })
+  if (!legacy) return { comms }
   const journey = await runJourney({ now, deadline }).catch(e => { console.error('Journey run failed', e); return { error: e.message } })
   const briefs = await runBriefs({ now, deadline }).catch(e => { console.error('Brief run failed', e); return { error: e.message } })
   const trials = await runTrialReminders({ now, deadline }).catch(e => { console.error('Trial reminders failed', e); return { error: e.message } })
-  return { journey, briefs, trials }
+  return { comms, journey, briefs, trials }
 }
 
 export { toDate }

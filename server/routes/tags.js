@@ -85,6 +85,14 @@ export default function (r) {
       await b.commit()
     }
     await audit(ctx, 'people.tagged', 'people', null, { count: ok.length, add: addOk.length, remove: removeOk.length })
+    // Workflows that start when someone is given a tag.
+    if (addOk.length) {
+      const wfs = (await col(db, ctx.org.id, 'workflows').where('status', '==', 'active').get()).docs.filter(d => d.data().trigger?.type === 'tag_added' && addOk.includes(d.data().trigger.tagId))
+      if (wfs.length) {
+        const { fireTrigger } = await import('../comms/engine.js')
+        for (const s of ok) for (const t of addOk) if (!(s.data().tags || []).includes(t)) await fireTrigger(ctx.org.id, 'tag_added', { personId: s.id, key: t, match: tr => tr.tagId === t }).catch(() => {})
+      }
+    }
     return { updated: ok.length }
   })
 }

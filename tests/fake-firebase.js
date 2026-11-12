@@ -34,6 +34,13 @@ function applyWrite(existing, data, merge) {
   const out = merge && existing ? { ...existing } : {}
   for (const [k, v] of Object.entries(data)) {
     if (v === undefined) continue
+    // Dotted paths in updates address nested fields, as in Firestore ("consent.whatsapp").
+    if (merge && k.includes('.')) {
+      const [head, ...rest] = k.split('.')
+      const child = out[head] && typeof out[head] === 'object' && !Array.isArray(out[head]) ? out[head] : {}
+      out[head] = applyWrite(child, { [rest.join('.')]: v }, true)
+      continue
+    }
     if (isSentinel(v)) {
       if (v.__op === 'del') delete out[k]
       else if (v.__op === 'inc') out[k] = (Number(out[k]) || 0) + v.n

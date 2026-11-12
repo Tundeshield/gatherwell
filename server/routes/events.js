@@ -31,7 +31,7 @@ export async function createRegistration({ orgId, event, orgSettings, name, phon
   const eRef = col(db, orgId, 'events').doc(event.id)
   const regRef = col(db, orgId, 'registrations').doc()
   const code = ticketCode()
-  return db.runTransaction(async (tx) => {
+  const reg = await db.runTransaction(async (tx) => {
     const refs = [eRef, keyRef(db, orgId, event.id, 'c', code)]
     if (phoneNorm) refs.push(keyRef(db, orgId, event.id, 'p', phoneNorm))
     if (email) refs.push(keyRef(db, orgId, event.id, 'e', email.toLowerCase()))
@@ -56,6 +56,14 @@ export async function createRegistration({ orgId, event, orgSettings, name, phon
     tx.update(eRef, status === 'registered' ? { registered: F.inc(1) } : { waitlist: F.inc(1) })
     return { id: regRef.id, ...plain(data) }
   })
+  // Workflows that start when someone registers (only registrations linked to a person record).
+  if (reg.person_id) {
+    const { fireTrigger } = await import('../comms/engine.js')
+    const starts = event.starts_at?.toDate ? event.starts_at.toDate() : event.starts_at ? new Date(event.starts_at) : null
+    await fireTrigger(orgId, 'event_registered', { personId: reg.person_id, key: event.id, match: t => !t.eventId || t.eventId === event.id,
+      context: { event_id: event.id, event_name: event.name || '', event_starts_at: starts ? starts.toISOString() : null } }).catch(e => console.error('workflow trigger', e))
+  }
+  return reg
 }
 
 async function promoteWaitlist(db, orgId, eventId) {
