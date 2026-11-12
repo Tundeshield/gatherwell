@@ -881,7 +881,7 @@ test('data rights: person export, complete deletion, email consent, church expor
   assert.ok(String(r.data).includes('Sade R'), 'the event keeps its registration, without the link')
 })
 
-test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan changes, network unlocks branches', async () => {
+test('billing: trial, Stripe checkout, webhooks, read-only after expiry, plan changes, network unlocks branches', async () => {
   const crypto = await import('node:crypto')
   const c = client()
   await signup(c, { orgName: 'Pay Church', name: 'Pat Owner', email: 'pat@pay.test', password: 'password123' })
@@ -890,40 +890,45 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
   assert.equal(me.org.billing.state, 'trialing')
   assert.ok(me.org.billing.daysLeft >= 30)
   let r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-  assert.equal(r.status, 400, 'no payments before Paddle is connected')
+  assert.equal(r.status, 400, 'no payments before Stripe is connected')
 
   // An expired church is never locked out while payments aren't connected
   const setOrg = (patch) => { const k = `orgs/${orgId}`; fake.db._store.set(k, { ...fake.db._store.get(k), ...patch }) }
   setOrg({ billing: { status: 'cancelled', next_payment_date: new Date(Date.now() - 86400e3).toISOString() } })
   r = await c.post('/people', { firstName: 'Free', phone: '08050000001', branchId }); assert.equal(r.status, 200)
 
-  Object.assign(process.env, { PADDLE_API_KEY: 'pdl_sdbx_test', PADDLE_CLIENT_TOKEN: 'test_client', PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_secret', PADDLE_ENV: 'sandbox' })
+  Object.assign(process.env, { STRIPE_SECRET_KEY: 'sk_live_test', STRIPE_WEBHOOK_SECRET: 'whsec_test' })
   const calls = []
-  const sub = { id: 'sub_1', status: 'active', customer_id: 'ctm_1', custom_data: { org_id: orgId, plan: 'church', interval: 'monthly' }, items: [{ price: { id: 'pri_church_month' } }], next_billed_at: new Date(Date.now() + 30 * 86400e3).toISOString(), current_billing_period: { ends_at: new Date(Date.now() + 30 * 86400e3).toISOString() }, scheduled_change: null }
+  const now = Math.floor(Date.now() / 1000)
+  const sub = { id: 'sub_1', object: 'subscription', status: 'active', customer: 'cus_1', metadata: { org_id: orgId, plan: 'church', interval: 'monthly' },
+    items: { data: [{ id: 'si_1', price: { id: 'price_church_month', lookup_key: 'gatherhq_church_monthly', recurring: { interval: 'month' } } }] },
+    current_period_end: now + 30 * 86400, cancel_at_period_end: false, default_payment_method: { card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } } }
   const realFetch = globalThis.fetch
   globalThis.fetch = async (u, init = {}) => {
-    if (!String(u).startsWith('https://sandbox-api.paddle.com')) return realFetch(u, init)
-    const path = String(u).replace('https://sandbox-api.paddle.com', ''); const body = init.body && JSON.parse(init.body)
-    calls.push([init.method || 'GET', path, body])
-    const ok = (data, status = 200) => new Response(JSON.stringify({ data }), { status, headers: { 'content-type': 'application/json' } })
-    if (path.startsWith('/products?')) return ok([])
-    if (path === '/products') return ok({ id: `pro_${body.custom_data.gatherhq_plan}` }, 201)
-    if (path.startsWith('/prices?')) return ok([])
-    if (path === '/prices') return ok({ id: `pri_${body.product_id.slice(4)}_${body.billing_cycle.interval}` }, 201)
-    if (path === '/transactions/txn_1') return ok({ id: 'txn_1', status: 'completed', customer_id: 'ctm_1', subscription_id: 'sub_1', custom_data: { org_id: orgId, plan: 'church', interval: 'monthly' }, payments: [{ status: 'captured', method_details: { card: { type: 'visa', last4: '4242', expiry_month: 12, expiry_year: 2030 } } }] })
-    if (path === '/transactions/txn_other') return ok({ id: 'txn_other', status: 'completed', custom_data: { org_id: 'someone-else' } })
-    if (path === '/subscriptions/sub_1' && init.method === 'PATCH') { sub.items = [{ price: { id: body.items[0].price_id } }]; return ok(sub) }
+    if (!String(u).startsWith('https://api.stripe.com')) return realFetch(u, init)
+    const url = new URL(u); const path = url.pathname.replace('/v1', ''); const body = Object.fromEntries(new URLSearchParams(init.body || ''))
+    calls.push([init.method || 'GET', path, body, url.search])
+    const ok = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } })
+    if (path === '/prices' && (init.method || 'GET') === 'GET') return ok({ data: [] })
+    if (path.startsWith('/products/')) return ok({ error: { message: 'No such product' } }, 404)
+    if (path === '/products') return ok({ id: body.id })
+    if (path === '/prices') return ok({ id: `price_${body.product.slice(9)}_${body['recurring[interval]']}` })
+    if (path === '/customers') return ok({ id: 'cus_1' })
+    if (path === '/checkout/sessions') return ok({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' })
+    if (path === '/checkout/sessions/cs_1') return ok({ id: 'cs_1', status: 'complete', client_reference_id: orgId, subscription: sub, customer_details: { email: 'pat@pay.test' } })
+    if (path === '/checkout/sessions/cs_other') return ok({ id: 'cs_other', status: 'complete', client_reference_id: 'someone-else', subscription: sub })
+    if (path === '/subscriptions/sub_1' && init.method === 'POST') { sub.items.data[0].price = { id: body['items[0][price]'], lookup_key: 'gatherhq_network_yearly', recurring: { interval: 'year' } }; sub.metadata = { org_id: orgId, plan: 'network', interval: 'yearly' }; sub.cancel_at_period_end = false; return ok(sub) }
     if (path === '/subscriptions/sub_1') return ok(sub)
-    if (path === '/customers/ctm_1/portal-sessions') return ok({ urls: { general: { overview: 'https://customer-portal.paddle.com/cpl_1' } } }, 201)
-    return new Response(JSON.stringify({ error: { detail: 'not mocked' } }), { status: 404 })
+    if (path === '/billing_portal/sessions') return ok({ url: 'https://billing.stripe.com/p/session/1' })
+    return ok({ error: { message: 'not mocked ' + path } }, 404)
   }
-  const hook = (evt, sign = true, ts = Math.floor(Date.now() / 1000)) => {
+  const hook = (evt, sign = true, t = Math.floor(Date.now() / 1000)) => {
     const raw = JSON.stringify(evt)
-    const sig = sign ? `ts=${ts};h1=${crypto.createHmac('sha256', 'pdl_ntfset_secret').update(`${ts}:${raw}`).digest('hex')}` : `ts=${ts};h1=bad`
-    return handle(new Request('http://test.local/api/webhooks/paddle', { method: 'POST', headers: { 'content-type': 'application/json', 'paddle-signature': sig }, body: raw }))
+    const sig = sign ? `t=${t},v1=${crypto.createHmac('sha256', 'whsec_test').update(`${t}.${raw}`).digest('hex')}` : `t=${t},v1=bad`
+    return handle(new Request('http://test.local/api/webhooks/stripe', { method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8', 'stripe-signature': sig }, body: raw }))
   }
   let n = 0
-  const evt = (type, data, at = new Date().toISOString()) => ({ event_id: `evt_${++n}`, event_type: type, occurred_at: at, data })
+  const evt = (type, object, created = Math.floor(Date.now() / 1000) + n) => ({ id: `evt_${++n}`, type, created, data: { object } })
   try {
     // Expired and payments connected: read-only
     r = await c.post('/people', { firstName: 'Blocked', phone: '08050000002', branchId })
@@ -936,57 +941,60 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
     assert.equal((await c.post('/children/pickup/lookup', { code: 'KXM' })).status, 200, 'pickup still works')
     assert.equal((await c.post('/gatherings', { name: 'Sunday', branchId, startsAt: new Date().toISOString() })).status, 402, 'no new sessions')
 
-    // Checkout: product and price created once in Paddle, then reused
+    // Checkout: product and price created once in Stripe (by lookup key), then reused
     r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
     assert.equal(r.status, 200, JSON.stringify(r.data))
-    assert.deepEqual([r.data.environment, r.data.token, r.data.priceId, r.data.customData.org_id, r.data.customer.email], ['sandbox', 'test_client', 'pri_church_month', orgId, 'pat@pay.test'])
-    const price = calls.find(x => x[1] === '/prices')[2]
-    assert.deepEqual([price.unit_price.amount, price.unit_price.currency_code, price.billing_cycle.interval], ['1900', 'USD', 'month'])
-    assert.equal(calls.find(x => x[1] === '/products')[2].tax_category, 'saas')
+    assert.equal(r.data.url, 'https://checkout.stripe.com/c/pay/cs_1')
+    const price = calls.find(x => x[0] === 'POST' && x[1] === '/prices')[2]
+    assert.deepEqual([price.unit_amount, price.currency, price['recurring[interval]'], price.lookup_key], ['1900', 'usd', 'month', 'gatherhq_church_monthly'])
+    assert.equal(calls.find(x => x[1] === '/products')[2].tax_code, 'txcd_10103001')
+    const session = calls.find(x => x[1] === '/checkout/sessions')[2]
+    assert.equal(session.mode, 'subscription'); assert.equal(session.client_reference_id, orgId); assert.equal(session.customer, 'cus_1')
+    assert.match(session.success_url, /\/app\/settings\?tab=billing&session_id=\{CHECKOUT_SESSION_ID\}$/)
     await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-    assert.equal(calls.filter(x => x[1] === '/prices').length, 1, 'price reused')
+    assert.equal(calls.filter(x => x[0] === 'POST' && x[1] === '/prices').length, 1, 'price reused')
+    assert.equal(calls.filter(x => x[1] === '/customers').length, 1, 'customer reused')
 
-    // After paying: confirm the transaction (only this church's)
-    assert.equal((await c.post('/billing/confirm', { transactionId: 'txn_other' })).data.ok, false)
-    r = await c.post('/billing/confirm', { transactionId: 'txn_1' })
+    // Back from checkout: confirm the session (only this church's)
+    assert.equal((await c.post('/billing/confirm', { sessionId: 'cs_other' })).data.ok, false)
+    r = await c.post('/billing/confirm', { sessionId: 'cs_1' })
     assert.equal(r.data.ok, true, JSON.stringify(r.data))
     me = (await c.get('/me')).data
     assert.equal(me.org.billing.state, 'active'); assert.equal(me.org.billing.plan, 'church')
     r = await c.get('/billing'); assert.equal(r.data.card.last4, '4242'); assert.equal(r.data.hasSubscription, true)
     assert.equal((await c.post('/people', { firstName: 'Paid', phone: '08050000003', branchId })).status, 200, 'unlocked')
-    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://customer-portal.paddle.com/cpl_1')
+    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://billing.stripe.com/p/session/1')
 
     // Webhooks: signed and recent only, each processed once
-    assert.equal((await hook(evt('subscription.updated', sub), false)).status, 401)
-    assert.equal((await hook(evt('subscription.updated', sub), true, Math.floor(Date.now() / 1000) - 3600)).status, 401, 'replayed old notification refused')
-    const failed = evt('transaction.payment_failed', { id: 'txn_2', customer_id: 'ctm_1', subscription_id: 'sub_1', custom_data: { org_id: orgId }, payments: [{ error_code: 'declined' }] })
+    assert.equal((await hook(evt('customer.subscription.updated', sub), false)).status, 401)
+    assert.equal((await hook(evt('customer.subscription.updated', sub), true, Math.floor(Date.now() / 1000) - 3600)).status, 401, 'replayed old notification refused')
+    const failed = evt('invoice.payment_failed', { id: 'in_2', customer: 'cus_1', subscription: 'sub_1', last_payment_error: { message: 'Your card was declined.' } })
     assert.equal((await hook(failed)).status, 200)
     assert.equal((await (await hook(failed)).json()).duplicate, true)
-    r = await hook(evt('subscription.past_due', { ...sub, status: 'past_due' }))
+    r = await hook(evt('customer.subscription.updated', { ...sub, status: 'past_due' }))
     assert.equal(r.status, 200)
     r = await c.get('/billing'); assert.equal(r.data.state, 'past_due'); assert.match(r.data.lastError, /declined/)
     assert.equal((await c.post('/people', { firstName: 'Grace', phone: '08050000004', branchId })).status, 200, 'grace period')
     // An older event arriving late doesn't undo a newer one
-    await hook(evt('subscription.updated', { ...sub, status: 'active' }, new Date(Date.now() - 86400e3).toISOString()))
+    await hook(evt('customer.subscription.updated', { ...sub, status: 'active' }, Math.floor(Date.now() / 1000) - 86400))
     assert.equal((await c.get('/billing')).data.state, 'past_due')
-    await hook(evt('subscription.updated', { ...sub, status: 'active' }))
+    await hook(evt('invoice.paid', { id: 'in_3', customer: 'cus_1', subscription: 'sub_1', status_transitions: { paid_at: Math.floor(Date.now() / 1000) } }))
     assert.equal((await c.get('/billing')).data.state, 'active')
 
     // Cancelling keeps the plan until the end of the paid period
-    const end = new Date(Date.now() + 10 * 86400e3).toISOString()
-    await hook(evt('subscription.updated', { ...sub, scheduled_change: { action: 'cancel', effective_at: end } }))
+    await hook(evt('customer.subscription.updated', { ...sub, cancel_at_period_end: true, current_period_end: now + 10 * 86400 }))
     r = await c.get('/billing'); assert.equal(r.data.state, 'active'); assert.equal(r.data.cancelling, true)
 
-    // Switching plan changes the Paddle subscription directly, and the network plan switches on branches
+    // Switching plan changes the Stripe subscription directly, and the network plan switches on branches
     r = await c.post('/billing/checkout', { plan: 'network', interval: 'yearly' })
     assert.equal(r.data.changed, true, JSON.stringify(r.data))
-    const patch = calls.find(x => x[0] === 'PATCH')[2]
-    assert.equal(patch.items[0].price_id, 'pri_network_year'); assert.equal(patch.scheduled_change, null, 'undoes the cancellation')
+    const change = calls.find(x => x[0] === 'POST' && x[1] === '/subscriptions/sub_1')[2]
+    assert.equal(change['items[0][id]'], 'si_1'); assert.equal(change['items[0][price]'], 'price_network_year'); assert.equal(change.cancel_at_period_end, 'false', 'undoes the cancellation')
     me = (await c.get('/me')).data
     assert.equal(me.org.billing.plan, 'network'); assert.equal(me.org.branchesEnabled, true)
 
     // A cancelled subscription that has ended locks changes again
-    await hook(evt('subscription.canceled', { ...sub, status: 'canceled', canceled_at: new Date(Date.now() - 3600e3).toISOString() }))
+    await hook(evt('customer.subscription.deleted', { ...sub, status: 'canceled', ended_at: Math.floor(Date.now() / 1000) - 3600 }))
     assert.equal((await c.get('/billing')).data.state, 'expired')
 
     // A free (complimentary) church is never charged
@@ -995,13 +1003,13 @@ test('billing: trial, Paddle checkout, webhooks, read-only after expiry, plan ch
     assert.equal((await c.get('/me')).data.org.billing.state, 'free')
   } finally {
     globalThis.fetch = realFetch
-    for (const k of ['PADDLE_API_KEY', 'PADDLE_CLIENT_TOKEN', 'PADDLE_WEBHOOK_SECRET', 'PADDLE_ENV']) delete process.env[k]
+    for (const k of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) delete process.env[k]
   }
 })
 
 test('admin console: revenue, church controls, users and support', async () => {
   const realFetch = globalThis.fetch
-  Object.assign(process.env, { PADDLE_API_KEY: 'k', PADDLE_CLIENT_TOKEN: 't' })
+  Object.assign(process.env, { STRIPE_SECRET_KEY: 'sk_test_x' })
   try {
     const c = client()
     await signup(c, { orgName: 'Console Church', name: 'Kemi Owner', email: 'kemi@console.test', password: 'password123' })
@@ -1058,7 +1066,7 @@ test('admin console: revenue, church controls, users and support', async () => {
     assert.equal((await S.ops.patch(`/platform/users/${opsId}`, { platformAdmin: false })).status, 400)
   } finally {
     globalThis.fetch = realFetch
-    delete process.env.PADDLE_API_KEY; delete process.env.PADDLE_CLIENT_TOKEN
+    delete process.env.STRIPE_SECRET_KEY
   }
 })
 

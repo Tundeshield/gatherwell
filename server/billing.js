@@ -1,104 +1,91 @@
-// Billing through Paddle (merchant of record: Paddle handles sales tax and VAT worldwide).
-// Switched on by PADDLE_API_KEY + PADDLE_CLIENT_TOKEN. PADDLE_ENV = 'sandbox' (testing) or 'production'.
-// Products and prices are created in Paddle automatically the first time they're needed.
+// Billing through Stripe. Switched on by STRIPE_SECRET_KEY (sk_live_… or sk_test_…).
+// Products and prices are created in Stripe automatically the first time they're needed,
+// found again by their lookup keys (gatherhq_<plan>_<interval>).
 import crypto from 'node:crypto'
 import { fb } from './firebase.js'
 import { HttpError, bad } from './http.js'
 import { PLANS, CURRENCY, price, billingStatus } from '../shared/plans.js'
 
-const env = () => (process.env.PADDLE_ENV === 'production' ? 'production' : 'sandbox')
-const API = () => (env() === 'production' ? 'https://api.paddle.com' : 'https://sandbox-api.paddle.com')
-export const billingEnabled = () => !!process.env.PADDLE_API_KEY && !!process.env.PADDLE_CLIENT_TOKEN
+const API = 'https://api.stripe.com/v1'
+const STRIPE_VERSION = '2024-06-20'
+export const billingEnabled = () => !!process.env.STRIPE_SECRET_KEY
 // Pricing rules (read-only after the trial) only apply once churches can actually pay.
 export const billingEnforced = () => billingEnabled() && process.env.BILLING_ENFORCED !== 'false'
 export const isExpired = (org) => billingEnforced() && billingStatus(org).state === 'expired'
+const mode = () => (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live') ? 'live' : 'test')
 
-async function paddle(method, path, body) {
-  const res = await fetch(API() + path, {
-    method, headers: { authorization: `Bearer ${process.env.PADDLE_API_KEY}`, 'content-type': 'application/json', 'paddle-version': '1' },
-    body: body ? JSON.stringify(body) : undefined,
+// Stripe takes form-encoded bodies with bracketed keys: items[0][price]=…
+function encode(obj, prefix = '', out = new URLSearchParams()) {
+  for (const [k, v] of Object.entries(obj || {})) {
+    if (v === undefined) continue
+    const key = prefix ? `${prefix}[${k}]` : k
+    if (v === null) out.append(key, '')
+    else if (Array.isArray(v)) v.forEach((x, i) => (typeof x === 'object' ? encode(x, `${key}[${i}]`, out) : out.append(`${key}[${i}]`, String(x))))
+    else if (typeof v === 'object') encode(v, key, out)
+    else out.append(key, String(v))
+  }
+  return out
+}
+
+async function stripe(method, path, params) {
+  const get = method === 'GET'
+  const qs = get && params ? `?${encode(params)}` : ''
+  const res = await fetch(`${API}${path}${qs}`, {
+    method,
+    headers: { authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`, 'stripe-version': STRIPE_VERSION, ...(get ? {} : { 'content-type': 'application/x-www-form-urlencoded' }) },
+    body: get ? undefined : encode(params).toString(),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    console.error('Paddle API error', method, path, res.status, JSON.stringify(data?.error || data).slice(0, 500))
-    throw new HttpError(res.status >= 500 ? 502 : 400, `The payment service said: ${data?.error?.detail || `error ${res.status}`}`)
+    console.error('Stripe API error', method, path, res.status, JSON.stringify(data?.error || data).slice(0, 500))
+    throw new HttpError(res.status >= 500 ? 502 : 400, `The payment service said: ${data?.error?.message || `error ${res.status}`}`)
   }
-  return data.data
+  return data
 }
 
-const priceKey = (plan, interval) => `${plan}:${interval}`
+const lookupKey = (plan, interval) => `gatherhq_${plan}_${interval}`
+const toISO = (s) => (s ? new Date(s * 1000).toISOString() : null)
 
 async function billingDoc() {
   const { db } = await fb()
   const ref = db.collection('platform').doc('billing')
-  const d = (await ref.get()).data() || {}
-  return { ref, prices: d.paddle?.[env()]?.prices || {}, products: d.paddle?.[env()]?.products || {}, all: d }
+  const all = (await ref.get()).data() || {}
+  return { ref, all, prices: all.stripe?.[mode()]?.prices || {} }
 }
 
-// Finds or creates the Paddle product and price for one of our plans and intervals.
+// Finds or creates the Stripe product and price for one of our plans and intervals.
 export async function priceId(plan, interval) {
-  const { ref, prices, products, all } = await billingDoc()
-  const key = priceKey(plan, interval)
+  const { ref, all, prices } = await billingDoc()
+  const key = lookupKey(plan, interval)
   if (prices[key]) return prices[key]
-  let productId = products[plan]
-  if (!productId) {
-    const existing = (await paddle('GET', '/products?status=active&per_page=200')) || []
-    productId = existing.find(p => p.custom_data?.gatherhq_plan === plan)?.id
-      || (await paddle('POST', '/products', { name: `GatherHQ ${PLANS[plan].name}`, tax_category: 'saas', description: PLANS[plan].blurb, custom_data: { gatherhq_plan: plan } })).id
+  const amount = Math.round(price(plan, interval) * 100)
+  const found = (await stripe('GET', '/prices', { lookup_keys: [key], active: 'true', limit: 1 })).data?.[0]
+  let id = found && found.unit_amount === amount && found.currency === CURRENCY.toLowerCase() ? found.id : null
+  if (!id) {
+    const productId = `gatherhq_${plan}`
+    let product
+    try { product = await stripe('GET', `/products/${productId}`) } catch { product = null }
+    if (!product) product = await stripe('POST', '/products', { id: productId, name: `GatherHQ ${PLANS[plan].name}`, description: PLANS[plan].blurb, tax_code: 'txcd_10103001' })
+    id = (await stripe('POST', '/prices', {
+      product: product.id, currency: CURRENCY.toLowerCase(), unit_amount: amount, tax_behavior: 'exclusive',
+      recurring: { interval: interval === 'yearly' ? 'year' : 'month' },
+      nickname: `${PLANS[plan].name}, ${interval}`, lookup_key: key, transfer_lookup_key: true,
+    })).id
   }
-  const amount = String(Math.round(price(plan, interval) * 100))
-  const existingPrices = (await paddle('GET', `/prices?product_id=${productId}&status=active&per_page=200`)) || []
-  const found = existingPrices.find(p => p.custom_data?.gatherhq_key === key && p.unit_price?.amount === amount && p.unit_price?.currency_code === CURRENCY)
-  const id = found?.id || (await paddle('POST', '/prices', {
-    product_id: productId, description: `${PLANS[plan].name}, ${interval === 'yearly' ? 'yearly' : 'monthly'}`, name: interval === 'yearly' ? 'Yearly' : 'Monthly',
-    unit_price: { amount, currency_code: CURRENCY }, billing_cycle: { interval: interval === 'yearly' ? 'year' : 'month', frequency: 1 },
-    custom_data: { gatherhq_key: key },
-  })).id
-  const cur = all.paddle?.[env()] || {}
-  await ref.set({ paddle: { ...(all.paddle || {}), [env()]: { ...cur, products: { ...(cur.products || {}), [plan]: productId }, prices: { ...(cur.prices || {}), [key]: id } } } }, { merge: true })
+  const cur = all.stripe?.[mode()] || {}
+  await ref.set({ stripe: { ...(all.stripe || {}), [mode()]: { ...cur, prices: { ...(cur.prices || {}), [key]: id } } } }, { merge: true })
   return id
 }
 
-async function planFromPrice(id) {
-  if (!id) return null
-  const { prices } = await billingDoc()
-  const key = Object.keys(prices).find(k => prices[k] === id)
-  if (!key) return null
-  const [plan, interval] = key.split(':')
-  return { plan, interval }
-}
-
-/**
- * Starts a plan. A church already paying through Paddle is switched straight away (charged or
- * credited the difference); otherwise this returns what the browser needs to open Paddle's checkout.
- */
-export async function startCheckout({ org, user, plan, interval }) {
-  const id = await priceId(plan, interval)
-  const b = org.billing || {}
-  const st = billingStatus(org)
-  if (b.subscription_id && b.provider === 'paddle' && (st.state === 'active' || st.state === 'past_due')) {
-    await paddle('PATCH', `/subscriptions/${b.subscription_id}`, { items: [{ price_id: id, quantity: 1 }], proration_billing_mode: 'prorated_immediately', ...(st.cancelling ? { scheduled_change: null } : {}) })
-    const { db } = await fb()
-    await setBilling({ ref: db.collection('orgs').doc(org.id), ...org }, { plan, interval, status: 'active' })
-    return { changed: true, plan, interval }
-  }
-  return {
-    provider: 'paddle', environment: env(), token: process.env.PADDLE_CLIENT_TOKEN, priceId: id,
-    customer: b.customer_id ? { id: b.customer_id } : { email: b.email || user.email },
-    customData: { org_id: org.id, plan, interval },
-  }
-}
-
-async function orgFor(customerId, customData) {
-  const { db } = await fb()
-  const id = customData?.org_id || (customerId && (await db.collection('billingCustomers').doc(customerId).get()).data()?.org_id)
-  if (!id) return null
-  const o = await db.collection('orgs').doc(String(id)).get()
-  return o.exists ? { id: o.id, ref: o.ref, ...o.data() } : null
+function planFromPrice(p) {
+  const m = /^gatherhq_(church|network)_(monthly|yearly)$/.exec(p?.lookup_key || '')
+  if (m) return { plan: m[1], interval: m[2] }
+  if (p?.recurring) return { interval: p.recurring.interval === 'year' ? 'yearly' : 'monthly' }
+  return {}
 }
 
 async function setBilling(org, patch, extra = {}) {
-  const billing = { ...(org.billing || {}), provider: 'paddle', manual: false, ...patch, updated_at: new Date() }
+  const billing = { ...(org.billing || {}), provider: 'stripe', manual: false, ...patch, updated_at: new Date() }
   const update = { billing, ...extra }
   // The church network plan switches on multiple branches.
   if (patch.plan === 'network' && patch.status === 'active') update.features = { ...(org.features || {}), branches: true }
@@ -106,104 +93,173 @@ async function setBilling(org, patch, extra = {}) {
   return billing
 }
 
-const cardFrom = (tx) => {
-  const c = (tx?.payments || []).find(p => p.status === 'captured' || p.captured_at)?.method_details?.card || tx?.payments?.[0]?.method_details?.card
-  return c?.last4 ? { brand: c.type ? c.type[0].toUpperCase() + c.type.slice(1) : null, last4: c.last4, exp: c.expiry_month && c.expiry_year ? `${c.expiry_month}/${String(c.expiry_year).slice(-2)}` : null } : undefined
-}
-
-// A Paddle subscription → our billing fields.
-async function fromSubscription(sub) {
-  const item = sub.items?.[0]
-  const p = (await planFromPrice(item?.price?.id || item?.price_id)) || (sub.custom_data?.plan ? { plan: sub.custom_data.plan, interval: sub.custom_data.interval } : {})
-  const base = { ...p, subscription_id: sub.id, customer_id: sub.customer_id }
-  const endsAt = sub.current_billing_period?.ends_at || null
-  switch (sub.status) {
-    case 'active':
-    case 'trialing':
-      if (sub.scheduled_change?.action === 'cancel') return { ...base, status: 'cancelled', next_payment_date: sub.scheduled_change.effective_at || endsAt }
-      return { ...base, status: 'active', next_payment_date: sub.next_billed_at || endsAt, last_error: null }
-    case 'past_due':
-      return { ...base, status: 'past_due', next_payment_date: sub.next_billed_at || endsAt || new Date().toISOString() }
-    default: // canceled, paused
-      return { ...base, status: 'cancelled', next_payment_date: sub.canceled_at || endsAt || new Date().toISOString() }
-  }
-}
-
 async function rememberCustomer(customerId, orgId, email) {
   if (!customerId) return
   const { db } = await fb()
-  await db.collection('billingCustomers').doc(customerId).set({ org_id: orgId, email: email || null, provider: 'paddle', updated_at: new Date() }, { merge: true })
+  await db.collection('billingCustomers').doc(customerId).set({ org_id: orgId, email: email || null, provider: 'stripe', updated_at: new Date() }, { merge: true })
 }
 
-// After checkout completes in the browser: confirm straight away (the webhook may arrive a little later).
-export async function confirmPayment(org, transactionId) {
-  const tx = await paddle('GET', `/transactions/${encodeURIComponent(transactionId)}`)
-  if (tx.custom_data?.org_id !== org.id) return { ok: false, status: 'not_found' }
-  if (!['paid', 'completed'].includes(tx.status)) return { ok: false, status: tx.status }
+async function ensureCustomer(org, user) {
+  const b = org.billing || {}
+  if (b.provider === 'stripe' && b.customer_id && b.mode === mode()) return b.customer_id
+  const c = await stripe('POST', '/customers', { email: b.email || user.email, name: org.name, metadata: { org_id: org.id, church: org.name } })
+  await rememberCustomer(c.id, org.id, user.email)
+  const { db } = await fb()
+  await db.collection('orgs').doc(org.id).update({ billing: { ...b, provider: 'stripe', mode: mode(), customer_id: c.id, subscription_id: null, email: b.email || user.email } })
+  return c.id
+}
+
+const cardFrom = (pm) => {
+  const c = pm?.card
+  return c?.last4 ? { brand: c.brand ? c.brand[0].toUpperCase() + c.brand.slice(1) : null, last4: c.last4, exp: c.exp_month && c.exp_year ? `${c.exp_month}/${String(c.exp_year).slice(-2)}` : null } : undefined
+}
+
+// A Stripe subscription → our billing fields.
+async function fromSubscription(sub) {
+  const item = sub.items?.data?.[0]
+  const p = { ...planFromPrice(item?.price), ...(sub.metadata?.plan ? { plan: sub.metadata.plan } : {}) }
+  if (!p.plan) Object.assign(p, planFromPrice(item?.price))
+  const end = toISO(sub.current_period_end ?? item?.current_period_end)
+  let pm = sub.default_payment_method
+  if (typeof pm === 'string') pm = await stripe('GET', `/payment_methods/${pm}`).catch(() => null)
+  const card = cardFrom(pm)
+  const base = { ...p, subscription_id: sub.id, customer_id: typeof sub.customer === 'string' ? sub.customer : sub.customer?.id, mode: mode(), ...(card ? { card } : {}) }
+  switch (sub.status) {
+    case 'active':
+    case 'trialing':
+      if (sub.cancel_at_period_end || sub.cancel_at) return { ...base, status: 'cancelled', next_payment_date: toISO(sub.cancel_at) || end }
+      return { ...base, status: 'active', next_payment_date: end, last_error: null }
+    case 'past_due':
+    case 'unpaid':
+      return { ...base, status: 'past_due', next_payment_date: end || new Date().toISOString() }
+    case 'incomplete':
+      return null // first payment not finished yet; nothing changes
+    default: // canceled, incomplete_expired, paused
+      return { ...base, status: 'cancelled', next_payment_date: toISO(sub.ended_at || sub.canceled_at) || new Date().toISOString() }
+  }
+}
+
+/**
+ * Starts a plan. A church already paying through Stripe is switched straight away (charged or
+ * credited the difference); otherwise this returns Stripe's checkout page URL.
+ */
+export async function startCheckout({ org, user, plan, interval, origin }) {
+  const id = await priceId(plan, interval)
+  const b = org.billing || {}
+  const st = billingStatus(org)
+  if (b.provider === 'stripe' && b.subscription_id && b.mode === mode() && (st.state === 'active' || st.state === 'past_due')) {
+    const sub = await stripe('GET', `/subscriptions/${b.subscription_id}`)
+    const updated = await stripe('POST', `/subscriptions/${sub.id}`, {
+      items: [{ id: sub.items.data[0].id, price: id }], proration_behavior: 'create_prorations', cancel_at_period_end: 'false',
+      metadata: { org_id: org.id, plan, interval },
+    })
+    const { db } = await fb()
+    const patch = await fromSubscription(updated)
+    await setBilling({ ref: db.collection('orgs').doc(org.id), ...org }, { ...patch, plan, interval })
+    return { changed: true, plan, interval }
+  }
+  const customer = await ensureCustomer(org, user)
+  const back = `${origin}/app/settings?tab=billing`
+  const session = await stripe('POST', '/checkout/sessions', {
+    mode: 'subscription', customer, client_reference_id: org.id,
+    line_items: [{ price: id, quantity: 1 }],
+    success_url: `${back}&session_id={CHECKOUT_SESSION_ID}`, cancel_url: back,
+    allow_promotion_codes: 'true', billing_address_collection: 'auto',
+    metadata: { org_id: org.id, plan, interval },
+    subscription_data: { metadata: { org_id: org.id, plan, interval } },
+    ...(process.env.STRIPE_AUTOMATIC_TAX === 'true' ? { automatic_tax: { enabled: 'true' }, customer_update: { address: 'auto', name: 'auto' }, tax_id_collection: { enabled: 'true' } } : {}),
+  })
+  return { url: session.url }
+}
+
+async function orgFor(customerId, metadata) {
+  const { db } = await fb()
+  const id = metadata?.org_id || (customerId && (await db.collection('billingCustomers').doc(customerId).get()).data()?.org_id)
+  if (!id) return null
+  const o = await db.collection('orgs').doc(String(id)).get()
+  return o.exists ? { id: o.id, ref: o.ref, ...o.data() } : null
+}
+
+// After returning from Stripe's checkout: confirm straight away (the webhook may arrive a little later).
+export async function confirmPayment(org, sessionId) {
+  const s = await stripe('GET', `/checkout/sessions/${encodeURIComponent(sessionId)}`, { expand: ['subscription', 'subscription.default_payment_method'] })
+  if (s.client_reference_id !== org.id) return { ok: false, status: 'not_found' }
+  if (s.status !== 'complete' || !s.subscription) return { ok: false, status: s.status }
   const { db } = await fb()
   const fresh = { ref: db.collection('orgs').doc(org.id), ...(await db.collection('orgs').doc(org.id).get()).data(), id: org.id }
-  await rememberCustomer(tx.customer_id, org.id)
-  let patch = { customer_id: tx.customer_id, last_payment_at: new Date(tx.billed_at || tx.updated_at || Date.now()), card: cardFrom(tx) ?? fresh.billing?.card ?? null }
-  if (tx.subscription_id) patch = { ...patch, ...(await fromSubscription(await paddle('GET', `/subscriptions/${tx.subscription_id}`))) }
-  else patch = { ...patch, plan: tx.custom_data?.plan, interval: tx.custom_data?.interval, status: 'active' }
-  await setBilling(fresh, patch)
+  const patch = await fromSubscription(s.subscription)
+  if (!patch) return { ok: false, status: 'incomplete' }
+  await rememberCustomer(patch.customer_id, org.id, s.customer_details?.email)
+  await setBilling(fresh, { ...patch, last_payment_at: new Date() })
   return { ok: true, plan: patch.plan, interval: patch.interval }
 }
 
-// Paddle-Signature: ts=<unix seconds>;h1=<hmac-sha256 hex of "ts:rawBody">
+// Stripe-Signature: t=<unix seconds>,v1=<hmac-sha256 hex of "t.rawBody">[,v1=…]
 export function validSignature(raw, header, now = Date.now()) {
-  const secret = process.env.PADDLE_WEBHOOK_SECRET
+  const secret = process.env.STRIPE_WEBHOOK_SECRET
   if (!header || !secret) return false
-  const parts = Object.fromEntries(String(header).split(';').map(p => p.split('=').map(s => s.trim())))
-  const ts = Number(parts.ts)
-  if (!ts || !parts.h1 || Math.abs(now / 1000 - ts) > 300) return false
-  const want = crypto.createHmac('sha256', secret).update(`${parts.ts}:${raw}`).digest('hex')
-  return want.length === parts.h1.length && crypto.timingSafeEqual(Buffer.from(want), Buffer.from(parts.h1))
+  const parts = String(header).split(',').map(p => p.trim().split('='))
+  const t = parts.find(([k]) => k === 't')?.[1]
+  const sigs = parts.filter(([k]) => k === 'v1').map(([, v]) => v)
+  if (!t || !sigs.length || Math.abs(now / 1000 - Number(t)) > 300) return false
+  const want = crypto.createHmac('sha256', secret).update(`${t}.${raw}`).digest('hex')
+  return sigs.some(s => s.length === want.length && crypto.timingSafeEqual(Buffer.from(s), Buffer.from(want)))
 }
 
-// Paddle notifications. Each event is processed once; older events never overwrite newer state.
+// Stripe notifications. Each event is processed once; older events never overwrite newer state.
 export async function handleEvent(evt) {
   const { db } = await fb()
-  const d = evt.data || {}
-  const eventId = String(evt.event_id || `${evt.event_type}_${d.id}_${evt.occurred_at}`).replace(/[/.#[\]]/g, '_').slice(0, 200)
-  try { await db.collection('billingEvents').doc(eventId).create({ event: evt.event_type, at: new Date() }) } catch { return { duplicate: true } }
-  const org = await orgFor(d.customer_id, d.custom_data)
+  const d = evt.data?.object || {}
+  try { await db.collection('billingEvents').doc(String(evt.id).slice(0, 200)).create({ event: evt.type, provider: 'stripe', at: new Date() }) } catch { return { duplicate: true } }
+  const customerId = typeof d.customer === 'string' ? d.customer : d.customer?.id
+  const meta = d.metadata?.org_id ? d.metadata : d.subscription_details?.metadata || (d.client_reference_id ? { org_id: d.client_reference_id } : null)
+  const org = await orgFor(customerId, meta)
   if (!org) return { ignored: 'no church found' }
-  const at = evt.occurred_at || new Date().toISOString()
-  const newer = !org.billing?.event_at || at >= org.billing.event_at
-  if (String(evt.event_type).startsWith('subscription.')) {
-    if (!newer) return { ignored: 'older event' }
-    await rememberCustomer(d.customer_id, org.id)
-    await setBilling(org, { ...(await fromSubscription(d)), event_at: at })
-    return { ok: true }
-  }
-  switch (evt.event_type) {
-    case 'transaction.completed':
-    case 'transaction.paid': {
-      if (!d.subscription_id && !d.custom_data?.plan) return { ignored: 'not a subscription payment' }
-      await rememberCustomer(d.customer_id, org.id)
-      const patch = { customer_id: d.customer_id, last_payment_at: new Date(d.billed_at || at), last_error: null }
-      const card = cardFrom(d); if (card) patch.card = card
-      if (d.subscription_id) patch.subscription_id = d.subscription_id
-      if (org.billing?.status === 'past_due' || !org.billing?.status) patch.status = 'active'
-      if (!org.billing?.plan && d.custom_data?.plan) Object.assign(patch, { plan: d.custom_data.plan, interval: d.custom_data.interval })
+  const at = evt.created || Math.floor(Date.now() / 1000)
+  const newer = !org.billing?.event_at || typeof org.billing.event_at !== 'number' || at >= org.billing.event_at
+  switch (evt.type) {
+    case 'checkout.session.completed': {
+      if (d.mode !== 'subscription' || !d.subscription) return { ignored: 'not a subscription' }
+      const sub = await stripe('GET', `/subscriptions/${d.subscription}`, { expand: ['default_payment_method'] })
+      const patch = await fromSubscription(sub)
+      if (!patch) return { ignored: 'incomplete' }
+      await rememberCustomer(customerId, org.id, d.customer_details?.email)
+      await setBilling(org, { ...patch, last_payment_at: new Date(), event_at: at })
+      return { ok: true }
+    }
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted': {
+      if (!newer) return { ignored: 'older event' }
+      const patch = await fromSubscription(d)
+      if (!patch) return { ignored: 'incomplete' }
+      await rememberCustomer(customerId, org.id)
+      await setBilling(org, { ...patch, event_at: at })
+      return { ok: true }
+    }
+    case 'invoice.paid':
+    case 'invoice.payment_succeeded': {
+      if (!d.subscription) return { ignored: 'not a subscription invoice' }
+      const patch = { last_payment_at: new Date((d.status_transitions?.paid_at || at) * 1000), last_error: null }
+      if (org.billing?.status === 'past_due') patch.status = 'active'
       await setBilling(org, patch)
       return { ok: true }
     }
-    case 'transaction.payment_failed': {
-      const reason = (d.payments || []).find(p => p.error_code)?.error_code
-      await setBilling(org, { last_error: reason ? `Payment failed (${String(reason).replace(/_/g, ' ')})` : 'Payment failed' })
+    case 'invoice.payment_failed': {
+      if (!d.subscription) return { ignored: 'not a subscription invoice' }
+      const reason = d.last_finalization_error?.message || d.last_payment_error?.message
+      await setBilling(org, { last_error: reason ? `Payment failed: ${reason}` : 'Payment failed' })
       return { ok: true }
     }
     default:
-      return { ignored: evt.event_type }
+      return { ignored: evt.type }
   }
 }
 
-// Paddle's customer page, where the church can update their card, see invoices or cancel.
-export async function manageLink(org) {
+// Stripe's customer page, where the church can update their card, see invoices or cancel.
+export async function manageLink(org, origin) {
   const b = org.billing || {}
-  if (!b.customer_id || b.provider !== 'paddle') throw bad('There’s no subscription to manage yet.')
-  const s = await paddle('POST', `/customers/${b.customer_id}/portal-sessions`, b.subscription_id ? { subscription_ids: [b.subscription_id] } : {})
-  return s.urls?.general?.overview
+  if (b.provider !== 'stripe' || !b.customer_id) throw bad('There’s no subscription to manage yet.')
+  const s = await stripe('POST', '/billing_portal/sessions', { customer: b.customer_id, return_url: `${origin}/app/settings?tab=billing` })
+  return s.url
 }

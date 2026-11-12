@@ -14,7 +14,7 @@ const FAQ = [
   ['Is there a limit on people or team members?', 'No. Both plans include unlimited people, check-ins and team members.'],
   ['What’s the difference between the plans?', 'Single church is for one congregation. Church network adds multiple branches or campuses, with branch-level access for your team and reports across the whole church.'],
   ['Who owns our data?', 'Your church does. You can download all of it at any time, and we sign a Data Processing Agreement with every church.'],
-  ['How do we pay?', 'By card or other local payment methods, securely through Paddle, our reseller. Prices are in US dollars, and Paddle shows the price in your currency and adds any sales tax or VAT where it applies. Paddle sends the receipts and invoices.'],
+  ['How do we pay?', 'By card, securely through Stripe. Prices are in US dollars; if your card is in another currency, your bank converts it. Stripe emails a receipt for every payment.'],
 ]
 
 export default function Pricing() {

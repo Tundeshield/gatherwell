@@ -161,7 +161,7 @@ export default function (r) {
       const until = new Date(body.manualPlan.until)
       if (!plan) throw bad('Choose a plan.')
       if (isNaN(until) || until <= new Date()) throw bad('Choose a paid-until date in the future.')
-      if (d.billing?.subscription_id && d.billing?.provider === 'paddle' && d.billing?.status === 'active' && !d.billing?.manual) throw bad('This church already pays by card through Paddle. Ask them to cancel that first (Settings › Billing › Update card or cancel).')
+      if (d.billing?.subscription_id && d.billing?.provider === 'stripe' && d.billing?.status === 'active' && !d.billing?.manual) throw bad('This church already pays by card through Stripe. Ask them to cancel that first (Settings › Billing › Update card or cancel).')
       const update = { billing: { ...(d.billing || {}), plan, interval, status: 'active', manual: true, next_payment_date: until.toISOString(), updated_at: new Date() }, updated_at: new Date() }
       if (plan === 'network') update.features = { ...(d.features || {}), branches: true }
       await ref.update(update)

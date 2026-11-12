@@ -2,12 +2,12 @@ import { useEffect } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import Logo from '../../components/Logo'
 
-export const LEGAL_VERSION = '2026-11-02'
-const UPDATED = '2 November 2026'
+export const LEGAL_VERSION = '2026-11-12'
+const UPDATED = '12 November 2026'
 const CONTACT = 'privacy@gatherhq.org'
 const HELLO = 'hello@gatherhq.org'
-export const COMPANY = 'Avelon Health Technologies Limited'
-const COMPANY_FULL = `${COMPANY}, a company registered in Nigeria (RC 8342636), of Plot 5, Block 23, Oba Alake Road, Ibara Housing Estate, Abeokuta, Ogun State, Nigeria`
+export const COMPANY = 'GatherHQ'
+const COMPANY_FULL = 'Babatunde Adepegba, an individual trading as GatherHQ'
 const Mail = () => <a href={`mailto:${CONTACT}`} className="link">{CONTACT}</a>
 const Hello = () => <a href={`mailto:${HELLO}`} className="link">{HELLO}</a>
 
@@ -15,7 +15,7 @@ const SUBPROCESSORS = [
   ['Google LLC (Firebase, Google Cloud)', 'Database, sign-in and file storage for all GatherHQ data', 'Google Cloud data centres'],
   ['Netlify, Inc.', 'Hosting the website and running the application', 'United States and global edge network'],
   ['Resend, Inc.', 'Delivering emails a church sends through GatherHQ, and account emails', 'European Union (Ireland)'],
-  ['Paddle.com Market Ltd', 'Selling GatherHQ subscriptions as our reseller and merchant of record, including tax and invoices (billing details only, never member data)', 'United Kingdom'],
+  ['Stripe Payments UK Ltd', 'Processing subscription payments from churches (billing details only, never member data)', 'United Kingdom and Stripe’s other locations'],
 ]
 
 function H({ children }) { return <h2 className="mb-3 mt-10 text-[19px] font-semibold text-ink">{children}</h2> }
@@ -36,7 +36,7 @@ function Privacy() {
         'Account holders: name, email address, password (stored securely by Google Firebase; we never see it), church name, country, role, and a record of activity in the account.',
         'Church records, as entered by a church or by people checking in: names, phone numbers, email addresses, attendance, event registrations, answers to check-in questions, follow-up notes, tags and similar details the church chooses to record.',
         'Technical information: a sign-in cookie, IP address and basic request logs used for security and to prevent abuse.',
-        'Billing: subscriptions are sold by our reseller Paddle (Paddle.com Market Ltd), which collects payment details directly and is responsible for its own handling of them. We receive the name, email, country, and the card type and last four digits, never full card numbers.',
+        'Billing: card payments are processed by Stripe, which collects card details directly. We receive the billing name, email, country, and the card type and last four digits, never full card numbers.',
       ]} />
       <H>How we use it</H>
       <UL items={[
@@ -89,7 +89,7 @@ function Terms() {
       <UL items={[
         <>Every church starts with a 30-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep using GatherHQ; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
         'Paid plans are billed monthly or yearly in advance and renew automatically until cancelled. You can cancel at any time in Settings › Billing; your plan stays active until the end of the period you have paid for.',
-        'Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for all our orders. Paddle provides all customer service inquiries and handles returns. Prices may have sales tax or VAT added where it applies, and Paddle issues the receipts and invoices.',
+        'Payments are processed securely by Stripe, which emails a receipt for every payment. Prices are in US dollars. Where we are required to collect sales tax or VAT, it is added at checkout.',
         <>Refunds are covered by our <Link to="/legal/refunds" className="link">Refund Policy</Link>.</>,
         'If we change a price, we will tell you at least 30 days before it applies to your next renewal.',
       ]} />
@@ -152,8 +152,8 @@ function Refunds() {
       <P>If you ask within 30 days of any payment, we will refund that payment in full, for any reason, with no questions asked. This applies to monthly and yearly plans.</P>
       <H>How to ask for a refund</H>
       <UL items={[
-        <>Email <Hello /> from the address on your account, or reply to the receipt you received from Paddle, our reseller.</>,
-        'Paddle processes the refund to the original payment method. How long it takes to appear depends on your bank or card provider.',
+        <>Email <Hello /> from the address on your account, or reply to your payment receipt.</>,
+        'We refund the payment to the original card through Stripe. It usually appears within 5–10 business days, depending on your bank.',
         'After a refund your plan ends, and your church can still view and download everything it has recorded.',
       ]} />
       <H>Cancelling</H>
