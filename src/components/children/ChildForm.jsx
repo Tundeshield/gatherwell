@@ -80,7 +80,7 @@ export default function ChildForm({ open, onClose, child, rooms, defaultGuardian
         {child && can('children.manage') && <Button variant="ghost" className="mr-auto text-red-700" onClick={remove} disabled={busy}>Delete</Button>}
         <Button variant="secondary" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={save} disabled={!f.firstName.trim()}>{child ? 'Save' : 'Add child'}</Button>
       </>}>
-      <div className="grid gap-x-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
         <Input label="First name" required value={f.firstName} onChange={set('firstName')} error={errors.firstName} />
         <Input label="Last name" value={f.lastName} onChange={set('lastName')} />
         <Input label="Date of birth" type="date" value={f.birthDate} onChange={set('birthDate')} error={errors.birthDate} hint="Places them in the right class by age." max={new Date().toISOString().slice(0, 10)} />

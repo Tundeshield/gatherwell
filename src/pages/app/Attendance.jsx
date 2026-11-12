@@ -62,7 +62,7 @@ export function NewSessionModal({ open, onClose, onCreated }) {
             {templates.data.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </Select>
         )}
-        <div className="grid gap-x-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <Input label="Name" value={f.name} onChange={set('name')} required className="sm:col-span-2" />
           <Select label="Type" value={f.kind} onChange={set('kind')}>
             {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

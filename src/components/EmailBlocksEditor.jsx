@@ -51,7 +51,7 @@ function BlockCard({ block, index, count, onChange, onMove, onRemove, onFocusFie
           className="field" placeholder="Write your message. Leave an empty line between paragraphs. Links like https://… become clickable." />
       )}
       {block.type === 'button' && (
-        <div className="grid gap-x-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
           <Input className="mb-0" label="Button text" value={block.label} onChange={set('label')} onFocus={focus('label')} />
           <Input className="mb-0" label="Link" value={block.url} onChange={set('url')} placeholder="https://" error={block.url && !/^https?:\/\//.test(block.url) ? 'Start with https://' : undefined} />
         </div>
@@ -64,7 +64,7 @@ function BlockCard({ block, index, count, onChange, onMove, onRemove, onFocusFie
             <Button size="sm" variant="secondary" icon={Upload} loading={uploading} onClick={() => fileRef.current?.click()}>{block.url ? 'Replace image' : 'Upload image'}</Button>
             <span className="text-xs text-mist-400">or paste an image link below</span>
           </div>
-          <div className="grid gap-x-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
             <Input className="mb-0" label="Image link" value={block.url} onChange={set('url')} placeholder="https://" />
             <Input className="mb-0" label="Describe the image" hint="Shown if the image doesn’t load." value={block.alt} onChange={set('alt')} />
           </div>

@@ -45,7 +45,7 @@ export function EventForm({ open, event, onClose, onSaved }) {
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
         <Input label="Event name" value={f.name} onChange={set('name')} required placeholder="e.g. Youth Camp 2026" />
         <Textarea label="Description" value={f.description} onChange={set('description')} rows={3} hint="Shown on the registration page." />
-        <div className="grid gap-x-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <Input label="Location" value={f.location} onChange={set('location')} />
           {multiBranch && (
             <Select label="Who it's for" value={f.branchId} onChange={set('branchId')}>
@@ -84,14 +84,14 @@ export default function Events() {
         actions={can('events.manage') && <Button icon={Plus} onClick={() => setCreating(true)}>New event</Button>} />
       <div className="mb-4"><Segmented value={when} onChange={setWhen} options={[{ value: 'upcoming', label: 'Upcoming' }, { value: 'past', label: 'Past' }, { value: '', label: 'All' }]} /></div>
       {error ? <div className="panel"><ErrorState error={error} onRetry={reload} /></div> : loading && !data ? (
-        <div className="grid gap-4 sm:grid-cols-2">{[0, 1].map(i => <Skeleton key={i} className="h-36" />)}</div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{[0, 1].map(i => <Skeleton key={i} className="h-36" />)}</div>
       ) : data.rows.length === 0 ? (
         <div className="panel"><EmptyState icon={CalendarDays} title={when === 'past' ? 'No past events' : 'No upcoming events'}
           action={can('events.manage') && when !== 'past' && <Button icon={Plus} onClick={() => setCreating(true)}>Create an event</Button>}>
           {when !== 'past' && 'Each event gets a registration link, tickets with QR codes and a door check-in list.'}
         </EmptyState></div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {data.rows.map(e => {
             const [tone, label] = EVENT_STATUS[e.status]
             const pct = e.capacity ? Math.min(100, (e.registered / e.capacity) * 100) : null

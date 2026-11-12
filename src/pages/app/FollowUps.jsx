@@ -80,7 +80,7 @@ function FollowupDrawer({ id, onClose, onChanged }) {
           </dl>
 
           {can('followups.manage') && open && (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Select label="Assign to" className="mb-0" value={f.assignee_user_id || ''} onChange={e => patch({ assigneeUserId: e.target.value || null }, 'Reassigned')}>
                 <option value="">No one</option>
                 {(team.data || []).map(m => <option key={m.user_id} value={m.user_id}>{m.user_id === me.user.id ? `${m.name} (me)` : m.name}</option>)}

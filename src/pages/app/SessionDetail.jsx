@@ -60,7 +60,7 @@ function ManualCheckin({ gatheringId, onDone }) {
       {q.trim().length >= 2 && results.length === 0 && !adding && <p className="mt-2 text-sm text-mist-500">No one found. <button className="link" onClick={() => setAdding(true)}>Add them as a new person</button></p>}
       {adding && (
         <form className="mt-3 rounded-lg border border-mist-200 p-3" onSubmit={e => { e.preventDefault(); checkIn(nf, nf.firstName) }}>
-          <div className="grid gap-x-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-3">
             <Input label="First name" value={nf.firstName} onChange={e => setNf(x => ({ ...x, firstName: e.target.value }))} required className="mb-3" />
             <Input label="Last name" value={nf.lastName} onChange={e => setNf(x => ({ ...x, lastName: e.target.value }))} className="mb-3" />
             <Input label="Phone" type="tel" value={nf.phone} onChange={e => setNf(x => ({ ...x, phone: e.target.value }))} className="mb-3" />
@@ -87,7 +87,7 @@ function EditSession({ open, g, onClose, onSaved }) {
   return (
     <Modal open={open} onClose={onClose} title="Edit session" size="lg" footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={busy}>Save changes</Button></>}>
       {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
-      <div className="grid gap-x-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
         <Input label="Name" value={f.name} onChange={set('name')} className="sm:col-span-2" />
         <Select label="Type" value={f.kind} onChange={set('kind')} className="sm:col-span-2">{Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
         <Input label="Starts" type="datetime-local" value={f.startsAt} onChange={set('startsAt')} />
@@ -167,7 +167,7 @@ export default function SessionDetail() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-6">
           <section className="panel grid grid-cols-3 divide-x divide-mist-100">
             <div className="px-5 py-4"><div className="tabular text-3xl font-semibold text-ink">{stats.attendance}</div><div className="text-sm text-mist-500">checked in</div></div>

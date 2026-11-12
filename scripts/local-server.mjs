@@ -16,7 +16,7 @@ const PORT = Number(process.env.PORT || 8888)
 const fake = createFakeFirebase()
 setFirebase(fake)
 
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' }
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.mp4': 'video/mp4' }
 const server = http.createServer(async (req, res) => {
   if (req.url.startsWith('/api/')) {
     const chunks = []

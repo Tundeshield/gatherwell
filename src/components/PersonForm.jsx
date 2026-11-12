@@ -37,7 +37,7 @@ export default function PersonForm({ person, onSaved, onCancel }) {
           {error.message}{error.details?.existingId && <> <Link to={`/app/people/${error.details.existingId}`} className="font-medium underline">Open their profile</Link></>}
         </Notice>
       )}
-      <div className="grid gap-x-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
         <Input label="First name" value={f.firstName} onChange={set('firstName')} required autoFocus />
         <Input label="Last name" value={f.lastName} onChange={set('lastName')} />
         <Input label="Phone" type="tel" value={f.phone} onChange={set('phone')} hint="Used to recognise them at check-in." />
@@ -63,7 +63,7 @@ export default function PersonForm({ person, onSaved, onCancel }) {
       </div>
       <details className="mb-4 rounded-lg border border-mist-200 px-4 py-3" open={!!(person?.gender || person?.birthday || person?.joined_at)}>
         <summary className="cursor-pointer text-sm font-medium text-ink">More details (optional)</summary>
-        <div className="mt-4 grid gap-x-4 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-x-4 sm:grid-cols-3">
           <Select label="Gender" value={f.gender} onChange={set('gender')}>
             <option value="">Not recorded</option><option value="female">Female</option><option value="male">Male</option>
           </Select>

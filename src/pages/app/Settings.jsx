@@ -46,7 +46,7 @@ function ChurchTab() {
       {error && <Notice tone="danger">{error}</Notice>}
       <section className="panel px-6 py-5">
         <h2 className="mb-4 text-[15px] font-semibold text-ink">Church details</h2>
-        <div className="grid gap-x-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <Input label="Church name" value={f.name} onChange={set('name')} required className="sm:col-span-2" />
           <Select label="Timezone" value={f.timezone} onChange={set('timezone')} hint="Used for 'today', due dates and reports.">{zones.map(z => <option key={z}>{z}</option>)}</Select>
           <Select label="Default phone country" value={f.settings.defaultCountryCode} onChange={e => setS('defaultCountryCode', e.target.value)} hint="Numbers starting with 0 are read as this country.">
@@ -136,7 +136,7 @@ function BranchPicker({ value, onChange, branches, allowAll }) {
       <div className="label">Branch access</div>
       {allowAll && <Checkbox label="All branches, including future ones" checked={all} onChange={v => onChange(v ? null : [])} className="mb-2" />}
       {!all && (
-        <div className="grid gap-2 rounded-lg border border-mist-200 p-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 rounded-lg border border-mist-200 p-3 sm:grid-cols-2">
           {branches.map(b => <Checkbox key={b.id} label={b.name} checked={value.includes(b.id)} onChange={v => onChange(v ? [...value, b.id] : value.filter(x => x !== b.id))} />)}
         </div>
       )}
@@ -465,7 +465,7 @@ function EmailTab() {
               </div>
               <p className="hint">Used for the top bar, buttons and links.</p>
             </div>
-            <div className="grid gap-x-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
               <Input label="Sender name" value={f.fromName} onChange={set('fromName')} hint="Who the email appears to be from." maxLength={80} />
               <Input label="Replies go to" type="email" value={f.replyTo} onChange={set('replyTo')} placeholder="office@yourchurch.org" hint="When someone replies, it lands here." />
             </div>
@@ -605,7 +605,7 @@ function JourneyStep({ step, value, stats, connected, canEdit, onSaved }) {
           {err && <Notice tone="danger" className="mb-4">{err}</Notice>}
           <div className="grid items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(0,480px)]">
             <fieldset disabled={!canEdit} className="space-y-4">
-              <div className="grid gap-x-4 sm:grid-cols-[1fr_200px]">
+              <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-[minmax(0,1fr)_200px]">
                 <Input label="Subject" value={f.subject} onChange={e => setF(x => ({ ...x, subject: e.target.value }))} maxLength={200} />
                 <Select label="When to send" value={f.delayHours} onChange={e => setF(x => ({ ...x, delayHours: Number(e.target.value) }))}>
                   {DELAY_OPTIONS.map(([h, l]) => <option key={h} value={h}>{l}</option>)}
@@ -696,7 +696,7 @@ function AutomationsTab() {
       <section className="panel px-6 py-5">
         <h2 className="text-[15px] font-semibold text-ink">WhatsApp messages</h2>
         <p className="mb-4 mt-1 max-w-2xl text-sm text-mist-500">The ready-written message that opens in WhatsApp when your team taps WhatsApp on a follow-up or a person’s page. They can change it before sending. Use {'{first_name}'}, {'{church_name}'} and {'{my_name}'} (the person sending).</p>
-        <fieldset disabled={!canEdit} className="grid gap-x-4 lg:grid-cols-2">
+        <fieldset disabled={!canEdit} className="grid grid-cols-1 gap-x-4 lg:grid-cols-2">
           {WHATSAPP_KINDS.map(([k, label]) => <Textarea key={k} label={label} rows={3} value={wa[k]} onChange={e => setWa(x => ({ ...x, [k]: e.target.value }))} maxLength={1000} />)}
         </fieldset>
         {canEdit && <div className="flex justify-end"><Button onClick={saveWa} loading={busy === 'wa'}>Save messages</Button></div>}
@@ -879,7 +879,7 @@ export default function Settings() {
   return (
     <div>
       <PageHeader title="Settings" />
-      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[200px_1fr]">
         <nav className="flex gap-1 overflow-x-auto md:flex-col scrollbar-none" aria-label="Settings sections">
           {tabs.map(([k, l]) => (
             <button key={k} type="button" onClick={() => setParams({ tab: k }, { replace: true })} aria-current={tab === k ? 'page' : undefined}

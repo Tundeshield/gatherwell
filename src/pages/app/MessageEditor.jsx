@@ -94,7 +94,7 @@ function AudiencePicker({ audience, setAudience, channel, preview, picked, setPi
             </div>
             <p className="hint">{(audience.tags || []).length > 1 ? 'People with any of these tags.' : tags.length ? 'Leave empty to include everyone.' : 'Tag people on the People page to group them, like “Choir” or “Youth”.'}</p>
           </div>
-          <div className="grid gap-x-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
             {multiBranch && (
               <Select label="Branch" value={audience.branch || ''} onChange={e => setAudience(a => ({ ...a, branch: e.target.value }))}>
                 <option value="">All my branches</option>{activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -274,7 +274,7 @@ export default function MessageEditor() {
         </Notice>
       )}
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">
         <div className="space-y-4">
           <div className="flex gap-2">
             {Object.entries(CHANNELS).map(([k, [label, Icon]]) => {

@@ -14,7 +14,7 @@ export function IntervalToggle({ value, onChange }) {
 // The two plans side by side. `action(planKey)` renders the button for each plan.
 export default function PlanCards({ interval, action, current }) {
   return (
-    <div className="grid gap-5 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
       {Object.values(PLANS).map(p => {
         const amount = interval === 'yearly' ? p.yearly : p.monthly
         const isCurrent = current === p.key
@@ -23,7 +23,7 @@ export default function PlanCards({ interval, action, current }) {
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-ink">{p.name}</h3>
               {isCurrent ? <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">Your plan</span>
-                : p.key === 'church' && <span className="rounded-full bg-gold-100 px-2.5 py-0.5 text-xs font-medium text-gold-700">Most churches</span>}
+                : p.key === 'church' && <span className="rounded-full bg-gold-100 px-2.5 py-0.5 text-xs font-medium text-gold-700">Recommended</span>}
             </div>
             <p className="mt-1 text-sm text-mist-500">{p.blurb}</p>
             <p className="mt-5 flex items-baseline gap-1.5">

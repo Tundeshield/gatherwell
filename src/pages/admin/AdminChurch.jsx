@@ -18,7 +18,7 @@ function ManualPlanModal({ open, onClose, onSave }) {
   return (
     <Modal open={open} onClose={onClose} title="Set a plan by hand" description="For a church that paid you another way, such as a bank transfer. The plan stays active until the date you choose, then the church is asked to pay as normal."
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={async () => { setBusy(true); try { await onSave(f) } finally { setBusy(false) } }}>Set plan</Button></>}>
-      <div className="grid gap-x-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
         <Select label="Plan" value={f.plan} onChange={e => setF({ ...f, plan: e.target.value })}><option value="church">Single church ($19 / $190)</option><option value="network">Church network ($59 / $590)</option></Select>
         <Select label="Counts as" value={f.interval} onChange={e => setF({ ...f, interval: e.target.value })}><option value="monthly">Monthly</option><option value="yearly">Yearly</option></Select>
       </div>
@@ -65,7 +65,7 @@ export default function AdminChurch() {
         {o.owner_email && <a href={`mailto:${o.owner_email}`} className="inline-flex items-center gap-2 rounded-lg border border-mist-200 bg-white px-3.5 py-2 text-sm font-medium text-ink hover:border-mist-300"><Mail size={15} />Email {o.owner_name?.split(' ')[0] || 'the owner'}</a>}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-6">
           <section className="panel grid grid-cols-2 divide-mist-100 sm:grid-cols-3 sm:divide-x">
             <Stat label="People" value={o.people.toLocaleString()} />

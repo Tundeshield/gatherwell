@@ -59,7 +59,7 @@ function WalkIn({ open, eventId, onClose, onDone }) {
       footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={busy} disabled={!f.firstName.trim()}>Add and check in</Button></>}>
       <form onSubmit={save}>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
-        <div className="grid gap-x-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-x-3 sm:grid-cols-2">
           <Input label="First name" value={f.firstName} onChange={set('firstName')} required />
           <Input label="Last name" value={f.lastName} onChange={set('lastName')} />
         </div>
@@ -141,7 +141,7 @@ export default function EventDetail() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-6">
           <section className="panel grid grid-cols-3 divide-x divide-mist-100">
             <div className="px-5 py-4"><div className="tabular text-3xl font-semibold text-ink">{stats.registered}{e.capacity && <span className="text-lg font-normal text-mist-400">/{e.capacity}</span>}</div><div className="text-sm text-mist-500">registered</div></div>

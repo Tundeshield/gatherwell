@@ -68,7 +68,7 @@ export default function Reports() {
         </section>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_1fr]">
         <Section title="Weekly attendance" description="Check-ins across all sessions, by week. First-time means a visitor's first ever check-in.">
           <div className="px-5 py-5">
             {!a ? <Skeleton className="h-48" /> : (

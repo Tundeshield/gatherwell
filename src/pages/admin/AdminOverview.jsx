@@ -49,7 +49,7 @@ export default function AdminOverview() {
         <Stat strong label="People recorded" value={t.people.toLocaleString()} hint={`${t.users} team logins`} />
       </section>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_1fr]">
         <section className="panel px-5 py-4">
           <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-ink">New churches each week</h2><span className="text-xs text-mist-400">Last 12 weeks · this week {newThisWeek}</span></div>
           <div className="mt-6"><WeekBars data={data.signups} label="New churches each week" /></div>
@@ -65,7 +65,7 @@ export default function AdminOverview() {
       </div>
 
       <h2 className="mt-8 text-[17px] font-semibold text-ink">Needs attention</h2>
-      <div className="mt-3 grid gap-6 lg:grid-cols-3">
+      <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Attention icon={Clock} title="Trials ending this week" rows={a.trials_ending} empty="No trials end in the next 7 days." detail={o => `ends ${fmtDate(o.billing.trialEndsAt)} · ${o.people} people`} />
         <Attention icon={CreditCard} title="Payment problems" rows={a.payment_problems} empty="No failed or lapsed payments." detail={o => (o.billing.state === 'past_due' ? `grace ends ${fmtDate(o.billing.graceEnds)}` : 'plan has lapsed')} />
         <Attention icon={Moon} title="Gone quiet" rows={a.quiet} empty="Every church has checked people in recently." detail={o => (o.last_checkin_at ? `last check-in ${relative(o.last_checkin_at)}` : 'never checked anyone in')} />

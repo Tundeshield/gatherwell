@@ -166,8 +166,9 @@ function BillingBanner({ billing, owner }) {
   const { state, daysLeft } = billing
   let tone = 'bg-gold-50 border-gold-200 text-gold-700', text = null
   if (state === 'trialing' && daysLeft <= 7) text = `Your free trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`
+  else if (state === 'trialing') { text = `Free trial: ${daysLeft} days left, with everything included.`; tone = 'bg-brand-50 border-brand-100 text-brand-800' }
   else if (state === 'past_due') { text = 'We couldn’t take your last payment. Please update your card to keep GatherHQ running.'; tone = 'bg-red-50 border-red-200 text-red-800' }
-  else if (state === 'expired') { text = 'Your free trial has ended. Check-in and changes are paused until you choose a plan. Everything you’ve recorded is safe, and you can still view and download it.'; tone = 'bg-red-50 border-red-200 text-red-800' }
+  else if (state === 'expired') { text = `${billing.lapsed ? 'Your subscription has ended.' : 'Your free trial has ended.'} Check-in and changes are paused until you choose a plan. Everything you’ve recorded is safe, and you can still view and download it.`; tone = 'bg-red-50 border-red-200 text-red-800' }
   if (!text) return null
   return (
     <div className={`border-b px-6 py-2.5 text-center text-sm ${tone}`}>

@@ -73,7 +73,7 @@ function LatestService({ data, tz }) {
   const change = previous ? pctChange(latest.attendance, previous.attendance) : null
   const up = change !== null && change >= 0
   return (
-    <section className="panel mb-6 grid gap-0 overflow-hidden md:grid-cols-[1.6fr_1fr]">
+    <section className="panel mb-6 grid grid-cols-1 gap-0 overflow-hidden md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
       <Link to={`/app/attendance/${latest.id}`} className="group block px-6 py-6 hover:bg-mist-50/50">
         <div className="flex items-center gap-2 text-sm text-mist-500">
           <span>Latest session</span><span aria-hidden>·</span><span>{fmtDay(latest.starts_at, tz)}</span>
@@ -121,7 +121,7 @@ export default function Overview() {
 
   const weeks = data.trend ? fillWeeks(data.trend, 12) : []
   const fu = data.followups
-  const scopeLabel = branch === 'all' ? (multiBranch ? 'All branches' : me.branches[0]?.name) : branchName(branch)
+  const scopeLabel = !multiBranch ? null : branch === 'all' ? 'All branches' : branchName(branch)
 
   return (
     <div>
@@ -136,7 +136,7 @@ export default function Overview() {
       {(params.get('welcome') || !data.latest) && <GettingStarted data={data} />}
       <LatestService data={{ ...data, multiBranch }} tz={tz} />
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           {(fu || data.people) && (
             <section className="panel overflow-hidden">

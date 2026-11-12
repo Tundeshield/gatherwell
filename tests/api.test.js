@@ -1182,3 +1182,53 @@ test('trial: 14 days for new churches, the promised 30 days kept for earlier one
   const fresh = billingStatus({ created_at: new Date('2026-11-14T00:00:00Z'), trial_ends_at: new Date('2026-11-28T00:00:00Z') }, now)
   assert.equal(new Date(fresh.trialEndsAt).toISOString(), '2026-11-28T00:00:00.000Z', 'new churches get their own 14 days')
 })
+
+test('TENANT ISOLATION: children, sessions, events, follow-ups and messages stay inside their church', async () => {
+  const a = client(), b = client()
+  await signup(a, { orgName: 'Isolation A Church', name: 'Owner A', email: 'owner@iso-a.test', password: 'password123' })
+  await signup(b, { orgName: 'Isolation B Church', name: 'Owner B', email: 'owner@iso-b.test', password: 'password123' })
+  const aBranch = (await a.get('/me')).data.branches[0].id
+  const born = (n) => { const d = new Date(); d.setFullYear(d.getFullYear() - n); return d.toISOString().slice(0, 10) }
+  let r = await a.post('/children/register', { parent: { firstName: 'Bisi', lastName: 'Lawal', phone: '08036667788' }, children: [{ firstName: 'Kunle', lastName: 'Lawal', birthDate: born(5), allergies: 'Sesame' }] })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const parentId = r.data.guardian.id, kidId = r.data.children[0].id
+  r = await a.post('/children/checkin', { guardianId: parentId, childIds: [kidId] })
+  assert.equal(r.status, 200, JSON.stringify(r.data))
+  const code = r.data.code
+  const roomId = (await a.get('/children/rooms')).data.rooms[0].id
+  r = await a.post('/gatherings', { name: 'A Service', branchId: aBranch, startsAt: new Date().toISOString(), confirmName: true })
+  assert.ok([200, 201].includes(r.status), JSON.stringify(r.data))
+  const gId = (r.data.gathering || r.data).id
+  const fu = (await a.get('/followups')).data
+  const fuId = (fu.rows || fu.followups || [])[0]?.id
+
+  // Church B sees none of it and can act on none of it.
+  r = await b.get('/children')
+  assert.equal(JSON.stringify(r.data).includes('Kunle'), false, 'child not listed')
+  assert.equal(JSON.stringify(r.data).includes('Sesame'), false, 'allergy not exposed')
+  const leaks = (res) => res.status === 200 && /Kunle|Bisi|Sesame|08036667788/.test(JSON.stringify(res.data))
+  assert.equal(leaks(await b.get(`/children/family/${parentId}`)), false, 'family view shows nothing from church A')
+  assert.equal(leaks(await b.get(`/children/checkin-family/${parentId}`)), false, 'check-in family shows nothing from church A')
+  assert.equal(leaks(await b.get(`/children/rooms/${roomId}/today`)), false, 'room view shows nothing from church A')
+  r = await b.post('/children/lookup', { phone: '08036667788' })
+  assert.equal(r.data.found, false, 'phone lookup does not cross churches')
+  r = await b.post('/children/pickup/lookup', { code })
+  assert.equal(r.data.found, false, 'pickup code does not cross churches')
+  r = await b.post('/children/checkin', { guardianId: parentId, childIds: [kidId] })
+  assert.notEqual(r.status, 200, 'cannot check in another church’s child')
+  assert.equal((await b.get(`/gatherings/${gId}`)).status, 404)
+  assert.equal((await b.patch(`/gatherings/${gId}`, { name: 'Hijacked' })).status, 404)
+  if (fuId) assert.equal((await b.get(`/followups/${fuId}`)).status, 404)
+
+  // A role without children's access cannot see children's records in its own church.
+  r = await a.post('/team/invites', { email: 'lead@iso-a.test', role: 'lead' })
+  assert.ok([200, 201].includes(r.status), JSON.stringify(r.data))
+  const lead = client()
+  assert.equal((await lead.post('/auth/accept-invite', { token: r.data.invite?.token || r.data.token, name: 'Lead', password: 'password123' })).status, 200)
+  await lead.login('lead@iso-a.test', 'password123')
+  assert.equal((await lead.get('/children')).status, 403, 'attendance lead cannot open children’s records')
+
+  // Church A still has everything.
+  r = await a.get(`/children/family/${parentId}`)
+  assert.equal(r.status, 200)
+})

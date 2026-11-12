@@ -42,7 +42,7 @@ function Today() {
         ))}
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {data.rooms.map(r => (
           <Link key={r.id} to={`/app/children/rooms/${r.id}`} className={`panel block px-4 py-4 transition-shadow hover:shadow-card ${r.short ? 'ring-2 ring-gold-500' : ''}`}>
             <div className="flex items-baseline justify-between gap-2"><div className="font-semibold text-ink">{r.name}</div>{r.location && <div className="text-xs text-mist-500">{r.location}</div>}</div>
@@ -55,7 +55,7 @@ function Today() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.6fr)_1fr]">
         <section className="panel overflow-hidden">
           <div className="border-b border-mist-100 px-4 py-3"><h2 className="text-[15px] font-semibold text-ink">Checked in today</h2></div>
           {data.latest.length === 0 ? <p className="px-4 py-6 text-sm text-mist-400">No one checked in yet today.</p> : (

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import Logo from '../../components/Logo'
+import { SiteHeader } from './site'
 
 export const LEGAL_VERSION = '2026-11-12'
 const UPDATED = '12 November 2026'
@@ -80,6 +81,7 @@ function Terms() {
       <H>Your church’s data</H>
       <UL items={[
         'Your church owns the information it puts into GatherHQ. You can download it at any time and take it with you.',
+        'Children’s check-in supports your safeguarding process; it does not replace it. You remain responsible for your church’s safeguarding policies, trained and vetted volunteers, supervision ratios and the release of each child.',
         'You are responsible for collecting it lawfully: telling people how their information will be used, getting consent where needed (for example, for marketing emails and for children’s details), and keeping it accurate.',
         'Our Data Processing Agreement forms part of these terms and explains how we handle that data on your behalf.',
       ]} />
@@ -177,15 +179,11 @@ export default function Legal() {
   useEffect(() => { document.title = `${title} · GatherHQ`; window.scrollTo(0, 0); return () => { document.title = 'GatherHQ' } }, [title])
   return (
     <div className="min-h-screen bg-ivory">
-      <header className="border-b border-mist-200 bg-white/70">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-          <Link to="/"><Logo size={26} /></Link>
-          <nav className="flex gap-4 text-sm">
+      <SiteHeader />
+      <main className="mx-auto max-w-3xl px-5 py-10 sm:px-6 sm:py-12">
+        <nav aria-label="Legal documents" className="mb-8 flex flex-wrap gap-x-5 gap-y-2 border-b border-mist-200 pb-4 text-sm">
             {Object.entries(DOCS).map(([k, [t]]) => <NavLink key={k} to={`/legal/${k}`} className={({ isActive }) => isActive ? 'font-medium text-brand-700' : 'text-mist-500 hover:text-ink'}>{t.replace(' of Service', '').replace(' Policy', '').replace('Data Processing Agreement', 'DPA').replace('Refund', 'Refunds')}</NavLink>)}
           </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-3xl px-6 py-12">
         <h1 className="text-[32px] font-semibold tracking-tight text-ink">{title}</h1>
         <p className="mb-8 mt-2 text-sm text-mist-500">Last updated {UPDATED}</p>
         <div className="text-[15.5px]"><Body /></div>

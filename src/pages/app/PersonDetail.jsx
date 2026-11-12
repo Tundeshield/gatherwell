@@ -71,7 +71,7 @@ export default function PersonDetail() {
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
         <div className="space-y-6">
           <section className="panel px-5 py-5">
             <ul className="space-y-3">
