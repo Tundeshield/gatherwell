@@ -1,5 +1,6 @@
 [build]
-  command = "npm run build"
+  # Tests gate every deploy: if they fail, nothing is published.
+  command = "npm test && node scripts/write-version.mjs && npm run build"
   publish = "dist"
   functions = "netlify/functions"
 

@@ -1,6 +1,7 @@
 // Firebase access for the server. Production uses firebase-admin with FIREBASE_SERVICE_ACCOUNT;
 // tests and the local demo server inject an in-memory implementation via setFirebase().
 import { HttpError } from './http.js'
+import { assertDatabaseAllowed } from './env.js'
 
 let impl = null
 
@@ -13,6 +14,7 @@ async function load() {
   let sa
   try { sa = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')) }
   catch { throw new HttpError(503, 'FIREBASE_SERVICE_ACCOUNT is not valid JSON. Paste the whole service-account file contents.') }
+  try { assertDatabaseAllowed(sa.project_id) } catch (e) { throw new HttpError(503, e.message) }
   const { initializeApp, getApps, cert } = await import('firebase-admin/app')
   const { getFirestore, FieldValue } = await import('firebase-admin/firestore')
   const { getAuth } = await import('firebase-admin/auth')

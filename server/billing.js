@@ -7,8 +7,11 @@ import { HttpError, bad } from './http.js'
 import { PLANS, CURRENCY, price, billingStatus } from '../shared/plans.js'
 
 const API = 'https://api.stripe.com/v1'
+import { stripeKeyAllowed } from './env.js'
+
 const STRIPE_VERSION = '2024-06-20'
-export const billingEnabled = () => !!process.env.STRIPE_SECRET_KEY
+// Off when no key is set, and off outside production if someone sets a live key there by mistake.
+export const billingEnabled = () => !!process.env.STRIPE_SECRET_KEY && stripeKeyAllowed(process.env.STRIPE_SECRET_KEY)
 // Pricing rules (read-only after the trial) only apply once churches can actually pay.
 export const billingEnforced = () => billingEnabled() && process.env.BILLING_ENFORCED !== 'false'
 export const isExpired = (org) => billingEnforced() && billingStatus(org).state === 'expired'

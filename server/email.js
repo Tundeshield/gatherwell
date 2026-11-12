@@ -1,6 +1,7 @@
 // Email delivery (Resend), unsubscribe links and hosted images for church emails.
 // Sending is enabled when RESEND_API_KEY and EMAIL_FROM_DOMAIN are set in Netlify.
 import crypto from 'node:crypto'
+import { emailAllowed } from './env.js'
 
 export function emailProvider() {
   const key = process.env.RESEND_API_KEY
@@ -51,6 +52,14 @@ async function post(provider, path, payload, idempotencyKey) {
  */
 export async function sendEmails(provider, emails, idempotencyKey) {
   if (!emails.length) return []
+  // Staging: only approved test recipients receive anything; everyone else is skipped, not sent.
+  const blocked = emails.map(e => [].concat(e.to || []).some(a => !emailAllowed(String(a).replace(/^.*<|>$/g, ''))))
+  if (blocked.some(Boolean)) {
+    const allowed = emails.filter((_, i) => !blocked[i])
+    const sent = allowed.length ? await sendEmails(provider, allowed, idempotencyKey) : []
+    let j = 0
+    return emails.map((_, i) => blocked[i] ? { ok: false, skipped: true, error: 'Not sent: staging only emails approved test addresses (STAGING_EMAIL_ALLOWLIST).' } : sent[j++])
+  }
   const r = await post(provider, '/emails/batch', emails, idempotencyKey)
   if (r.ok) return emails.map(() => ({ ok: true }))
   if (r.status === 401 || r.status === 403) return emails.map(() => ({ ok: false, error: 'The email service rejected our API key. Check RESEND_API_KEY in Netlify.', fatal: true }))

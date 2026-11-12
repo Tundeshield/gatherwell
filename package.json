@@ -8,7 +8,7 @@
     "build": "node scripts/firebase-setup.mjs && vite build",
     "build:web": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/*.test.js"
+    "test": "env -u STRIPE_SECRET_KEY -u STRIPE_WEBHOOK_SECRET -u RESEND_API_KEY -u FIREBASE_SERVICE_ACCOUNT -u STAGING_EMAIL_ALLOWLIST -u PLATFORM_ADMIN_EMAILS APP_ENV=production node --test tests/*.test.js"
   },
   "dependencies": {
     "firebase": "^13.1.0",

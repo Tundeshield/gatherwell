@@ -4,7 +4,8 @@ import { api } from './api'
 
 // Firebase web settings are public identifiers (not secrets). Production builds fall back to the
 // gather-hq-main project so sign-in works even if the VITE_FIREBASE_* variables are not set.
-const PROD = import.meta.env.PROD && !import.meta.env.VITE_LOCAL_DEV
+// Staging never falls back to production: it must be given its own project's settings.
+const PROD = import.meta.env.PROD && !import.meta.env.VITE_LOCAL_DEV && import.meta.env.VITE_APP_ENV !== 'staging'
 const DEFAULTS = PROD ? {
   apiKey: 'AIzaSyAj0TwDMDmahVqrQp0cOHqGlCkiq-DxOj0',
   authDomain: 'gather-hq-main.firebaseapp.com',

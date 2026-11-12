@@ -35,6 +35,7 @@ const ChildrenCheckin = lazyPage(() => import('./pages/app/ChildrenCheckin'))
 const ChildrenRoom = lazyPage(() => import('./pages/app/ChildrenRoom'))
 const ChildrenPickup = lazyPage(() => import('./pages/app/ChildrenPickup'))
 import { isAdminHost } from './lib/host'
+import EnvBanner from './components/EnvBanner'
 
 function RequireAuth({ children, cap, platform = false }) {
   const { me, can } = useSession()
@@ -79,6 +80,7 @@ export default function App() {
   const { pathname } = useLocation()
   return (
     <SessionProvider>
+      <EnvBanner />
       <ToastProvider>
         <ConfirmProvider>
           <PageErrorBoundary resetKey={pathname}>

@@ -16,7 +16,9 @@ import tagRoutes from './routes/tags.js'
 import automationRoutes from './routes/automation.js'
 import billingRoutes from './routes/billing.js'
 import childrenRoutes from './routes/children.js'
-import { isExpired } from './billing.js'
+import { isExpired, billingEnabled } from './billing.js'
+import { appEnv, hostAllowed } from './env.js'
+import { COMMIT } from './version.js'
 
 // What an account whose trial has ended may still do: pay, manage its account, and erase people.
 const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/,
@@ -34,6 +36,14 @@ export async function handle(req) {
   const url = new URL(req.url)
   const path = url.pathname.replace(/^\/api/, '') || '/'
   const method = req.method.toUpperCase()
+
+  // Production secrets must only serve production addresses (see server/env.js).
+  if (!hostAllowed(req.headers.get('host') || url.host)) return json({ error: 'This preview address is not connected to GatherHQ. Use staging for testing.' }, 503)
+  if (path === '/health' && method === 'GET') {
+    let project = null
+    try { const raw = process.env.FIREBASE_SERVICE_ACCOUNT || ''; project = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')).project_id || null } catch {}
+    return json({ ok: true, env: appEnv(), commit: COMMIT, firebaseProject: project, billing: billingEnabled() ? (String(process.env.STRIPE_SECRET_KEY).startsWith('sk_live') ? 'live' : 'test') : 'off' })
+  }
 
   try {
     const { route, params, pathMatched } = router.match(method, path)
