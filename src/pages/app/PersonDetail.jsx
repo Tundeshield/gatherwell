@@ -7,6 +7,7 @@ import { useLoad, PageLoader, ErrorState, Button, Badge, PERSON_TONE, Avatar, Mo
 import { fmtDate, fmtDay, relative, personName, STATUS_LABELS, REASON_LABELS } from '../../lib/format'
 import PersonForm from '../../components/PersonForm'
 import NewFollowup from '../../components/NewFollowup'
+import ConsentPanel from '../../components/ConsentPanel'
 import FamilyPanel from '../../components/children/FamilyPanel'
 import { TagChip, TagPicker, useTags, loadTags } from '../../components/Tags'
 import { whatsappLink } from '../../../shared/automation.js'
@@ -97,6 +98,7 @@ export default function PersonDetail() {
             {p.notes && <div className="mt-5 border-t border-mist-100 pt-4"><div className="text-xs text-mist-500">Notes</div><p className="mt-1 whitespace-pre-line text-sm text-ink">{p.notes}</p></div>}
             <p className="mt-5 text-xs text-mist-400">Added {fmtDate(p.created_at, tz)}{p.source === 'checkin' ? ' at QR check-in' : p.source === 'import' ? ' by import' : ''}</p>
           </section>
+          <ConsentPanel person={p} canEdit={can('people.edit')} onChange={reload} />
           {me.org?.childrenEnabled && can('children.view') && <FamilyPanel person={p} />}
 
           {can('followups.view') && (

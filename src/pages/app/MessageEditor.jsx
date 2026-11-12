@@ -20,7 +20,7 @@ function smsInfo(text) {
   return { n: text.length, parts: text.length <= single ? 1 : Math.ceil(text.length / multi), unicode }
 }
 
-function PeoplePicker({ picked, onAdd, onRemove, channel }) {
+export function PeoplePicker({ picked, onAdd, onRemove, channel }) {
   const reachableBy = (p) => (channel === 'email' ? p.email : p.phone)
   const missing = channel === 'email' ? 'no email' : 'no phone'
   const [term, setTerm] = useState('')
@@ -66,7 +66,7 @@ function PeoplePicker({ picked, onAdd, onRemove, channel }) {
   )
 }
 
-function AudiencePicker({ audience, setAudience, channel, preview, picked, setPicked }) {
+export function AudiencePicker({ audience, setAudience, channel, preview, picked, setPicked }) {
   const { activeBranches, multiBranch } = useSession()
   const units = useLoad(() => api.get('/units'), [])
   const { tags, byId } = useTags()

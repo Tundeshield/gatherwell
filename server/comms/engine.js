@@ -427,6 +427,10 @@ export async function processEnrolment(orgId, id, { now = new Date() } = {}) {
       if (!r.ok) { log('skip', `Message not sent: ${r.why === 'no_consent' ? 'no consent for this channel' : r.why === 'opted_out' ? 'they opted out' : 'no contact details'}`, { result: 'skipped' }); next(); continue }
       const { adapter } = await activeProvider(step.channel)
       if (!adapter) { log('wait', 'Waiting: this channel isn’t connected', { result: 'blocked' }); await finish({ ...at, next_at: new Date(now.getTime() + 3600e3) }); return { nextAt: new Date(now.getTime() + 3600e3) } }
+      if (step.channel === 'whatsapp' && adapter.needsTemplates) {
+        const t = step.templateId ? (await db.collection('orgs').doc(org.id).collection('templates').doc(String(step.templateId)).get()).data() : null
+        if (t?.whatsapp?.status !== 'approved') { log('skip', 'Message not sent: its WhatsApp template isn’t approved', { result: 'failed' }); next(); continue }
+      }
       const billing = billingFor(org, step.channel, adapter)
       const content = { subject: step.subject, preheader: step.preheader, blocks: step.blocks, body: step.body, category: step.category, templateName: step.templateName }
       const row = { deliveryId: `e_${id}_${step.id}`.slice(0, 200), p: person, to: r.to }
@@ -537,6 +541,7 @@ async function absenceSweep(db, now) {
 
 // --- the scheduler entry point ---------------------------------------------------------------
 export async function runComms({ now = new Date(), deadline = Date.now() + 18000 } = {}) {
+  const started = Date.now()
   const { db } = await fb()
   const qs = await db.collection('commsQueue').where('due_at', '<=', now).orderBy('due_at', 'asc').limit(100).get()
   const stats = { messages: 0, enrolments: 0, recurring: 0, errors: 0 }
@@ -559,7 +564,7 @@ export async function runComms({ now = new Date(), deadline = Date.now() + 18000
     else await d.ref.delete()
   }
   try { stats.absence = await absenceSweep(db, now) } catch (e) { console.error('absence sweep', e) }
-  await db.collection('schedulerRuns').add({ at: now, kind: 'comms', ...stats, took_ms: Date.now() - (deadline - 18000) }).catch(() => {})
+  await db.collection('schedulerRuns').add({ at: now, kind: 'comms', ...stats, took_ms: Date.now() - started }).catch(() => {})
   return stats
 }
 

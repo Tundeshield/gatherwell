@@ -14,7 +14,7 @@ const NAV = [
   { to: '/app/children', label: 'Children', icon: Baby, cap: 'children.view', children: true },
   { to: '/app/follow-ups', label: 'Follow-ups', icon: HeartHandshake, cap: 'followups.view' },
   { to: '/app/events', label: 'Events', icon: CalendarDays, cap: 'events.view' },
-  { to: '/app/messages', label: 'Messages', icon: MessageSquare, cap: 'messages.manage' },
+  { to: '/app/communications', label: 'Communications', icon: MessageSquare, cap: 'messages.manage' },
   { to: '/app/reports', label: 'Reports', icon: BarChart3, cap: 'reports.view' },
 ]
 

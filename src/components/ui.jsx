@@ -116,9 +116,9 @@ export function Segmented({ options, value, onChange, size = 'md' }) {
   return (
     <div className="inline-flex max-w-full overflow-x-auto rounded-lg border border-mist-200 bg-white p-0.5 scrollbar-none" role="tablist">
       {options.map(o => (
-        <button key={o.value} type="button" role="tab" aria-selected={value === o.value} onClick={() => onChange(o.value)}
+        <button key={o.value} type="button" role="tab" aria-selected={value === o.value} disabled={o.disabled} onClick={() => onChange(o.value)}
           className={`flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 ${size === 'sm' ? 'py-1 text-[13px]' : 'py-1.5 text-sm'} font-medium transition-colors ${ring}
-            ${value === o.value ? 'bg-brand-50 text-brand-700' : 'text-mist-500 hover:text-ink'}`}>
+            ${value === o.value ? 'bg-brand-50 text-brand-700' : 'text-mist-500 hover:text-ink'} disabled:opacity-40`}>
           {o.label}
           {o.count !== undefined && <span className={`tabular rounded px-1.5 text-xs ${value === o.value ? 'bg-brand-100' : 'bg-mist-100'} ${o.alert && o.count > 0 ? 'text-red-700' : ''}`}>{o.count}</span>}
         </button>

@@ -41,13 +41,13 @@ export default function WhatsAppSend() {
   async function finish() {
     if (done.length < total && !(await confirm({ title: 'Finish sending?', message: `${total - done.length} ${total - done.length === 1 ? 'person hasn’t' : 'people haven’t'} been sent the message yet. You can’t continue after finishing.`, confirmLabel: 'Finish' }))) return
     setFinishing(true)
-    try { const r = await api.post(`/messages/${id}/whatsapp/finish`); toast(`Done: sent to ${r.sent} of ${r.total}`); navigate('/app/messages') }
+    try { const r = await api.post(`/messages/${id}/whatsapp/finish`); toast(`Done: sent to ${r.sent} of ${r.total}`); navigate(`/app/communications/messages/${id}`) }
     catch (e) { toast(e.message, 'error') } finally { setFinishing(false) }
   }
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/app/messages" className="mb-4 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Messages</Link>
+      <Link to="/app/communications/messages" className="mb-4 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Messages</Link>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-ink">Send on WhatsApp</h1>

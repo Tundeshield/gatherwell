@@ -111,6 +111,10 @@ async function activationProblems(ctx, w) {
   const status = await channelStatus(ctx.org)
   for (const s of sends) {
     if (!status[s.channel].ready) out.push(`${s.channel === 'sms' ? 'SMS' : s.channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected yet, so “${s.title || 'a message'}” can’t be sent.`)
+    if (s.channel === 'whatsapp' && status.whatsapp.needsTemplates) {
+      const t = s.templateId && /^[A-Za-z0-9_-]{6,64}$/.test(s.templateId) ? (await (await fb()).db.collection('orgs').doc(ctx.org.id).collection('templates').doc(s.templateId).get()).data() : null
+      if (t?.whatsapp?.status !== 'approved') out.push(`Choose an approved WhatsApp template for “${s.title || 'a message'}”.`)
+    }
     if (s.channel === 'email' && !s.subject) out.push(`Give the email “${s.title || 'message'}” a subject.`)
     if (!s.body && !(s.blocks || []).length) out.push(`Write the message for “${s.title || 'a send step'}”.`)
   }
@@ -649,7 +653,10 @@ export default function (r) {
     const channel = oneOf(body.channel, CHANNEL_KEYS, { name: 'Channel' })
     const provider = body.provider === null ? null : String(body.provider || '')
     if (provider && !adapterFor(channel, provider)) throw bad('That provider isn’t available for this channel.')
-    const out = await setProvider({ channel, provider, disabled: body.disabled, user: ctx.user })
+    // Switching a provider off or on never changes which provider is in use.
+    const out = typeof body.disabled === 'boolean'
+      ? await setProvider({ channel, target: provider, disabled: body.disabled, user: ctx.user })
+      : await setProvider({ channel, provider, user: ctx.user })
     await audit(ctx, 'platform.comms_provider', 'platform', 'comms', { channel, provider, disabled: body.disabled ?? null })
     return out
   })

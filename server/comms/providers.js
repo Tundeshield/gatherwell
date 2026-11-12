@@ -131,7 +131,7 @@ export async function providerOverview() {
   return { channels, updated_at: cfg.updated_at, updated_by: cfg.updated_by }
 }
 
-export async function setProvider({ channel, provider, disabled, user }) {
+export async function setProvider({ channel, provider, disabled, target, user }) {
   const { db } = await fb()
   const cfg = await platformConfig({ fresh: true })
   const active = { ...cfg.active }
@@ -140,7 +140,8 @@ export async function setProvider({ channel, provider, disabled, user }) {
     if (provider !== null && !adapterFor(channel, provider)) throw new Error('That provider isn’t available for this channel.')
     active[channel] = provider
   }
-  if (disabled !== undefined && provider) off = disabled ? [...new Set([...off, provider])] : off.filter(x => x !== provider)
+  const which = target || provider
+  if (disabled !== undefined && which) off = disabled ? [...new Set([...off, which])] : off.filter(x => x !== which)
   await db.collection('platform').doc('comms').set({ active, disabled: off, updated_at: new Date(), updated_by: user?.email || null }, { merge: true })
   clearConfigCache()
   return providerOverview()

@@ -1,5 +1,5 @@
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Building2, Users, LogOut, ExternalLink } from 'lucide-react'
+import { LayoutDashboard, Building2, Users, LogOut, ExternalLink, MessagesSquare } from 'lucide-react'
 import { useSession } from '../../lib/session'
 import { PageLoader } from '../../components/ui'
 import Logo from '../../components/Logo'
@@ -9,6 +9,7 @@ import AdminChurches from './AdminChurches'
 import AdminChurch from './AdminChurch'
 import AdminUsers from './AdminUsers'
 import AdminUser from './AdminUser'
+import AdminComms from './AdminComms'
 
 function Layout() {
   const { me, logout } = useSession()
@@ -18,6 +19,7 @@ function Layout() {
     { to: adminPath('/'), label: 'Overview', icon: LayoutDashboard, end: true },
     { to: adminPath('/churches'), label: 'Churches', icon: Building2 },
     { to: adminPath('/users'), label: 'Users', icon: Users },
+    { to: adminPath('/messaging'), label: 'Messaging', icon: MessagesSquare },
   ]
   return (
     <div className="min-h-screen bg-ivory lg:flex">
@@ -81,6 +83,7 @@ export default function AdminApp() {
         <Route path="churches/:id" element={<AdminChurch />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="users/:id" element={<AdminUser />} />
+        <Route path="messaging" element={<AdminComms />} />
         <Route path="*" element={<Navigate to={adminPath('/')} replace />} />
       </Route>
     </Routes>

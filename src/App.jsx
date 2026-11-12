@@ -25,8 +25,15 @@ const Events = lazyPage(() => import('./pages/app/Events'))
 const EventDetail = lazyPage(() => import('./pages/app/EventDetail'))
 const FollowUps = lazyPage(() => import('./pages/app/FollowUps'))
 const Reports = lazyPage(() => import('./pages/app/Reports'))
-const Messages = lazyPage(() => import('./pages/app/Messages'))
-const MessageEditor = lazyPage(() => import('./pages/app/MessageEditor'))
+const CommsLayout = lazyPage(() => import('./pages/app/comms/shared').then(m => ({ default: m.CommsLayout })))
+const CommsOverview = lazyPage(() => import('./pages/app/comms/CommsOverview'))
+const Compose = lazyPage(() => import('./pages/app/comms/Compose'))
+const MessagesList = lazyPage(() => import('./pages/app/comms/Messages').then(m => ({ default: m.MessagesList })))
+const MessageDetail = lazyPage(() => import('./pages/app/comms/Messages').then(m => ({ default: m.MessageDetail })))
+const WorkflowsList = lazyPage(() => import('./pages/app/comms/Workflows').then(m => ({ default: m.WorkflowsList })))
+const WorkflowBuilder = lazyPage(() => import('./pages/app/comms/Workflows').then(m => ({ default: m.WorkflowBuilder })))
+const Templates = lazyPage(() => import('./pages/app/comms/Templates'))
+const Channels = lazyPage(() => import('./pages/app/comms/Channels'))
 const WhatsAppSend = lazyPage(() => import('./pages/app/WhatsAppSend'))
 const Settings = lazyPage(() => import('./pages/app/Settings'))
 const AdminApp = lazyPage(() => import('./pages/admin/AdminApp'))
@@ -36,6 +43,11 @@ const ChildrenRoom = lazyPage(() => import('./pages/app/ChildrenRoom'))
 const ChildrenPickup = lazyPage(() => import('./pages/app/ChildrenPickup'))
 import { isAdminHost } from './lib/host'
 import EnvBanner from './components/EnvBanner'
+
+function MessageRedirect() {
+  const id = useLocation().pathname.split('/').pop()
+  return <Navigate to={`/app/communications/messages/${id}`} replace />
+}
 
 function RequireAuth({ children, cap, platform = false }) {
   const { me, can } = useSession()
@@ -120,9 +132,20 @@ export default function App() {
                 <Route path="events/:id" element={<RequireAuth cap="events.view"><EventDetail /></RequireAuth>} />
                 <Route path="follow-ups" element={<RequireAuth cap="followups.view"><FollowUps /></RequireAuth>} />
                 <Route path="reports" element={<RequireAuth cap="reports.view"><Reports /></RequireAuth>} />
-                <Route path="messages" element={<RequireAuth cap="messages.manage"><Messages /></RequireAuth>} />
-                <Route path="messages/new" element={<RequireAuth cap="messages.manage"><MessageEditor /></RequireAuth>} />
-                <Route path="messages/:id" element={<RequireAuth cap="messages.manage"><MessageEditor /></RequireAuth>} />
+                <Route path="communications" element={<RequireAuth cap="messages.manage"><CommsLayout /></RequireAuth>}>
+                  <Route index element={<CommsOverview />} />
+                  <Route path="messages" element={<MessagesList />} />
+                  <Route path="workflows" element={<WorkflowsList />} />
+                  <Route path="templates" element={<Templates />} />
+                  <Route path="channels" element={<Channels />} />
+                </Route>
+                <Route path="communications/send" element={<RequireAuth cap="messages.manage"><Compose /></RequireAuth>} />
+                <Route path="communications/messages/:id" element={<RequireAuth cap="messages.manage"><MessageDetail /></RequireAuth>} />
+                <Route path="communications/messages/:id/edit" element={<RequireAuth cap="messages.manage"><Compose /></RequireAuth>} />
+                <Route path="communications/workflows/:id" element={<RequireAuth cap="messages.manage"><WorkflowBuilder /></RequireAuth>} />
+                <Route path="messages" element={<Navigate to="/app/communications/messages" replace />} />
+                <Route path="messages/new" element={<Navigate to="/app/communications/send" replace />} />
+                <Route path="messages/:id" element={<MessageRedirect />} />
                 <Route path="messages/:id/whatsapp" element={<RequireAuth cap="messages.manage"><WhatsAppSend /></RequireAuth>} />
                 <Route path="settings" element={<Settings />} />
               </Route>

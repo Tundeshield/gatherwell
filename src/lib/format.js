@@ -42,5 +42,5 @@ export function pctChange(curr, prev) {
 }
 
 export const STATUS_LABELS = { visitor: 'Visitor', member: 'Member', inactive: 'Inactive', transferred: 'Transferred', archived: 'Archived' }
-export const REASON_LABELS = { first_visit: 'First visit', second_visit: 'Second visit', absence: 'Not seen recently', event: 'Event', manual: 'Manual' }
+export const REASON_LABELS = { first_visit: 'First visit', second_visit: 'Second visit', absence: 'Not seen recently', event: 'Event', manual: 'Manual', workflow: 'Workflow', reply: 'Replied to a message' }
 export const KIND_LABELS = { service: 'Service', midweek: 'Midweek', youth: 'Youth', prayer: 'Prayer', meeting: 'Meeting', class: 'Class', other: 'Other' }

@@ -35,6 +35,7 @@ function rowOut(snapOrObj, lk) {
     visit_count: p.visit_count || 0, created_at: p.created_at, branch_name: lk.branches.get(p.branch_id) || null, unit_name: lk.units.get(p.unit_id) || null,
     open_followups: p.open_followups || 0, phone_norm: p.phone_norm || null, gender: p.gender || null, birthday: p.birthday || null, joined_at: p.joined_at || null,
     email_opt_out: !!p.email_opt_out, tags: p.tags || [],
+    consent: Object.fromEntries(Object.entries(p.consent || {}).map(([k, v]) => [k, { status: v?.status, at: v?.at || null, source: v?.source || null, wording: v?.wording || null, by: v?.by || null }])),
   }
 }
 
