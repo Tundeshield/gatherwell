@@ -11,11 +11,12 @@
 import crypto from 'node:crypto'
 import { fb, col, toDate, plain, getMany, F } from '../firebase.js'
 import { renderEmail, cleanBlocks, blocksFromBody } from '../../shared/email.js'
-import { fillText, nextSendingTime, nextWeekdayAt, nextRecurrence, localParts, zonedToUtc, DEFAULT_QUIET, isStopWord, smsInfo } from '../../shared/comms.js'
+import { fillText, nextSendingTime, nextWeekdayAt, nextRecurrence, localParts, zonedToUtc, DEFAULT_QUIET, isStopWord, smsInfo, countryName, WHATSAPP_AUTOMATION } from '../../shared/comms.js'
 import { cleanAudience, audiencePeople, brandingFor } from '../routes/messages.js'
-import { fromAddress, unsubscribeUrl, siteOrigin } from '../email.js'
-import { activeProvider } from './providers.js'
-import { rates, unitPrice, addCredits, balanceOf, money } from './credits.js'
+import { fromAddress, unsubscribeUrl, siteOrigin, emailProvider, sendEmails } from '../email.js'
+import { activeProvider, platformConfig, smsCountries } from './providers.js'
+import { rates, unitPrice, addCredits, balanceOf, money, reserve, settle, release, refundFailed } from './credits.js'
+import { routeFor, sendVia, ROUTE_REASON, SMS_ADAPTERS, errorText } from './sms.js'
 import { followupDoc, followupCounters } from '../domain.js'
 import { isExpired } from '../billing.js'
 
@@ -70,14 +71,132 @@ export function billingFor(org, channel, adapter) {
   return org.comms?.channels?.[channel]?.billing === 'church' && adapter?.billing.includes('church') ? 'church' : 'platform'
 }
 
+export async function smsSenders(db, orgId) {
+  const qs = await col(db, orgId, 'smsSenders').get()
+  return Object.fromEntries(qs.docs.map(d => [d.id, d.data()]))
+}
+// Splits SMS recipients into those with a working route and those without, with the cost per
+// country. Uses each person's own text (names change the length) and the preferred route.
+export async function smsPlan(org, eligible, content = {}) {
+  const { db } = await fb()
+  const cfg = (await platformConfig()).sms
+  const senders = await smsSenders(db, org.id)
+  const routable = [], unroutable = {}, byCountry = {}
+  let cost = 0
+  for (const x of eligible) {
+    const r = await routeFor(cfg, org, senders, x.to, { category: content.category })
+    if (!r.candidates.length) { (unroutable[r.reason] ||= { count: 0, countries: [] }).count++; if (!unroutable[r.reason].countries.includes(r.country)) unroutable[r.reason].countries.push(r.country); continue }
+    const seg = Math.max(1, smsInfo(fillText(content.body, vars(org, x.p))).segments)
+    const unit = r.candidates[0].unit
+    const c = (byCountry[r.country] ||= { count: 0, segments: 0, unit, cost: 0 })
+    c.count++; c.segments += seg; c.cost = money(c.cost + seg * unit); cost += seg * unit
+    routable.push(x)
+  }
+  return { routable, unroutable, byCountry, cost: money(cost) }
+}
 export async function estimate(org, channel, eligible, content = {}) {
+  if (channel === 'email') return { billing: 'included', cost: 0, balance: balanceOf(org), enough: true }
+  if (channel === 'sms') {
+    const plan = await smsPlan(org, eligible, content)
+    return { billing: 'platform', cost: plan.cost, balance: balanceOf(org), enough: balanceOf(org) >= plan.cost, byCountry: plan.byCountry, unroutable: plan.unroutable, reachable: plan.routable.length, estimated: true }
+  }
   const { adapter } = await activeProvider(channel)
   const billing = billingFor(org, channel, adapter)
   if (billing !== 'platform') return { billing, cost: 0, balance: balanceOf(org), enough: true }
   const R = await rates()
-  const text = channel === 'sms' ? fillText(content.body, { first_name: 'Christopher', last_name: 'Adeyemi', church_name: org.name }) : content.body
-  const cost = money(eligible.reduce((s, x) => s + unitPrice(R, channel, { phoneNorm: x.to, category: content.category, body: text }), 0))
+  const cost = money(eligible.reduce((s, x) => s + unitPrice(R, channel, { phoneNorm: x.to, category: content.category }), 0))
   return { billing, cost, balance: balanceOf(org), enough: balanceOf(org) >= cost, placeholderRates: !!R.placeholder }
+}
+
+// Emails owners and admins once each time the balance drops past a warning level.
+export async function notifyBalance(orgId, level) {
+  const { db } = await fb()
+  const org = await loadOrg(db, orgId)
+  if (!org) return
+  const text = level >= 99 ? 'Your messaging credit has run out. Text messages are paused until you add credit; emails keep going.' : `Your messaging credit is running low ($${balanceOf(org).toFixed(2)} left).`
+  await col(db, orgId, 'notices').add({ kind: 'credit', level, text, created_at: new Date() }).catch(() => {})
+  const provider = emailProvider()
+  if (!provider) return
+  const ms = await db.collection('memberships').where('org_id', '==', orgId).where('status', '==', 'active').get()
+  const users = await Promise.all(ms.docs.map(d => d.data()).filter(m => ['owner', 'admin'].includes(m.role)).map(m => db.collection('users').doc(m.user_id).get()))
+  const to = users.filter(u => u.exists && u.data().email).map(u => u.data().email)
+  const link = `${appOrigin()}/app/communications/channels`
+  if (to.length) await sendEmails(provider, to.map(addr => ({ from: `GatherHQ <hello@${provider.domain}>`, to: [addr], subject: level >= 99 ? 'Your messaging credit has run out' : 'Your messaging credit is running low',
+    text: `${text}\n\nAdd credit: ${link}`, html: `<p>${text}</p><p><a href="${link}">Add credit</a></p>` })), `credit-${orgId}-${level}-${Date.now() >> 22}`).catch(() => {})
+}
+
+// Sends SMS rows one by one through the routing layer. Each recipient: one delivery record,
+// one reservation, at most one accepted provider call. Stops (creditsStop) when credit runs out.
+async function sendSmsRows(db, org, { rows, content, ctx = {}, messageId = null, enrolmentId = null }) {
+  const cfg = (await platformConfig()).sms
+  const senders = await smsSenders(db, org.id)
+  let sent = 0, failed = 0, skipped = 0, cost = 0, retry = false, creditsStop = false, lastError = null
+  const crossed = []
+  for (const r of rows) {
+    const ref = col(db, org.id, 'deliveries').doc(r.deliveryId)
+    const snap = await ref.get()
+    const prev = snap.exists ? snap.data() : null
+    if (prev && !['queued', 'sending'].includes(prev.status)) continue // already handled
+    if (prev?.status === 'sending' && prev.calling_at) { await ref.update({ status: 'unknown', error: 'Interrupted while sending. Not retried, to avoid a duplicate.' }); continue }
+    const body = fillText(content.body, vars(org, r.p, ctx))
+    const info = smsInfo(body)
+    const segments = Math.max(1, info.segments)
+    const route = await routeFor(cfg, org, senders, r.to, { category: content.category })
+    const base = { message_id: messageId, enrolment_id: enrolmentId, person_id: r.p.id, name: personName(r.p), channel: 'sms', to: r.to, billing: 'platform', country: route.country, segments, preview: body.slice(0, 300), test: false }
+    if (!prev) await ref.set({ ...base, status: 'sending', error: null, cost: 0, attempts: 0, created_at: new Date() })
+    if (!route.candidates.length) {
+      const msg = (ROUTE_REASON[route.reason] || ROUTE_REASON.unsupported_country)(countryName(route.country))
+      if (route.reason === 'provider_down') { await ref.update({ status: 'queued', error: msg }); retry = true; lastError = msg; continue }
+      await ref.update({ status: 'failed', error: msg, error_code: route.reason }); failed++; lastError = msg; continue
+    }
+    const held = money(segments * Math.max(...route.candidates.map(c => c.unit)))
+    const meta = { messageId, enrolmentId, country: route.country, segments }
+    const lk = prev?.ledger_round ? `${r.deliveryId}~${prev.ledger_round}` : r.deliveryId // a retry after a release gets fresh ledger ids
+    const res = await reserve(org.id, lk, held, meta)
+    if (!res.ok) {
+      await ref.update({ status: 'queued', error: 'Waiting for messaging credit.' }); creditsStop = true
+      // Tell the church once: mark the balance as exhausted and email the admins.
+      const orgRef = db.collection('orgs').doc(org.id)
+      const first = await db.runTransaction(async (tx) => { const c = (await tx.get(orgRef)).data()?.credits || {}; if (c.alert_level === 99) return false; tx.update(orgRef, { 'credits.alert_level': 99, 'credits.low': true }); return true })
+      if (first) crossed.push(99)
+      break
+    }
+    if (res.crossed) crossed.push(res.crossed)
+    let outcome = null, lastErr = null, transient = false
+    for (const cand of route.candidates) {
+      await ref.update({ calling_at: new Date(), provider: cand.id, attempts: F.inc(1) })
+      const x = await sendVia(cand, { to: r.to, body, key: r.deliveryId, origin: appOrigin() })
+      if (x.accepted) {
+        const seg = Math.max(1, Number(x.segments) || segments)
+        const actual = money(seg * cand.unit)
+        const st = await settle(org.id, lk, held, actual, { ...meta, segments: seg, provider: cand.id, extra: { provider_cost: x.providerCost ?? null, provider_currency: x.currency || null } })
+        if (st.crossed) crossed.push(st.crossed)
+        await ref.update({ status: 'sent', ledger_key: lk, provider: cand.id, provider_id: x.providerId || null, sent_at: new Date(), cost: actual, segments: seg, calling_at: null, error: null, sender: cand.from || null })
+        if (x.providerId) await db.collection('providerMessages').doc(`${cand.id}_${x.providerId}`.slice(0, 300)).set({ org_id: org.id, delivery_id: r.deliveryId, message_id: messageId })
+        await db.collection('smsContacts').doc(r.to).set({ last_org: org.id, orgs: F.union(org.id), updated_at: new Date() }, { merge: true })
+        sent++; cost += actual; outcome = 'sent'; break
+      }
+      lastErr = x.error
+      if (x.error.outcome === 'unknown') { outcome = 'unknown'; break } // never risk a duplicate
+      if (x.error.scope === 'recipient') { outcome = 'failed'; break } // the number is the problem: another provider won't help
+      transient = transient || x.error.transient // provider problem: try the next eligible provider
+    }
+    if (outcome === 'sent') continue
+    if (outcome === 'unknown') {
+      await ref.update({ status: 'unknown', error: errorText('timeout'), error_code: 'timeout', calling_at: null, reconcile: true })
+      lastError = errorText('timeout'); continue // the reservation stays until the provider's records are checked
+    }
+    const attempts = (prev?.attempts || 0) + route.candidates.length
+    await release(org.id, lk, held, meta)
+    if (outcome !== 'failed' && transient && attempts < 6) {
+      await ref.update({ status: 'queued', error: lastErr?.message || null, calling_at: null, ledger_round: F.inc(1) })
+      retry = true; lastError = lastErr?.message || null
+      continue
+    }
+    await ref.update({ status: 'failed', error: lastErr?.message || errorText('unknown'), error_code: lastErr?.code || 'unknown', calling_at: null }); failed++; lastError = lastErr?.message
+  }
+  for (const lvl of [...new Set(crossed)]) await notifyBalance(org.id, lvl).catch(() => {})
+  return { sent, failed, skipped, cost: money(cost), retry, creditsStop, lastError }
 }
 
 // --- content ---------------------------------------------------------------------------------
@@ -185,8 +304,15 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
   const release = (patch) => ref.update({ lease_until: null, updated_at: new Date(), ...patch })
   const org = await loadOrg(db, orgId)
   if (!org || org.status !== 'active' || isExpired(org)) { await release({ status: 'paused', pause_reason: 'subscription' }); return progress({ ...m, status: 'paused', pause_reason: 'subscription' }, { nextAt: null }) }
-  const { adapter } = await activeProvider(m.channel)
-  if (!adapter) { await release({ status: 'paused', pause_reason: 'channel', last_error: `${m.channel === 'sms' ? 'SMS' : m.channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected, so nothing was sent.` }); return progress({ ...m, status: 'paused', pause_reason: 'channel' }, { nextAt: null }) }
+  const sms = m.channel === 'sms'
+  let adapter = null
+  if (m.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) {
+    await release({ status: 'paused', pause_reason: 'channel', last_error: 'Automated WhatsApp isn’t available yet, so nothing was sent. Use the one-tap WhatsApp option, or send it by SMS or email.' })
+    return progress({ ...m, status: 'paused', pause_reason: 'channel' }, { nextAt: null })
+  }
+  if (sms) { if (!Object.keys(await smsCountries()).length) adapter = null; else adapter = { id: 'routed', idempotent: true } }
+  else adapter = (await activeProvider(m.channel)).adapter
+  if (!adapter) { await release({ status: 'paused', pause_reason: 'channel', last_error: `${sms ? 'SMS' : m.channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected, so nothing was sent.` }); return progress({ ...m, status: 'paused', pause_reason: 'channel' }, { nextAt: null }) }
   const content = { subject: m.subject, preheader: m.preheader, blocks: m.blocks, body: m.body, category: m.category, templateName: m.template_name }
 
   // First run: work out who receives it, now.
@@ -194,15 +320,22 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
     const ctx = { org, user: null, branchScope: m.scope || null }
     let people
     try { people = await audiencePeople(ctx, cleanAudience(m.audience)) } catch (e) { await release({ status: 'failed', last_error: e.message }); return progress({ ...m, status: 'failed', last_error: e.message }, { nextAt: null }) }
-    const { eligible, excluded } = sortRecipients(m.channel, people)
+    let { eligible, excluded } = sortRecipients(m.channel, people)
+    let smsEst = null
+    if (sms) {
+      const plan = await smsPlan(org, eligible, content)
+      excluded = { ...excluded, no_route: Object.values(plan.unroutable).reduce((a, x) => a + x.count, 0) }
+      eligible = plan.routable
+      smsEst = { cost: plan.cost, byCountry: plan.byCountry, unroutable: plan.unroutable }
+    }
     if (!eligible.length) {
       const err = 'Nobody in this audience could receive it when it was due to send.'
       await release({ status: 'failed', last_error: err, excluded, audience_total: people.length })
       return progress({ ...m, status: 'failed', last_error: err }, { nextAt: null })
     }
-    const billing = billingFor(org, m.channel, adapter)
+    const billing = sms ? 'platform' : billingFor(org, m.channel, adapter)
     if (billing === 'platform') {
-      const est = await estimate(org, m.channel, eligible, content)
+      const est = smsEst ? { cost: smsEst.cost, balance: balanceOf(org), enough: balanceOf(org) >= smsEst.cost } : await estimate(org, m.channel, eligible, content)
       if (!est.enough) {
         await release({ status: 'paused', pause_reason: 'credits', estimate: est.cost, last_error: `Not enough messaging credit: this needs about $${est.cost.toFixed(2)} and the balance is $${est.balance.toFixed(2)}.` })
         return progress({ ...m, status: 'paused', pause_reason: 'credits' }, { nextAt: null })
@@ -227,7 +360,7 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
     const rows = eligible.map(x => ({ p: x.p.id, to: x.to, f: x.p.first_name || '', l: x.p.last_name || '' }))
     const chunks = Math.ceil(rows.length / CHUNK)
     for (let i = 0; i < chunks; i++) await ref.collection('queue').doc(String(i)).set({ rows: rows.slice(i * CHUNK, (i + 1) * CHUNK) })
-    const patch = { status: 'sending', recipient_count: rows.length, excluded, audience_total: people.length, billing, provider: adapter.id, cursor: 0, queue_chunks: chunks,
+    const patch = { status: 'sending', recipient_count: rows.length, excluded, audience_total: people.length, billing, provider: adapter.id, cursor: 0, queue_chunks: chunks, ...(smsEst ? { estimate: smsEst.cost, by_country: smsEst.byCountry, unroutable: smsEst.unroutable } : {}),
       send_id: crypto.randomBytes(4).toString('hex'), started_at: new Date(), sent_count: 0, failed_count: 0, skipped_count: 0, cost: 0, last_error: null, pause_reason: null }
     await ref.update(patch)
     m = { ...m, ...patch }
@@ -239,6 +372,16 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
   let lastError = m.last_error || null, stop = null
   while (cursor < rows.length && Date.now() - t0 < budgetMs) {
     const slice = rows.slice(cursor, cursor + BATCH).map(x => ({ deliveryId: `${m.id}_${x.p}`, p: { id: x.p, first_name: x.f, last_name: x.l }, to: x.to }))
+    if (sms) {
+      const r = await sendSmsRows(db, org, { rows: slice, content, messageId: m.id })
+      sent += r.sent; failed += r.failed; cost = money(cost + r.cost)
+      if (r.failed) lastError = 'Some messages couldn’t be delivered. See the list below.'
+      if (r.creditsStop) { stop = 'credits'; lastError = `Paused: messaging credit ran out after ${sent.toLocaleString()} messages. Emails are not affected.`; await ref.update({ sent_count: sent, failed_count: failed, cost }); break }
+      if (r.retry) { stop = 'retry'; lastError = r.lastError || 'The SMS service was busy. Trying again shortly.'; await ref.update({ sent_count: sent, failed_count: failed, cost }); break }
+      cursor += slice.length
+      await ref.update({ cursor, sent_count: sent, failed_count: failed, cost, last_error: lastError })
+      continue
+    }
     if (m.billing === 'platform') {
       const fresh = await loadOrg(db, orgId)
       const est = await estimate(fresh, m.channel, slice, content)
@@ -268,12 +411,13 @@ export async function retryFailed(orgId, messageId) {
   const m = (await ref.get()).data()
   if (!m || !['sent', 'failed'].includes(m.status)) return { retried: 0 }
   const org = await loadOrg(db, orgId)
-  const { adapter } = await activeProvider(m.channel)
+  const sms = m.channel === 'sms'
+  const { adapter } = sms ? { adapter: { id: 'routed' } } : await activeProvider(m.channel)
   if (!adapter) return { retried: 0, error: 'This channel isn’t connected.' }
   const failedSnap = await col(db, orgId, 'deliveries').where('message_id', '==', messageId).get()
   const failedRows = failedSnap.docs.filter(d => d.data().status === 'failed').slice(0, 500)
   if (!failedRows.length) return { retried: 0 }
-  const b = db.batch(); failedRows.forEach(d => b.update(d.ref, { status: 'queued', retried_at: new Date() })); await b.commit()
+  const b = db.batch(); failedRows.forEach(d => b.update(d.ref, { status: 'queued', retried_at: new Date(), ...(sms ? { ledger_round: F.inc(1), calling_at: null } : {}) })); await b.commit()
   const people = await getMany(db, failedRows.map(d => col(db, orgId, 'people').doc(d.data().person_id)))
   const rows = []
   const gone = db.batch()
@@ -285,7 +429,9 @@ export async function retryFailed(orgId, messageId) {
   })
   await gone.commit()
   const content = { subject: m.subject, preheader: m.preheader, blocks: m.blocks, body: m.body, category: m.category, templateName: m.template_name }
-  const res = await sendRows(db, org, { channel: m.channel, adapter, billing: m.billing || billingFor(org, m.channel, adapter), rows, content, ctx: {}, key: `${messageId}-retry-${Date.now()}`, messageId })
+  if (sms) for (const r of rows) { const d = (await col(db, orgId, 'deliveries').doc(r.deliveryId).get()).data(); r.round = d?.ledger_round }
+  const res = sms ? await sendSmsRows(db, org, { rows, content, messageId })
+    : await sendRows(db, org, { channel: m.channel, adapter, billing: m.billing || billingFor(org, m.channel, adapter), rows, content, ctx: {}, key: `${messageId}-retry-${Date.now()}`, messageId })
   await ref.update({ sent_count: F.inc(res.sent), failed_count: F.inc(res.failed - rows.length), cost: F.inc(res.cost), last_error: res.failed ? 'Some messages still couldn’t be delivered.' : null })
   return { retried: rows.length, sent: res.sent, failed: res.failed }
 }
@@ -423,8 +569,27 @@ export async function processEnrolment(orgId, id, { now = new Date() } = {}) {
       const q = quietOf(org)
       const allowed = nextSendingTime(now, tzOf(org), q)
       if (allowed > now) { log('wait', 'Waiting for sending hours', { until: allowed }); await finish({ ...at, wait_until: null, next_at: allowed }); return { nextAt: allowed } }
+      if (wf.exit_on_return && ['first_visit', 'second_visit', 'absent'].includes(wf.trigger?.type) && person.last_seen_at && toDate(person.last_seen_at) > toDate(e.started_at)) {
+        log('end', 'They came back, so the rest of this journey was cancelled'); await finish({ status: 'completed', step_id: null, wait_until: null, completed_at: new Date(), ended_by: 'returned' }); return { done: true }
+      }
+      if (step.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) { log('skip', 'Not sent: automated WhatsApp isn’t available yet', { result: 'skipped' }); next(); continue }
       const r = reachable(step.channel, person)
       if (!r.ok) { log('skip', `Message not sent: ${r.why === 'no_consent' ? 'no consent for this channel' : r.why === 'opted_out' ? 'they opted out' : 'no contact details'}`, { result: 'skipped' }); next(); continue }
+      if (step.channel === 'sms') {
+        const window = Number((await platformConfig()).sms.resumeWindowHours || 48) * 3600e3
+        const dueSince = e.blocked_since ? toDate(e.blocked_since) : null
+        if (dueSince && now - dueSince > window) { log('skip', 'Not sent: it waited too long for messaging credit, so it was skipped rather than sent late', { result: 'skipped' }); e.blocked = null; e.blocked_since = null; await ref.update({ blocked: null, blocked_since: null }); next(); continue }
+        const row = { deliveryId: `e_${id}_${step.id}`.slice(0, 200), p: person, to: r.to }
+        const res = await sendSmsRows(db, org, { rows: [row], content: { body: step.body, category: step.category }, ctx: e.context || {}, enrolmentId: id })
+        if (res.creditsStop) {
+          log('wait', 'Waiting for messaging credit', { result: 'blocked' })
+          const retryAt = new Date(now.getTime() + 3600e3)
+          await finish({ ...at, blocked: 'credits', blocked_since: e.blocked_since || now, next_at: retryAt }); return { nextAt: retryAt }
+        }
+        if (res.retry && (e.attempts || 0) < 3) { log('retry', 'The SMS service was busy; trying again', { result: 'retry' }); await finish({ ...at, attempts: (e.attempts || 0) + 1, next_at: new Date(now.getTime() + 15 * 60e3) }); return { nextAt: new Date(now.getTime() + 15 * 60e3) } }
+        log('send', res.sent ? `Sent ${step.title || 'a text'}` : `Couldn’t send ${step.title || 'the text'}${res.lastError ? `: ${res.lastError}` : ''}`, { result: res.sent ? 'sent' : 'failed', delivery_id: row.deliveryId })
+        e.attempts = 0; if (e.blocked) { await ref.update({ blocked: null, blocked_since: null }); e.blocked = null; e.blocked_since = null } next(); continue
+      }
       const { adapter } = await activeProvider(step.channel)
       if (!adapter) { log('wait', 'Waiting: this channel isn’t connected', { result: 'blocked' }); await finish({ ...at, next_at: new Date(now.getTime() + 3600e3) }); return { nextAt: new Date(now.getTime() + 3600e3) } }
       if (step.channel === 'whatsapp' && adapter.needsTemplates) {
@@ -617,9 +782,33 @@ export async function updateDelivery(orgId, deliveryId, status, error = null) {
 }
 export async function providerReport(adapterId, providerId, status, error) {
   const { db } = await fb()
-  const m = (await db.collection('providerMessages').doc(`${adapterId}_${providerId}`).get()).data()
+  const m = (await db.collection('providerMessages').doc(`${adapterId}_${providerId}`.slice(0, 300)).get()).data()
   if (!m) return false
-  return updateDelivery(m.org_id, m.delivery_id, status, error)
+  const changed = await updateDelivery(m.org_id, m.delivery_id, status, error)
+  // A provider that doesn't bill undelivered texts: give the credit back, once.
+  if (changed && status === 'failed' && SMS_ADAPTERS[adapterId] && !SMS_ADAPTERS[adapterId].billsFailed) {
+    const d = (await col(db, m.org_id, 'deliveries').doc(m.delivery_id).get()).data()
+    if (d?.cost > 0) await refundFailed(m.org_id, d.ledger_key || m.delivery_id, d.cost, { messageId: d.message_id, enrolmentId: d.enrolment_id, country: d.country })
+  }
+  return changed
+}
+
+// A text from a phone number to a provider number. STOP opts the number out of SMS at every
+// church that has texted it through GatherHQ; any other reply goes to the church that texted
+// it most recently.
+export async function smsInbound(fromNumber, text) {
+  const { db } = await fb()
+  const phone = String(fromNumber || '').replace(/\D/g, '')
+  const c = (await db.collection('smsContacts').doc(phone).get()).data()
+  if (!c) return { ok: false }
+  const orgs = isStopWord(text) ? (c.orgs || [c.last_org]) : [c.last_org]
+  let n = 0
+  for (const orgId of orgs) {
+    const link = (await col(db, orgId, 'phones').doc(phone).get()).data()
+    if (!link?.person_id) continue
+    await handleInbound(orgId, { channel: 'sms', personId: link.person_id, text }); n++
+  }
+  return { ok: n > 0 }
 }
 
 export { plain }

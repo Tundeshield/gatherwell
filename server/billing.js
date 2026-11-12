@@ -175,6 +175,28 @@ export async function startCheckout({ org, user, plan, interval, origin }) {
   return { url: session.url }
 }
 
+// Messaging credit: a one-off Checkout payment, separate from the subscription. The balance only
+// moves when Stripe's webhook confirms the payment (see handleEvent), never on the redirect back.
+export async function startCreditCheckout({ org, user, amount, origin }) {
+  const customer = await ensureCustomer(org, user)
+  const back = `${origin}/app/communications/channels`
+  const session = await stripe('POST', '/checkout/sessions', {
+    mode: 'payment', customer, client_reference_id: org.id,
+    line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(amount * 100), product_data: { name: 'GatherHQ messaging credit', description: 'Prepaid credit for text messages' } } }],
+    success_url: `${back}?credit=paid`, cancel_url: `${back}?credit=cancelled`,
+    metadata: { org_id: org.id, kind: 'credits', amount: String(amount) },
+    payment_intent_data: { metadata: { org_id: org.id, kind: 'credits' } },
+  })
+  return { url: session.url }
+}
+async function grantCredits(org, d) {
+  if (d.payment_status !== 'paid') return { ignored: 'not paid yet' }
+  if (String(d.currency || '').toLowerCase() !== 'usd' || !(d.amount_total > 0)) return { ignored: 'unexpected amount' }
+  const { purchase } = await import('./comms/credits.js')
+  const r = await purchase(org.id, d.id, d.amount_total / 100, { extra: { stripe_payment_intent: typeof d.payment_intent === 'string' ? d.payment_intent : null } })
+  return { ok: true, credits: !r.duplicate }
+}
+
 async function orgFor(customerId, metadata) {
   const { db } = await fb()
   const id = metadata?.org_id || (customerId && (await db.collection('billingCustomers').doc(customerId).get()).data()?.org_id)
@@ -221,7 +243,10 @@ export async function handleEvent(evt) {
   const at = evt.created || Math.floor(Date.now() / 1000)
   const newer = !org.billing?.event_at || typeof org.billing.event_at !== 'number' || at >= org.billing.event_at
   switch (evt.type) {
+    case 'checkout.session.async_payment_succeeded':
     case 'checkout.session.completed': {
+      if (d.mode === 'payment' && d.metadata?.kind === 'credits') return grantCredits(org, d)
+      if (evt.type !== 'checkout.session.completed') return { ignored: evt.type }
       if (d.mode !== 'subscription' || !d.subscription) return { ignored: 'not a subscription' }
       const sub = await stripe('GET', `/subscriptions/${d.subscription}`, { expand: ['default_payment_method'] })
       const patch = await fromSubscription(sub)

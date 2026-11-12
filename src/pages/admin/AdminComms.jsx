@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { useLoad, Button, Badge, Notice, Textarea, PageLoader, ErrorState, useToast, useConfirm } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
+import AdminSms from './AdminSms'
 
 const CH = { email: 'Email', whatsapp: 'WhatsApp', sms: 'SMS' }
 
@@ -25,7 +26,7 @@ export default function AdminComms() {
         <p className="mt-1 text-sm text-mist-500">Providers for every church on GatherHQ. Environment: <Badge tone={data.environment === 'production' ? 'danger' : 'gold'}>{data.environment}</Badge>{data.updated_by && <> · last changed by {data.updated_by}</>}</p>
       </div>
 
-      {Object.entries(data.channels).map(([ch, c]) => (
+      {Object.entries(data.channels).filter(([ch]) => ch === 'email').map(([ch, c]) => (
         <section key={ch} className="panel">
           <div className="flex items-center justify-between border-b border-mist-200 px-5 py-3.5">
             <h2 className="text-[15px] font-semibold text-ink">{CH[ch]}</h2>
@@ -56,12 +57,7 @@ export default function AdminComms() {
         </section>
       ))}
 
-      <section className="panel px-5 py-4">
-        <h2 className="text-[15px] font-semibold text-ink">Prices charged to churches (USD)</h2>
-        <p className="mt-0.5 text-sm text-mist-500">WhatsApp per message by country and type; SMS per text segment. Set <code>placeholder</code> to false once prices are final.</p>
-        <Textarea className="mt-3 font-mono text-xs" rows={16} value={rates} onChange={e => setRates(e.target.value)} aria-label="Rates JSON" />
-        <Button size="sm" loading={busy === 'rates'} onClick={() => { let parsed; try { parsed = JSON.parse(rates) } catch { return toast('That isn’t valid JSON.', 'error') } run('rates', () => api.post('/platform/comms/rates', parsed), 'Prices saved') }}>Save prices</Button>
-      </section>
+      <AdminSms />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section className="panel">

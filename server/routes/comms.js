@@ -4,12 +4,12 @@ import { bad, notFound, forbidden, str, oneOf, uuid, isUuid } from '../http.js'
 import { requireCap } from '../access.js'
 import { audit, rateLimit } from '../util.js'
 import { cleanBlocks, blocksFromBody } from '../../shared/email.js'
-import { CHANNEL_KEYS, TRIGGERS, STEP_TYPES, CONDITIONS, OUTCOMES, PURPOSES, STARTER_TEMPLATES, localToUtc, utcToLocal, presetWorkflow, summariseWorkflow, countryOf, smsInfo, stepId } from '../../shared/comms.js'
+import { CHANNEL_KEYS, TRIGGERS, STEP_TYPES, CONDITIONS, OUTCOMES, PURPOSES, STARTER_TEMPLATES, localToUtc, utcToLocal, presetWorkflow, summariseWorkflow, countryOf, smsInfo, stepId, fillText, WHATSAPP_AUTOMATION, WHATSAPP_COMING_SOON, countryName } from '../../shared/comms.js'
 import { cleanAudience, audiencePeople } from './messages.js'
 import { isProduction } from '../env.js'
 import { channelStatus, providerOverview, setProvider, activeProvider, adapterFor, platformConfig, clearConfigCache } from '../comms/providers.js'
 import { rates, packs, addCredits, ledger, monthUsage, balanceOf, unitPrice, DEFAULT_RATES } from '../comms/credits.js'
-import { enqueue, dequeue, processMessage, retryFailed, sortRecipients, estimate, scheduleRecurring, processEnrolment, handleInbound, updateDelivery, runComms } from '../comms/engine.js'
+import { enqueue, dequeue, processMessage, retryFailed, sortRecipients, estimate, scheduleRecurring, processEnrolment, handleInbound, updateDelivery, runComms, smsPlan } from '../comms/engine.js'
 
 const tz = (ctx) => ctx.org.timezone || 'Africa/Lagos'
 const iso = (v) => (v ? toDate(v).toISOString() : null)
@@ -38,7 +38,7 @@ const msgOut = (m, zone) => ({
   send_at: iso(m.send_at), send_local: m.send_at ? utcToLocal(toDate(m.send_at), zone) : null, sent_at: iso(m.sent_at), created_at: iso(m.created_at),
   recipient_count: m.recipient_count || 0, audience_total: m.audience_total ?? null, excluded: m.excluded || null,
   sent_count: m.sent_count || 0, failed_count: m.failed_count || 0, skipped_count: m.skipped_count || 0, delivered_count: m.delivered_count || 0, read_count: m.read_count || 0,
-  cost: m.cost || 0, estimate: m.estimate ?? null, billing: m.billing || null, last_error: m.last_error || null, pause_reason: m.pause_reason || null,
+  cost: m.cost || 0, estimate: m.estimate ?? null, by_country: m.by_country || null, unroutable: m.unroutable || null, billing: m.billing || null, last_error: m.last_error || null, pause_reason: m.pause_reason || null,
   workflow_id: m.workflow_id || null, workflow_name: m.workflow_name || null, created_by_name: m.created_by_name || null, legacy: !m.mode && m.channel === 'whatsapp',
 })
 
@@ -94,12 +94,44 @@ function cleanStep(s = {}) {
   return { id, type: 'end' }
 }
 const wfOut = (w) => ({
-  id: w.id, name: w.name, status: w.status, trigger: w.trigger, steps: w.steps || [], pause_on_reply: w.pause_on_reply !== false, summary: summariseWorkflow(w),
+  id: w.id, name: w.name, status: w.status, trigger: w.trigger, steps: w.steps || [], pause_on_reply: w.pause_on_reply !== false, exit_on_return: !!w.exit_on_return, summary: summariseWorkflow(w),
   enrolled_count: w.enrolled_count || 0, active_count: Math.max(0, w.active_count || 0), completed_count: w.completed_count || 0, runs: w.runs || 0,
   next_run_at: iso(w.next_run_at), last_run_at: iso(w.last_run_at), created_at: iso(w.created_at), updated_at: iso(w.updated_at), preset: w.preset || null,
 })
 
 // What has to be true before a workflow can be switched on. Returns a list of plain problems.
+// What the SMS steps of a journey are likely to cost, from the church's own people: those with
+// a mobile number and SMS consent, grouped by country, priced at the configured routes.
+async function journeyEstimate(ctx, w) {
+  const smsSteps = (w.steps || []).filter(s => s.type === 'send' && s.channel === 'sms')
+  if (!smsSteps.length) return { smsSteps: 0, people: 0, reachable: 0, perPerson: 0, byCountry: {}, blocked: [] }
+  const { db } = await fb()
+  const qs = await col(db, ctx.org.id, 'people').where('status', 'in', ['visitor', 'member']).limit(2000).get()
+  const people = qs.docs.map(d => ({ id: d.id, ...d.data() })).filter(p => !ctx.branchScope || ctx.branchScope.includes(p.branch_id))
+  const { eligible } = sortRecipients('sms', people)
+  const sample = { first_name: 'Christopher' }
+  const segs = smsSteps.map(s => Math.max(1, smsInfo(fillText(s.body, { first_name: sample.first_name, last_name: '', church_name: ctx.org.name, event_name: 'Youth Conference', event_date: 'Saturday 21 November, 10:00' })).segments))
+  const plan = await smsPlan(ctx.org, eligible, { body: smsSteps[0].body, category: smsSteps[0].category })
+  const byCountry = {}
+  let total = 0
+  for (const [cc, c] of Object.entries(plan.byCountry)) {
+    const perPerson = segs.reduce((a, n) => a + n * c.unit, 0)
+    byCountry[cc] = { name: countryName(cc), people: c.count, unit: c.unit, perPerson: Math.round(perPerson * 10000) / 10000, per100: Math.round(perPerson * 100 * 100) / 100 }
+    total += perPerson * c.count
+  }
+  const reachable = plan.routable.length
+  const blocked = Object.entries(plan.unroutable).map(([reason, x]) => ({ reason, count: x.count, countries: x.countries, text: blockedText(reason, x) }))
+  return { smsSteps: smsSteps.length, segments: segs.reduce((a, b) => a + b, 0), people: eligible.length, reachable, byCountry, blocked,
+    perPerson: reachable ? Math.round((total / reachable) * 10000) / 10000 : 0, per100: reachable ? Math.round((total / reachable) * 100 * 100) / 100 : 0, balance: balanceOf(ctx.org) }
+}
+function blockedText(reason, x) {
+  const names = x.countries.map(countryName).join(', ')
+  const n = `${x.count} ${x.count === 1 ? 'person' : 'people'}`
+  return { sender_needed: `${n} in ${names} can’t be texted until a sender name is registered.`, sender_pending: `${n} in ${names} will be texted once your sender name is approved.`,
+    sender_rejected: `${n} in ${names} can’t be texted: your sender name wasn’t approved.`, provider_down: `${n} in ${names}: the SMS service is having problems right now.`,
+    type_not_allowed: `${n} in ${names} can only receive reminders and updates by text.` }[reason] || `${n} in ${names} can’t be texted yet: GatherHQ doesn’t send texts there yet.`
+}
+
 async function activationProblems(ctx, w) {
   const out = []
   const sends = (w.steps || []).filter(s => s.type === 'send')
@@ -110,6 +142,7 @@ async function activationProblems(ctx, w) {
   }
   const status = await channelStatus(ctx.org)
   for (const s of sends) {
+    if (s.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) { out.push(`“${s.title || 'A message'}” uses WhatsApp. ${WHATSAPP_COMING_SOON} Change it to SMS or email.`); continue }
     if (!status[s.channel].ready) out.push(`${s.channel === 'sms' ? 'SMS' : s.channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected yet, so “${s.title || 'a message'}” can’t be sent.`)
     if (s.channel === 'whatsapp' && status.whatsapp.needsTemplates) {
       const t = s.templateId && /^[A-Za-z0-9_-]{6,64}$/.test(s.templateId) ? (await (await fb()).db.collection('orgs').doc(ctx.org.id).collection('templates').doc(s.templateId).get()).data() : null
@@ -117,6 +150,11 @@ async function activationProblems(ctx, w) {
     }
     if (s.channel === 'email' && !s.subject) out.push(`Give the email “${s.title || 'message'}” a subject.`)
     if (!s.body && !(s.blocks || []).length) out.push(`Write the message for “${s.title || 'a send step'}”.`)
+  }
+  if (sends.some(s => s.channel === 'sms') && status.sms.ready) {
+    const est = await journeyEstimate(ctx, w)
+    if (est.people > 0 && est.reachable === 0) out.push(est.blocked[0]?.text || 'None of your people can be texted yet. Check SMS setup in Channels & usage.')
+    if (est.perPerson > 0 && balanceOf(ctx.org) < est.perPerson) out.push(`Add messaging credit first: each person in this journey costs about $${est.perPerson.toFixed(2)} in texts, and your balance is $${balanceOf(ctx.org).toFixed(2)}.`)
   }
   for (const s of w.steps || []) if (s.type === 'wait' && s.wait.kind === 'before_event' && w.trigger.type !== 'event_registered') out.push('“Before the event” waits only work in workflows that start when someone registers for an event.')
   return [...new Set(out)]
@@ -134,12 +172,31 @@ export default function (r) {
     ])
     const all = msgs.docs.map(d => msgOut({ id: d.id, ...plain(d.data()) }, tz(ctx)))
     const workflows = wfs.docs.map(d => wfOut({ id: d.id, ...plain(d.data()) })).filter(w => w.status !== 'archived')
+    // Last 30 days of deliveries, by channel.
+    const since = new Date(Date.now() - 30 * 86400e3)
+    const [dels, replies, purchases] = await Promise.all([
+      col(db, ctx.org.id, 'deliveries').where('created_at', '>=', since).limit(5000).get(),
+      col(db, ctx.org.id, 'followups').where('reason', '==', 'reply').get().catch(() => ({ docs: [] })),
+      col(db, ctx.org.id, 'creditLedger').where('type', '==', 'purchase').get(),
+    ])
+    const stats = { email: { sent: 0, delivered: 0, failed: 0 }, sms: { sent: 0, delivered: 0, failed: 0 } }
+    for (const d of dels.docs) {
+      const x = d.data(); const st = stats[x.channel]; if (!st) continue
+      if (['sent', 'delivered', 'read'].includes(x.status)) st.sent++
+      if (['delivered', 'read'].includes(x.status)) st.delivered++
+      if (x.status === 'failed') st.failed++
+    }
+    for (const st of Object.values(stats)) st.rate = st.delivered + st.failed ? Math.round((st.delivered / (st.sent + st.failed)) * 100) : null
     return {
-      channels, timezone: tz(ctx),
-      credits: { balance: balanceOf(ctx.org), low: balanceOf(ctx.org) < 2, staging: !isProduction() },
+      channels, timezone: tz(ctx), stats,
+      enrolled: workflows.reduce((a, w) => a + (w.status === 'active' ? w.active_count : 0), 0),
+      repliesWaiting: replies.docs.filter(d => !d.data().closed_at).length,
+      purchases: purchases.docs.map(d => d.data()).sort((a, b) => toDate(b.created_at) - toDate(a.created_at)).slice(0, 3).map(x => ({ amount: x.amount, at: iso(x.created_at) })),
+      credits: { balance: balanceOf(ctx.org), low: !!ctx.org.credits?.low, empty: balanceOf(ctx.org) <= 0, staging: !isProduction() },
       scheduled: all.filter(m => m.status === 'scheduled').sort((a, b) => a.send_at.localeCompare(b.send_at)).slice(0, 5),
       recent: all.filter(m => ['sent', 'sending'].includes(m.status)).slice(0, 5),
       attention: all.filter(m => m.status === 'failed' || m.status === 'paused' || (m.status === 'sent' && m.failed_count > 0)).slice(0, 5),
+      blockedEnrolments: (await col(db, ctx.org.id, 'enrolments').where('blocked', '==', 'credits').limit(200).get()).size,
       workflows: workflows.filter(w => w.status === 'active').slice(0, 6),
       counts: { workflowsActive: workflows.filter(w => w.status === 'active').length, scheduled: all.filter(m => m.status === 'scheduled').length, drafts: all.filter(m => m.status === 'draft').length },
     }
@@ -188,6 +245,7 @@ export default function (r) {
       if (sendAt < new Date(Date.now() + 60e3)) throw bad('Choose a time in the future.', { fields: { sendTime: 'This time has already passed.' } })
       if (sendAt > new Date(Date.now() + 366 * 86400e3)) throw bad('You can schedule up to a year ahead.')
     }
+    if (channel === 'whatsapp' && !WHATSAPP_AUTOMATION && when !== 'draft') throw bad('Automated WhatsApp isn’t available yet. Use the one-tap WhatsApp option, or send by SMS or email.')
     if (when !== 'draft') {
       const st = (await channelStatus(ctx.org))[channel]
       if (!st.ready) throw bad(`${channel === 'sms' ? 'SMS' : channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected yet, so this can’t be sent.`)
@@ -342,9 +400,9 @@ export default function (r) {
     requireCap(ctx, 'messages.manage')
     const { db } = await fb()
     const status = await channelStatus(ctx.org)
-    const channel = CHANNEL_KEYS.includes(body.channel) && status[body.channel]?.ready ? body.channel : 'email'
+    const channel = CHANNEL_KEYS.includes(body.channel) && status[body.channel]?.ready ? body.channel : status.sms?.ready ? 'sms' : 'email'
     const preset = presetWorkflow(String(body.preset || 'scratch'), channel)
-    const data = { name: preset.name, trigger: cleanTrigger(preset.trigger), steps: preset.steps.map(cleanStep), status: 'draft', preset: body.preset || 'scratch', pause_on_reply: true,
+    const data = { name: preset.name, trigger: cleanTrigger(preset.trigger), steps: preset.steps.map(cleanStep), status: 'draft', preset: body.preset || 'scratch', pause_on_reply: true, exit_on_return: !!preset.exit_on_return,
       owner_id: ctx.user.id, scope: ctx.branchScope || null, enrolled_count: 0, active_count: 0, completed_count: 0, created_by: ctx.user.id, created_at: new Date(), updated_at: new Date() }
     const ref = await col(db, ctx.org.id, 'workflows').add(data)
     await audit(ctx, 'workflow.created', 'workflow', ref.id, { preset: data.preset })
@@ -361,7 +419,7 @@ export default function (r) {
     requireCap(ctx, 'messages.manage')
     const { db } = await fb()
     const w = await loadWf(db, ctx, params.id)
-    return { workflow: wfOut(plain(w)), problems: await activationProblems(ctx, w), channels: await channelStatus(ctx.org), timezone: tz(ctx) }
+    return { workflow: wfOut(plain(w)), problems: await activationProblems(ctx, w), channels: await channelStatus(ctx.org), timezone: tz(ctx), estimate: await journeyEstimate(ctx, w) }
   })
 
   r.patch('/comms/workflows/:id', async ({ ctx, params, body }) => {
@@ -376,6 +434,7 @@ export default function (r) {
       patch.steps = body.steps.map(cleanStep)
     }
     if (body.pause_on_reply !== undefined) patch.pause_on_reply = !!body.pause_on_reply
+    if (body.exit_on_return !== undefined) patch.exit_on_return = !!body.exit_on_return
     if (w.status === 'active' && patch.trigger && patch.trigger.type !== w.trigger.type) throw bad('Pause the workflow before changing how it starts.')
     const next = { ...w, ...patch }
     if (w.status === 'active') {
@@ -385,7 +444,7 @@ export default function (r) {
     await col(db, ctx.org.id, 'workflows').doc(w.id).update(patch)
     if (w.status === 'active' && next.trigger.type === 'schedule') await scheduleRecurring(ctx.org, next)
     await audit(ctx, 'workflow.updated', 'workflow', w.id)
-    return { workflow: wfOut(plain(next)), problems: await activationProblems(ctx, next) }
+    return { workflow: wfOut(plain(next)), problems: await activationProblems(ctx, next), estimate: await journeyEstimate(ctx, next) }
   })
 
   r.post('/comms/workflows/:id/status', async ({ ctx, params, body }) => {
@@ -517,19 +576,6 @@ export default function (r) {
   })
 
   // --- channels, usage and credits ------------------------------------------------------------------
-  r.get('/comms/channels', async ({ ctx }) => {
-    requireCap(ctx, 'messages.manage')
-    const R = await rates()
-    const country = countryOf(String(ctx.org.settings?.defaultCountryCode || '234'))
-    const [entries, usage, packList] = await Promise.all([ledger(ctx.org.id, 30), monthUsage(ctx.org.id), packs()])
-    return {
-      channels: await channelStatus(ctx.org), timezone: tz(ctx), staging: !isProduction(),
-      quiet: { start: Number(ctx.org.settings?.quietStart ?? 8), end: Number(ctx.org.settings?.quietEnd ?? 21) },
-      credits: { balance: balanceOf(ctx.org), packs: packList, placeholderRates: !!R.placeholder },
-      prices: { country, whatsapp: { marketing: unitPrice(R, 'whatsapp', { phoneNorm: String(ctx.org.settings?.defaultCountryCode || '234'), category: 'marketing' }), utility: unitPrice(R, 'whatsapp', { phoneNorm: String(ctx.org.settings?.defaultCountryCode || '234'), category: 'utility' }) }, sms: unitPrice(R, 'sms', { phoneNorm: String(ctx.org.settings?.defaultCountryCode || '234'), body: 'x' }) },
-      usage, ledger: entries.map(e => ({ id: e.id, type: e.type, amount: e.amount, balance_after: e.balance_after, channel: e.channel, count: e.count, note: e.note, created_at: e.created_at, test: !!e.test, message_id: e.message_id || null })),
-    }
-  })
   r.patch('/comms/channels/:channel', async ({ ctx, params, body }) => {
     requireCap(ctx, 'org.manage')
     const channel = oneOf(params.channel, ['whatsapp', 'sms'], { name: 'Channel' })
@@ -596,7 +642,7 @@ export default function (r) {
   })
   r.post('/comms/simulate/reply', async ({ ctx, body }) => {
     stagingOnly(); requireCap(ctx, 'messages.manage')
-    const res = await handleInbound(ctx.org.id, { channel: oneOf(body.channel, CHANNEL_KEYS, { fallback: 'whatsapp' }), personId: uuid(body.personId, { required: true }), text: str(body.text, { max: 500, required: true, name: 'Reply' }) })
+    const res = await handleInbound(ctx.org.id, { channel: oneOf(body.channel, CHANNEL_KEYS, { fallback: 'sms' }), personId: uuid(body.personId, { required: true }), text: str(body.text, { max: 500, required: true, name: 'Reply' }) })
     return res
   })
   r.post('/comms/simulate/run', async ({ ctx }) => {
@@ -626,11 +672,13 @@ export default function (r) {
     FIRST.forEach((f, i) => {
       const ref = col(db, ctx.org.id, 'people').doc()
       // The last test person's number ends in 99, which the test providers treat as undeliverable.
-      const phoneNorm = i === FIRST.length - 1 ? `${cc}8000000099` : `${cc}80000${String(10000 + i).slice(-5)}`
+      // A few live abroad, so mixed-country costs and unsupported destinations can be tried:
+      // three UK numbers, two US numbers and one French number (not offered by the test routes).
+      const phoneNorm = i === FIRST.length - 1 ? `${cc}8000000099` : i >= 14 && i <= 16 ? `447700900${100 + i}` : i === 17 ? `1202555${String(100 + i).padStart(4, '0')}` : i === 18 ? `33612345${String(600 + i)}` : `${cc}80000${String(10000 + i).slice(-5)}`
       const consent = { at: new Date(), source: 'form', wording: 'Test consent (staging)', by: ctx.user.name }
       b.set(ref, { first_name: f, last_name: 'Test', email: i % 5 === 4 ? null : `test+${f.toLowerCase()}@example.test`, phone: '+' + phoneNorm, phone_norm: phoneNorm, status: i < 12 ? 'member' : 'visitor',
         branch_id: branchId, tags: [tagRef.id], visit_count: i < 12 ? 6 : 1, first_visit_at: new Date(Date.now() - (i < 12 ? 200 : 6) * 86400e3), last_seen_at: new Date(Date.now() - (i < 12 ? (i < 4 ? 30 : 6) : 6) * 86400e3),
-        consent: i % 4 === 3 ? {} : { whatsapp: { status: 'granted', ...consent }, sms: { status: 'granted', ...consent } }, test: true, open_followups: 0, open_reasons: [], created_at: new Date(), updated_at: new Date(),
+        consent: i % 4 === 3 ? {} : { sms: { status: 'granted', ...consent } }, test: true, open_followups: 0, open_reasons: [], created_at: new Date(), updated_at: new Date(),
         search: searchTokens({ first_name: f, last_name: 'Test', email: i % 5 === 4 ? null : `test+${f.toLowerCase()}@example.test`, phone_norm: phoneNorm }) })
       b.set(col(db, ctx.org.id, 'phones').doc(phoneNorm), { person_id: ref.id })
     })

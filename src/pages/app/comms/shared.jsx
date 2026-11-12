@@ -2,25 +2,25 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { Mail, MessageCircle, Smartphone, Send, CalendarClock, Workflow } from 'lucide-react'
 import { Badge } from '../../../components/ui'
-import { CHANNELS, MESSAGE_STATUS, DELIVERY_STATUS, fillText } from '../../../../shared/comms.js'
+import { CHANNELS, MESSAGE_STATUS, DELIVERY_STATUS, fillText, countryName } from '../../../../shared/comms.js'
 import { IS_STAGING } from '../../../components/EnvBanner'
 
 export const CHANNEL_ICON = { email: Mail, whatsapp: MessageCircle, sms: Smartphone }
 export const channelLabel = (c) => CHANNELS[c]?.label || c
-export const money = (n) => `$${Number(n || 0).toFixed(2)}`
+export const money = (n) => { const v = Number(n || 0); return `$${v > 0 && v < 0.1 ? v.toFixed(3) : v.toFixed(2)}` }
 export const ACTIONS = [
-  { to: '/app/communications/send?mode=now', icon: Send, title: 'Send a message', body: 'Email, WhatsApp or SMS, straight away.' },
+  { to: '/app/communications/send?mode=now', icon: Send, title: 'Send a message', body: 'Email or SMS, straight away.' },
   { to: '/app/communications/send?mode=later', icon: CalendarClock, title: 'Schedule a message', body: 'Pick the day and time it goes out.' },
   { to: '/app/communications/workflows?new=1', icon: Workflow, title: 'Automate it', body: 'Welcome visitors, remind, follow up, every time.' },
 ]
 
-const TABS = [['', 'Overview', true], ['messages', 'Messages'], ['workflows', 'Workflows'], ['templates', 'Templates'], ['channels', 'Channels & usage']]
+const TABS = [['', 'Overview', true], ['messages', 'Messages'], ['workflows', 'Journeys'], ['templates', 'Templates'], ['channels', 'Channels & usage']]
 export function CommsLayout() {
   return (
     <div className="mx-auto max-w-page px-4 py-6 sm:px-6">
       <div className="mb-5">
         <h1 className="text-[26px] font-semibold tracking-tight text-ink">Communications</h1>
-        <p className="mt-1 text-sm text-mist-500">Reach your people by email, WhatsApp and SMS, now, later or automatically.</p>
+        <p className="mt-1 text-sm text-mist-500">Reach your people by email and text message, now, later or automatically.</p>
       </div>
       <nav aria-label="Communications" className="-mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-mist-200 px-4 sm:mx-0 sm:px-0">
         {TABS.map(([to, label, end]) => (
@@ -60,13 +60,38 @@ export const EXCLUSION_TEXT = {
   opted_out: (ch, n) => `${n} asked not to receive ${channelLabel(ch)} messages`,
   duplicate: (ch, n) => `${n} share ${ch === 'email' ? 'an email address' : 'a phone number'} with someone else, so get it once`,
 }
-export function Exclusions({ channel, excluded }) {
-  const rows = Object.entries(excluded || {}).filter(([, n]) => n > 0)
-  if (!rows.length) return null
+const places = (cs) => cs.map(countryName).join(', ')
+const ROUTE_TEXT = {
+  unsupported_country: (n, cs) => `${n} have numbers in ${places(cs)}, where GatherHQ can’t send texts yet`,
+  provider_unavailable: (n, cs) => `${n} have numbers in ${places(cs)}, where texts aren’t switched on yet`,
+  sender_needed: (n, cs) => `${n} in ${places(cs)} need a registered sender name first (Channels & usage)`,
+  sender_pending: (n, cs) => `${n} in ${places(cs)} will get texts once your sender name is approved`,
+  sender_rejected: (n, cs) => `${n} in ${places(cs)}: your sender name wasn’t approved`,
+  provider_down: (n, cs) => `${n} in ${places(cs)}: the text service is having problems, try again shortly`,
+  type_not_allowed: (n, cs) => `${n} in ${places(cs)} can only receive reminders and updates by text`,
+}
+export function Exclusions({ channel, excluded, unroutable }) {
+  const rows = Object.entries(excluded || {}).filter(([k, n]) => n > 0 && k !== 'no_route')
+  const routes = Object.entries(unroutable || {})
+  if (!rows.length && !routes.length) return null
   return (
     <ul className="mt-2 space-y-1 text-sm text-mist-600">
       {rows.map(([k, n]) => <li key={k} className="flex gap-2"><span aria-hidden className="text-mist-400">•</span>{EXCLUSION_TEXT[k]?.(channel, n) || `${n} not included`}</li>)}
+      {routes.map(([k, x]) => <li key={k} className="flex gap-2"><span aria-hidden className="text-mist-400">•</span>{(ROUTE_TEXT[k] || ROUTE_TEXT.unsupported_country)(x.count, x.countries)}</li>)}
     </ul>
+  )
+}
+// Text-message cost by destination country.
+export function CountryCosts({ byCountry }) {
+  const rows = Object.entries(byCountry || {})
+  if (rows.length < 1) return null
+  return (
+    <table className="mt-2 w-full max-w-md text-sm">
+      <thead><tr className="text-left text-xs text-mist-500"><th className="py-1 font-medium">Country</th><th className="py-1 text-right font-medium">People</th><th className="py-1 text-right font-medium">Texts</th><th className="py-1 text-right font-medium">Cost</th></tr></thead>
+      <tbody className="divide-y divide-mist-100">{rows.map(([cc, c]) => (
+        <tr key={cc}><td className="py-1.5 text-ink">{countryName(cc)}</td><td className="tabular py-1.5 text-right">{c.count ?? c.people}</td><td className="tabular py-1.5 text-right">{c.segments ?? '—'}</td><td className="tabular py-1.5 text-right">{money(c.cost ?? c.per100)}</td></tr>
+      ))}</tbody>
+    </table>
   )
 }
 

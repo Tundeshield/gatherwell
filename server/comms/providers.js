@@ -13,6 +13,8 @@ import crypto from 'node:crypto'
 import { fb } from '../firebase.js'
 import { isProduction } from '../env.js'
 import { emailProvider, sendEmails } from '../email.js'
+import { mergeSmsConfig, SMS_ADAPTERS, credentials } from './sms.js'
+import { WHATSAPP_AUTOMATION } from '../../shared/comms.js'
 
 const hasEnv = (keys) => keys.every(k => !!process.env[k])
 
@@ -58,16 +60,15 @@ function mock(channel, extra = {}) {
 export const ADAPTERS = {
   email: { resend, mock_email: mock('email') },
   whatsapp: { mock_whatsapp: mock('whatsapp') },
-  sms: { mock_sms: mock('sms') },
 }
+// SMS has its own routing layer (sms.js): several providers at once, chosen per destination.
 // Providers researched but not built yet, shown to the team so the roadmap is visible.
 export const PLANNED = {
   whatsapp: ['Meta Cloud API', 'Gupshup', 'Twilio', '360dialog'],
-  sms: ['Twilio', 'Termii', 'Africa’s Talking', 'Vonage'],
   email: ['Amazon SES'],
 }
 
-const DEFAULT_ACTIVE = () => ({ email: 'resend', whatsapp: isProduction() ? null : 'mock_whatsapp', sms: isProduction() ? null : 'mock_sms' })
+const DEFAULT_ACTIVE = () => ({ email: 'resend', whatsapp: isProduction() || !WHATSAPP_AUTOMATION ? null : 'mock_whatsapp' })
 
 // --- platform configuration (active provider per channel, rates, credit packs) --------------
 let cache = null
@@ -75,7 +76,7 @@ export async function platformConfig({ fresh = false } = {}) {
   if (cache && !fresh && Date.now() - cache.at < 30000) return cache.value
   const { db } = await fb()
   const d = (await db.collection('platform').doc('comms').get()).data() || {}
-  const value = { active: { ...DEFAULT_ACTIVE(), ...(d.active || {}) }, disabled: d.disabled || [], rates: d.rates || null, packs: d.packs || null, updated_at: d.updated_at || null, updated_by: d.updated_by || null }
+  const value = { active: { ...DEFAULT_ACTIVE(), ...(d.active || {}) }, disabled: d.disabled || [], rates: d.rates || null, packs: d.packs || null, sms: mergeSmsConfig(d.sms || null), updated_at: d.updated_at || null, updated_by: d.updated_by || null }
   cache = { at: Date.now(), value }
   return value
 }
@@ -96,10 +97,23 @@ export async function activeProvider(channel) {
   return { adapter: a, reason: null }
 }
 
+// Countries SMS can reach right now, from the routing configuration.
+export async function smsCountries() {
+  const cfg = await platformConfig()
+  const out = {}
+  for (const [id, p] of Object.entries(cfg.sms.providers || {})) {
+    const a = SMS_ADAPTERS[id]
+    if (!a || !p.enabled || !a.available(await credentials(id))) continue
+    for (const [cc, c] of Object.entries(p.countries || {})) if (c.verified) (out[cc] ||= []).push({ id, mock: !!a.mock, registration: c.registration, senderTypes: c.senderTypes })
+  }
+  return out
+}
+
 // Plain-language status for church admins (no provider names).
 export async function channelStatus(org) {
   const out = {}
-  for (const ch of Object.keys(ADAPTERS)) {
+  for (const ch of ['email', 'whatsapp']) {
+    if (ch === 'whatsapp' && !WHATSAPP_AUTOMATION) { out.whatsapp = { ready: false, comingSoon: true, simulated: false, billing: 'platform', canChurchBill: false, needsTemplates: true, reason: 'coming_soon' }; continue }
     const { adapter, reason } = await activeProvider(ch)
     const own = org?.comms?.channels?.[ch] || {}
     const billing = adapter && own.billing === 'church' && adapter.billing.includes('church') ? 'church' : (ch === 'email' ? 'included' : 'platform')
@@ -110,7 +124,10 @@ export async function channelStatus(org) {
       reason: adapter ? null : reason,
     }
   }
-  return out
+  const countries = await smsCountries()
+  const list = Object.values(countries).flat()
+  out.sms = { ready: list.length > 0, simulated: list.length > 0 && list.every(x => x.mock), billing: 'platform', canChurchBill: false, needsTemplates: false, countries: Object.keys(countries).sort(), reason: list.length ? null : 'not_set' }
+  return { email: out.email, sms: out.sms, whatsapp: out.whatsapp }
 }
 
 // Everything the GatherHQ team needs to manage providers. Credentials are reported only as

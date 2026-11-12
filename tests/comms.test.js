@@ -95,19 +95,24 @@ test('send an email now: exclusions explained, each person sent once, safe to re
   assert.equal((await S.a.get(`/comms/messages/${r.data.id}`)).data.message.status, 'draft')
 })
 
-test('WhatsApp needs consent, an approved template and credit; paused when credit runs out', async () => {
+test('automated WhatsApp is held back; SMS needs consent, a registered sender name and credit; paused when credit runs out', async () => {
   let r = await S.a.post('/comms/messages', { channel: 'whatsapp', when: 'now', body: 'Hi {first_name}', audience: { mode: 'filters', statuses: ['member'] } })
-  assert.equal(r.status, 400)
-  assert.match(r.data.error, /approved template/)
-  r = await S.a.post('/comms/templates', { name: 'Invite', purpose: 'invitation', body: 'Hi {first_name}, join us on Sunday!', category: 'marketing' })
-  S.tpl = r.data.id
-  r = await S.a.post(`/comms/templates/${S.tpl}/submit`)
-  assert.equal(r.data.whatsapp.status, 'approved'); assert.equal(r.data.whatsapp.simulated, true)
-  r = await S.a.post('/comms/preview', { channel: 'whatsapp', body: 'Hi', audience: { mode: 'filters', statuses: ['member'] } })
-  assert.equal(r.data.eligible, 3, 'Ada, Bayo, Dan consented to WhatsApp')
-  assert.equal(r.data.excluded.no_consent, 1, 'Chi did not')
+  assert.equal(r.status, 400); assert.match(r.data.error, /isn’t available yet/)
+  r = await S.a.get('/comms/channels')
+  assert.equal(r.data.channels.whatsapp.comingSoon, true); assert.equal(r.data.channels.whatsapp.ready, false)
+  assert.equal(r.data.channels.sms.ready, true)
+  // Nigeria needs a registered sender name before anything can be texted there.
+  r = await S.a.post('/comms/preview', { channel: 'sms', body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['member'] } })
+  assert.equal(r.data.eligible, 3, 'Ada, Bayo, Dan agreed to SMS'); assert.equal(r.data.excluded.no_consent, 1, 'Chi did not')
+  assert.equal(r.data.estimate.unroutable.sender_needed.count, 3)
+  assert.equal((await S.a.post('/comms/sms/senders', { country: 'NG', value: 'COMMS A!' })).data.status, 'pending')
+  r = await S.a.get('/comms/channels')
+  assert.equal(r.data.sms.setup.find(x => x.country === 'NG').state, 'pending')
+  await S.a.post('/comms/simulate/sender/NG', { status: 'approved' })
+  r = await S.a.post('/comms/preview', { channel: 'sms', body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['member'] } })
+  assert.equal(r.data.estimate.reachable, 3); assert.equal(r.data.estimate.byCountry.NG.count, 3)
   assert.ok(r.data.estimate.cost > 0); assert.equal(r.data.estimate.enough, false)
-  r = await S.a.post('/comms/messages', { channel: 'whatsapp', when: 'now', templateId: S.tpl, body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['member'] } })
+  r = await S.a.post('/comms/messages', { channel: 'sms', when: 'now', body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['member'] } })
   assert.equal(r.data.progress.status, 'paused'); assert.equal(r.data.progress.pauseReason, 'credits')
   const id = r.data.message.id
   r = await S.a.post('/comms/credits/test', { amount: 5 })
@@ -116,13 +121,18 @@ test('WhatsApp needs consent, an approved template and credit; paused when credi
   assert.equal(r.data.status, 'sent'); assert.equal(r.data.sent, 3)
   r = await S.a.get('/comms/channels')
   assert.ok(r.data.credits.balance < 5, 'credit was used')
-  assert.ok(r.data.ledger.some(e => e.type === 'usage' && e.channel === 'whatsapp' && e.count === 3))
+  assert.equal(r.data.ledger.filter(e => e.type === 'reservation').length, 3)
+  assert.equal(r.data.ledger.filter(e => e.type === 'settlement').length, 3)
+  assert.equal(r.data.usage.month.count, 3)
+  assert.ok(!JSON.stringify(r.data.ledger).includes('mock_sms'), 'no provider names for churches')
+  r = await S.a.get(`/comms/messages/${id}`)
+  assert.ok(r.data.deliveries.every(d => d.status === 'sent'))
 })
 
-test('schedule a WhatsApp invitation for Friday 7pm: sent at the right time, recipients worked out then, never twice', async () => {
+test('schedule an SMS invitation for Friday 7pm: sent at the right time, recipients worked out then, never twice', async () => {
   const fri = nextWeekdayAt(new Date(), 'Africa/Lagos', [5], '19:00')
   const date = new Date(fri.getTime() + 3600e3).toISOString().slice(0, 10)
-  let r = await S.a.post('/comms/messages', { channel: 'whatsapp', when: 'later', sendDate: date, sendTime: '19:00', templateId: S.tpl, body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['visitor'] } })
+  let r = await S.a.post('/comms/messages', { channel: 'sms', when: 'later', sendDate: date, sendTime: '19:00', body: 'Hi {first_name}, join us on Sunday!', audience: { mode: 'filters', statuses: ['visitor'] } })
   assert.equal(r.status, 200, JSON.stringify(r.data))
   const m = r.data.message
   assert.equal(m.status, 'scheduled')
@@ -139,7 +149,7 @@ test('schedule a WhatsApp invitation for Friday 7pm: sent at the right time, rec
   assert.equal(r.data.deliveries.length, 1)
   assert.equal(r.data.deliveries[0].name, 'Efe Test')
   // Editing a sent message is refused; cancelling a scheduled one stops it.
-  assert.equal((await S.a.patch(`/comms/messages/${m.id}`, { channel: 'whatsapp', when: 'later', sendDate: date, sendTime: '20:00', templateId: S.tpl, body: 'x' })).status, 400)
+  assert.equal((await S.a.patch(`/comms/messages/${m.id}`, { channel: 'sms', when: 'later', sendDate: date, sendTime: '20:00', body: 'x' })).status, 400)
   r = await S.a.post('/comms/messages', { channel: 'email', when: 'later', sendDate: date, sendTime: '20:00', subject: 'Later', body: 'x', audience: { mode: 'filters', statuses: ['member'] } })
   const later = r.data.message.id
   assert.equal((await S.a.post(`/comms/messages/${later}/cancel`)).status, 200)
@@ -149,15 +159,17 @@ test('schedule a WhatsApp invitation for Friday 7pm: sent at the right time, rec
 })
 
 test('first-time visitor workflow: waits, sends, pauses on a reply and asks a person to follow up', async () => {
-  let r = await S.a.post('/comms/workflows', { preset: 'welcome', channel: 'whatsapp' })
+  let r = await S.a.post('/comms/workflows', { preset: 'welcome' })
   assert.equal(r.status, 200)
   const wf = r.data
   assert.equal(wf.status, 'draft')
-  assert.match(wf.summary, /2 messages by WhatsApp/)
-  // WhatsApp sends in workflows use the approved template text.
-  const steps = wf.steps.map(s => s.type === 'send' ? { ...s, templateId: S.tpl } : s)
-  r = await S.a.patch(`/comms/workflows/${wf.id}`, { steps, name: 'Welcome' })
+  assert.deepEqual(wf.steps.filter(s => s.type === 'send').map(s => s.channel), ['email', 'sms'], 'welcome email, then an SMS invitation')
+  // A WhatsApp step can't be switched on.
+  r = await S.a.patch(`/comms/workflows/${wf.id}`, { steps: wf.steps.map(s => s.type === 'send' && s.channel === 'sms' ? { ...s, channel: 'whatsapp' } : s) })
+  assert.ok(r.data.problems.some(p => /Coming soon/.test(p)))
+  r = await S.a.patch(`/comms/workflows/${wf.id}`, { steps: wf.steps, name: 'Welcome' })
   assert.equal(r.status, 200, JSON.stringify(r.data))
+  assert.ok(r.data.estimate.perPerson > 0, 'the SMS cost per person is shown')
   r = await S.a.post(`/comms/workflows/${wf.id}/status`, { status: 'active' })
   assert.equal(r.status, 200, JSON.stringify(r.data))
   // A first-time visitor checks in.
@@ -170,19 +182,19 @@ test('first-time visitor workflow: waits, sends, pauses on a reply and asks a pe
   assert.equal(r.data.rows.length, 1)
   const enr = r.data.rows[0]
   const femi = enr.person_id
-  // Without WhatsApp consent the welcome is skipped (and says why).
+  // Femi gave no email, so the welcome email is skipped (and says why).
   const monday = nextWeekdayAt(new Date(), 'Africa/Lagos', [1], '10:00')
   await processEnrolment(me.org.id, enr.id, { now: new Date() })
   await processEnrolment(me.org.id, enr.id, { now: new Date(monday.getTime() + 1000) })
   r = await S.a.get(`/comms/workflows/${wf.id}/people`)
-  assert.ok(r.data.rows[0].history.some(h => /no consent/.test(h.text)), JSON.stringify(r.data.rows[0].history))
+  assert.ok(r.data.rows[0].history.some(h => /no contact details/.test(h.text)), JSON.stringify(r.data.rows[0].history))
   // With consent, the Friday invitation goes out; then Femi replies and the workflow pauses.
-  await S.a.patch(`/people/${femi}/consent`, { channel: 'whatsapp', status: 'granted' })
-  const friday = nextWeekdayAt(monday, 'Africa/Lagos', [5], '19:00')
+  await S.a.patch(`/people/${femi}/consent`, { channel: 'sms', status: 'granted' })
+  const friday = nextWeekdayAt(monday, 'Africa/Lagos', [5], '18:00')
   await processEnrolment(me.org.id, enr.id, { now: new Date(friday.getTime() + 1000) })
   r = await S.a.get(`/comms/workflows/${wf.id}/people`)
   assert.ok(r.data.rows[0].history.some(h => h.type === 'send' && h.result === 'sent'))
-  r = await S.a.post('/comms/simulate/reply', { personId: femi, channel: 'whatsapp', text: 'Thanks! Can someone call me?' })
+  r = await S.a.post('/comms/simulate/reply', { personId: femi, channel: 'sms', text: 'Thanks! Can someone call me?' })
   assert.equal(r.data.paused, 1)
   r = await S.a.get(`/comms/workflows/${wf.id}/people`)
   assert.equal(r.data.rows[0].status, 'paused_reply')
@@ -197,9 +209,9 @@ test('first-time visitor workflow: waits, sends, pauses on a reply and asks a pe
   assert.equal(r.data.rows[0].status, 'completed')
   assert.ok(r.data.rows[0].history.some(h => h.type === 'task'))
   // STOP is an opt-out, not just a reply.
-  r = await S.a.post('/comms/simulate/reply', { personId: femi, channel: 'whatsapp', text: 'STOP' })
+  r = await S.a.post('/comms/simulate/reply', { personId: femi, channel: 'sms', text: 'STOP' })
   assert.equal(r.data.optedOut, true)
-  r = await S.a.post('/comms/preview', { channel: 'whatsapp', body: 'x', audience: { mode: 'people', people: [femi] } })
+  r = await S.a.post('/comms/preview', { channel: 'sms', body: 'x', audience: { mode: 'people', people: [femi] } })
   assert.equal(r.data.excluded.opted_out, 1)
   // Pause stops new steps.
   r = await S.a.post(`/comms/workflows/${wf.id}/status`, { status: 'paused' })

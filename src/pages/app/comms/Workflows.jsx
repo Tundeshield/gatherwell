@@ -6,9 +6,9 @@ import { useSession } from '../../../lib/session'
 import { useLoad, Button, Input, Select, Textarea, Notice, PageLoader, ErrorState, EmptyState, Modal, Drawer, Toggle, useToast, useConfirm, Skeleton, Segmented, Checkbox } from '../../../components/ui'
 import { useTags } from '../../../components/Tags'
 import { AudiencePicker } from '../MessageEditor'
-import { PRESETS, TRIGGERS, STEP_TYPES, CONDITIONS, OUTCOMES, WEEKDAYS, describeTrigger, describeStep, smsInfo, stepId, fmtTime } from '../../../../shared/comms.js'
+import { WHATSAPP_COMING_SOON, PRESETS, TRIGGERS, STEP_TYPES, CONDITIONS, OUTCOMES, WEEKDAYS, describeTrigger, describeStep, smsInfo, stepId, fmtTime } from '../../../../shared/comms.js'
 import { fmtDateTime, relative } from '../../../lib/format'
-import { WorkflowStatus, channelLabel, CHANNEL_ICON, BubblePreview, StagingNote } from './shared'
+import { WorkflowStatus, channelLabel, CHANNEL_ICON, BubblePreview, StagingNote, money } from './shared'
 import { IS_STAGING } from '../../../components/EnvBanner'
 
 const STEP_ICON = { wait: Clock, send: Send, check: HelpCircle, task: ClipboardList, tag: TagIcon, start_workflow: ArrowRightLeft, end: Flag }
@@ -53,7 +53,7 @@ function NewWorkflow({ open, onClose }) {
   const toast = useToast()
   const ch = useLoad(() => (open ? api.get('/comms/overview') : Promise.resolve(null)), [open])
   const [busy, setBusy] = useState('')
-  const preferred = ch.data?.channels?.whatsapp?.ready ? 'whatsapp' : 'email'
+  const preferred = ch.data?.channels?.sms?.ready ? 'sms' : 'email'
   async function create(preset) {
     setBusy(preset)
     try { const w = await api.post('/comms/workflows', { preset, channel: preferred }); navigate(`/app/communications/workflows/${w.id}`) } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
@@ -94,7 +94,8 @@ export function WorkflowBuilder() {
   const [tab, setTab] = useState('steps')
   const [busy, setBusy] = useState('')
   const [problems, setProblems] = useState([])
-  useEffect(() => { if (data) { setWf(data.workflow); setProblems(data.problems); setDirty(false) } }, [data])
+  const [estimate, setEstimate] = useState(null)
+  useEffect(() => { if (data) { setWf(data.workflow); setProblems(data.problems); setEstimate(data.estimate); setDirty(false) } }, [data])
   if (loading || !wf) return error ? <ErrorState error={error} onRetry={reload} /> : <PageLoader />
   const names = { tag: byId.get(wf.trigger.tagId)?.name, event: (events.data?.rows || []).find(e => e.id === wf.trigger.eventId)?.name, tags: Object.fromEntries(tags.map(t => [t.id, t.name])), workflows: Object.fromEntries((others.data?.rows || []).map(w => [w.id, w.name])) }
   const update = (patch) => { setWf(w => ({ ...w, ...patch })); setDirty(true) }
@@ -103,13 +104,13 @@ export function WorkflowBuilder() {
 
   async function save() {
     setBusy('save')
-    try { const r = await api.patch(`/comms/workflows/${id}`, { name: wf.name, trigger: wf.trigger, steps: wf.steps, pause_on_reply: wf.pause_on_reply }); setWf(r.workflow); setProblems(r.problems); setDirty(false); toast('Saved') }
+    try { const r = await api.patch(`/comms/workflows/${id}`, { name: wf.name, trigger: wf.trigger, steps: wf.steps, pause_on_reply: wf.pause_on_reply, exit_on_return: wf.exit_on_return }); setWf(r.workflow); setProblems(r.problems); setEstimate(r.estimate); setDirty(false); toast('Saved') }
     catch (e) { toast(e.message, 'error') } finally { setBusy('') }
   }
   async function setStatus(status) {
     setBusy('status')
     try {
-      if (dirty) { const r = await api.patch(`/comms/workflows/${id}`, { name: wf.name, trigger: wf.trigger, steps: wf.steps, pause_on_reply: wf.pause_on_reply }); setProblems(r.problems); setDirty(false) }
+      if (dirty) { const r = await api.patch(`/comms/workflows/${id}`, { name: wf.name, trigger: wf.trigger, steps: wf.steps, pause_on_reply: wf.pause_on_reply, exit_on_return: wf.exit_on_return }); setProblems(r.problems); setEstimate(r.estimate); setDirty(false) }
       const r = await api.post(`/comms/workflows/${id}/status`, { status })
       setWf(r.workflow); toast(status === 'active' ? 'Switched on' : 'Paused. Nobody will get new steps until you switch it back on.')
     } catch (e) { setProblems(e.details?.problems || [e.message]); toast(e.message, 'error') } finally { setBusy('') }
@@ -117,7 +118,7 @@ export function WorkflowBuilder() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/app/communications/workflows" className="mb-3 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Workflows</Link>
+      <Link to="/app/communications/workflows" className="mb-3 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Journeys</Link>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <input value={wf.name} onChange={e => update({ name: e.target.value })} aria-label="Workflow name" maxLength={100}
@@ -164,7 +165,12 @@ export function WorkflowBuilder() {
             <AddHere onClick={() => setAdding(wf.steps.length)} disabled={scheduled && wf.steps.length >= 1} last />
           </ol>
           <div className="mt-1 flex items-center gap-3 rounded-2xl border border-dashed border-mist-300 p-4 text-sm text-mist-500"><Flag size={16} />{scheduled ? 'Then it waits for the next time and sends again.' : 'The workflow ends for this person.'}</div>
-          {!scheduled && <div className="panel mt-5 px-5 py-4"><Toggle checked={wf.pause_on_reply} onChange={v => update({ pause_on_reply: v })} label="Pause and tell someone when a person replies" hint="Their follow-up waits, and a follow-up task is created so a person can respond. Replying “STOP” always opts them out." /></div>}
+          {wf.steps.some(x => x.type === 'send' && x.channel === 'sms') && <SmsCost estimate={estimate} dirty={dirty} />}
+          {!scheduled && <div className="panel mt-5 divide-y divide-mist-100 px-5">
+            <div className="py-4"><Toggle checked={wf.pause_on_reply} onChange={v => update({ pause_on_reply: v })} label="Pause and tell someone when a person replies" hint="Their follow-up waits, and a follow-up task is created so a person can respond. Replying “STOP” always opts them out." /></div>
+            {['first_visit', 'second_visit', 'absent'].includes(wf.trigger.type) && <div className="py-4"><Toggle checked={!!wf.exit_on_return} onChange={v => update({ exit_on_return: v })} label="Stop when they come back" hint="If they attend again before a message is due, the rest of the journey is cancelled, so nobody is invited back after they’ve already returned." /></div>}
+            <div className="py-4 text-sm text-mist-600"><p className="font-medium text-ink">If a message can’t be delivered</p><p className="mt-0.5">It’s marked as not delivered and the journey carries on. Texts that couldn’t be sent aren’t charged. If messaging credit runs out, texts wait (emails keep going) and are skipped if they’d go out more than two days late.</p></div>
+          </div>}
           <div className="mt-6 flex flex-wrap justify-between gap-3">
             <Button variant="danger-ghost" icon={Trash2} onClick={async () => { if (await confirm({ title: 'Delete this workflow?', message: 'It stops for everyone in it. Messages it already sent stay in your history.', confirmLabel: 'Delete', danger: true })) { await api.del(`/comms/workflows/${id}`); toast('Deleted'); navigate('/app/communications/workflows') } }}>Delete workflow</Button>
             {dirty && <Button loading={busy === 'save'} onClick={save}>Save changes</Button>}
@@ -183,6 +189,24 @@ export function WorkflowBuilder() {
           : editing !== null && wf.steps[editing] ? <StepEditor step={wf.steps[editing]} trigger={wf.trigger} onChange={s => setSteps(wf.steps.map((x, j) => (j === editing ? s : x)))} channels={data.channels} templates={templates.data} tags={tags} assignees={assignees.data || []} workflows={(others.data?.rows || []).filter(w => w.id !== wf.id)} /> : null}
       </Drawer>
     </div>
+  )
+}
+
+function SmsCost({ estimate: e, dirty }) {
+  if (!e) return null
+  const rows = Object.entries(e.byCountry || {})
+  return (
+    <section className="panel mt-5 px-5 py-4" aria-label="Text message cost">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-[15px] font-semibold text-ink">Text message cost</h3>
+        <span className="text-sm text-mist-500">Balance: <span className={e.balance < e.perPerson ? 'font-medium text-amber-800' : 'text-ink'}>{money(e.balance)}</span> · <Link to="/app/communications/channels" className="link">Add credit</Link></span>
+      </div>
+      <p className="mt-1 text-sm text-mist-600">This journey sends {e.smsSteps === 1 ? 'one text' : `${e.smsSteps} texts`} per person ({e.segments} {e.segments === 1 ? 'part' : 'parts'} in total).{e.perPerson > 0 ? <> At today’s rates that’s about <strong className="text-ink">{money(e.perPerson)}</strong> per person, so 100 people would cost about <strong className="text-ink">{money(e.per100)}</strong>.</> : ''}</p>
+      {rows.length > 1 && <table className="mt-3 w-full max-w-lg text-sm"><thead><tr className="text-left text-xs text-mist-500"><th className="py-1 font-medium">Where your people are</th><th className="py-1 text-right font-medium">People</th><th className="py-1 text-right font-medium">Per person</th><th className="py-1 text-right font-medium">Per 100</th></tr></thead>
+        <tbody className="divide-y divide-mist-100">{rows.map(([cc, c]) => <tr key={cc}><td className="py-1.5">{c.name}</td><td className="tabular py-1.5 text-right">{c.people}</td><td className="tabular py-1.5 text-right">{money(c.perPerson)}</td><td className="tabular py-1.5 text-right">{money(c.per100)}</td></tr>)}</tbody></table>}
+      {e.blocked?.length > 0 && <ul className="mt-3 space-y-1 text-sm text-amber-800">{e.blocked.map(b => <li key={b.reason}>• {b.text}</li>)}</ul>}
+      <p className="mt-2 text-xs text-mist-500">An estimate based on the people in your list now. Long texts are sent in parts and each part is charged; networks can occasionally split a text differently.{dirty ? ' Save to update.' : ''}</p>
+    </section>
   )
 }
 
@@ -278,14 +302,16 @@ function StepEditor({ step: s, trigger, onChange, channels, templates, tags, ass
       <div>
         <p className="label">Send by</p>
         <div className="mb-4 grid grid-cols-3 gap-2">
-          {['email', 'whatsapp', 'sms'].map(c => { const Icon = CHANNEL_ICON[c]; const ok = channels[c]?.ready; return (
-            <button key={c} type="button" onClick={() => set({ channel: c, ...(c === 'whatsapp' ? { templateId: null } : {}) })} aria-pressed={s.channel === c}
-              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-sm ${s.channel === c ? 'border-brand-600 bg-brand-50 font-semibold text-brand-800' : 'border-mist-200 text-ink'}`}>
-              <Icon size={18} />{channelLabel(c)}<span className={`text-[11px] ${ok ? 'text-green-800' : 'text-mist-400'}`}>{ok ? (channels[c].simulated ? 'Test mode' : 'Ready') : 'Not connected'}</span>
+          {['email', 'sms', 'whatsapp'].map(c => { const Icon = CHANNEL_ICON[c]; const ok = channels[c]?.ready; const soon = channels[c]?.comingSoon; return (
+            <button key={c} type="button" disabled={soon} onClick={() => set({ channel: c, ...(c === 'whatsapp' ? { templateId: null } : {}) })} aria-pressed={s.channel === c} title={soon ? WHATSAPP_COMING_SOON : undefined}
+              className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-sm ${s.channel === c ? 'border-brand-600 bg-brand-50 font-semibold text-brand-800' : soon ? 'cursor-not-allowed border-mist-200 bg-mist-50 text-mist-400' : 'border-mist-200 text-ink'}`}>
+              <Icon size={18} />{channelLabel(c)}<span className={`text-[11px] ${ok ? 'text-green-800' : 'text-mist-400'}`}>{soon ? 'Coming soon' : ok ? (channels[c].simulated ? 'Test mode' : c === 'sms' ? 'Uses credit' : 'Included') : 'Not connected'}</span>
             </button>
           ) })}
         </div>
-        {s.channel !== 'email' && !channels[s.channel]?.ready && <Notice tone="warning" className="mb-4">{channelLabel(s.channel)} isn’t connected yet. You can prepare the step, but the workflow can’t be switched on until it is.</Notice>}
+        {channels.whatsapp?.comingSoon && <p className="-mt-2 mb-4 text-xs text-mist-500">{WHATSAPP_COMING_SOON}</p>}
+        {s.channel === 'whatsapp' && channels.whatsapp?.comingSoon && <Notice tone="warning" className="mb-4">This step uses WhatsApp, which can’t be automated yet. Choose SMS or email so the journey can be switched on.</Notice>}
+        {s.channel !== 'email' && !channels[s.channel]?.ready && !channels[s.channel]?.comingSoon && <Notice tone="warning" className="mb-4">{channelLabel(s.channel)} isn’t connected yet. You can prepare the step, but the workflow can’t be switched on until it is.</Notice>}
         <Input label="Step name" hint="Only your team sees this." value={s.title || ''} onChange={e => set({ title: e.target.value })} maxLength={80} />
         {s.channel === 'email' && <>
           <Input label="Subject" value={s.subject || ''} onChange={e => set({ subject: e.target.value })} maxLength={200} />

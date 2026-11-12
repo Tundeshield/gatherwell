@@ -10,7 +10,7 @@ import EmailBlocksEditor, { withKeys, stripKeys } from '../../../components/Emai
 import { FIELDS, smsInfo, CHANNELS, localToUtc, withinSendingHours, utcToLocal, nextWeekdayAt } from '../../../../shared/comms.js'
 import { blocksFromBody } from '../../../../shared/email.js'
 import { fmtDateTime } from '../../../lib/format'
-import { CHANNEL_ICON, channelLabel, Exclusions, BubblePreview, money, audienceText, StagingNote } from './shared'
+import { CHANNEL_ICON, channelLabel, Exclusions, BubblePreview, money, audienceText, StagingNote, CountryCosts } from './shared'
 
 const QUICK = [
   ['everyone', 'Everyone', Users, { mode: 'filters', statuses: [], segment: 'all', tags: [], people: [] }],
@@ -95,7 +95,7 @@ export default function Compose() {
   useEffect(() => {
     if (step !== 'how') return
     let off = false
-    Promise.all(['email', 'whatsapp', 'sms'].map(c => api.post('/comms/preview', { channel: c, audience, body: 'x' }).then(r => [c, r]).catch(() => [c, null])))
+    Promise.all(['email', 'sms', 'whatsapp'].map(c => api.post('/comms/preview', { channel: c, audience, body: 'x' }).then(r => [c, r]).catch(() => [c, null])))
       .then(rs => { if (!off) setCounts(Object.fromEntries(rs)) })
     return () => { off = true }
   }, [step, audience])
@@ -178,10 +178,17 @@ export default function Compose() {
       {step === 'how' && (
         <Card title="How would you like to send it?" hint={`To: ${audienceText(audience, tagNames)}`}>
           <div className="space-y-3">
-            {['email', 'whatsapp', 'sms'].map(c => {
+            {['email', 'sms', 'whatsapp'].map(c => {
               const s = st[c] || {}
               const Icon = CHANNEL_ICON[c]
               const n = counts[c]
+              if (c === 'whatsapp' && s.comingSoon) return (
+                <div key={c} className="flex w-full items-start gap-4 rounded-xl border border-mist-200 bg-mist-50 p-4 text-left">
+                  <Icon size={22} className="mt-0.5 text-mist-400" />
+                  <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-2 text-[16px] font-semibold text-ink">WhatsApp automation<span className="rounded-full bg-mist-200 px-2 py-0.5 text-xs font-medium text-mist-600">Coming soon</span></span>
+                    <span className="mt-0.5 block text-sm text-mist-500">Connect your church’s own WhatsApp number when this integration becomes available. Until then, use the one-tap option below.</span></span>
+                </div>
+              )
               return (
                 <button key={c} type="button" disabled={!s.ready} onClick={() => setChannel(c)} aria-pressed={channel === c}
                   className={`flex w-full items-start gap-4 rounded-xl border p-4 text-left transition-colors ${channel === c ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' : s.ready ? 'border-mist-200 bg-white hover:border-mist-300' : 'cursor-not-allowed border-mist-200 bg-mist-50 opacity-70'}`}>
@@ -191,7 +198,7 @@ export default function Compose() {
                       {s.ready ? <span className="flex items-center gap-1 text-xs font-medium text-green-800"><CheckCircle2 size={13} />{s.simulated ? 'Ready (test mode)' : 'Ready'}</span> : <span className="flex items-center gap-1 text-xs font-medium text-mist-500"><CircleDashed size={13} />Not connected yet</span>}
                     </span>
                     <span className="mt-0.5 block text-sm text-mist-500">{CHANNELS[c].blurb}{CHANNELS[c].paid && s.ready ? (s.billing === 'church' ? ' Paid by your church directly.' : ' Uses messaging credit.') : ''}{c === 'email' ? ' Included in your plan.' : ''}</span>
-                    {s.ready && n && <span className="mt-1.5 block text-sm text-ink"><span className="font-semibold">{n.eligible.toLocaleString()}</span> of {n.total.toLocaleString()} can receive it{n.total > n.eligible ? <span className="text-mist-500"> · {Object.entries(n.excluded).filter(([, v]) => v).map(([k, v]) => `${v} ${{ no_contact: c === 'email' ? 'no email' : 'no phone', no_consent: 'no permission yet', opted_out: 'opted out', duplicate: 'duplicates' }[k]}`).join(', ')}</span> : null}</span>}
+                    {s.ready && n && <span className="mt-1.5 block text-sm text-ink"><span className="font-semibold">{(c === 'sms' ? n.estimate?.reachable ?? n.eligible : n.eligible).toLocaleString()}</span> of {n.total.toLocaleString()} can receive it{n.total > n.eligible ? <span className="text-mist-500"> · {Object.entries(n.excluded).filter(([, v]) => v).map(([k, v]) => `${v} ${{ no_contact: c === 'email' ? 'no email' : 'no phone', no_consent: 'no permission yet', opted_out: 'opted out', duplicate: 'duplicates' }[k]}`).join(', ')}</span> : null}</span>}
                   </span>
                 </button>
               )
@@ -253,8 +260,8 @@ export default function Compose() {
           {!review ? <div className="flex items-center gap-2 text-sm text-mist-500"><Spinner />Checking who can receive it…</div> : (
             <dl className="divide-y divide-mist-100 text-[15px]">
               <Row label="To"><p className="text-ink">{audienceText(audience, tagNames)}</p>
-                <p className="mt-1"><span className="font-semibold text-ink">{review.eligible.toLocaleString()}</span> <span className="text-mist-600">{review.eligible === 1 ? 'person' : 'people'} will receive it{review.total > review.eligible ? `, out of ${review.total.toLocaleString()}` : ''}.</span></p>
-                {review.total > review.eligible && <><p className="mt-2 text-sm font-medium text-ink">Why some people aren’t included</p><Exclusions channel={ch} excluded={review.excluded} /></>}
+                <p className="mt-1"><span className="font-semibold text-ink">{(ch === 'sms' ? review.estimate?.reachable ?? review.eligible : review.eligible).toLocaleString()}</span> <span className="text-mist-600">{review.eligible === 1 ? 'person' : 'people'} will receive it{review.total > review.eligible ? `, out of ${review.total.toLocaleString()}` : ''}.</span></p>
+                {(review.total > review.eligible || review.estimate?.unroutable && Object.keys(review.estimate.unroutable).length > 0) && <><p className="mt-2 text-sm font-medium text-ink">Why some people aren’t included</p><Exclusions channel={ch} excluded={review.excluded} unroutable={review.estimate?.unroutable} /></>}
                 {scheduled && audience.mode === 'filters' && <p className="mt-2 text-sm text-mist-500">The final number can change: GatherHQ checks who is in this group at the moment it sends.</p>}
               </Row>
               <Row label="By">{isOneTap ? 'WhatsApp, one by one from your phone' : channelLabel(ch)}</Row>
@@ -263,6 +270,8 @@ export default function Compose() {
               {review.estimate?.billing === 'platform' && (
                 <Row label="Cost">
                   <p className="text-ink">Estimated cost: <strong>{money(review.estimate.cost)}</strong> · Your balance: {money(review.estimate.balance)}</p>
+                  {ch === 'sms' && review.estimate.byCountry && <CountryCosts byCountry={review.estimate.byCountry} />}
+                  {ch === 'sms' && <p className="mt-1 text-xs text-mist-500">An estimate: long texts are sent in parts, and each part is charged. The final amount can differ slightly if a mobile network splits a text differently.</p>}
                   {!review.estimate.enough && <Notice tone="warning" className="mt-2" title="Not enough messaging credit">{scheduled ? 'You can still schedule it. If there isn’t enough credit when it’s due, it will wait until you add more.' : 'It will be paused until you add credit. Email isn’t affected.'} <Link to="/app/communications/channels" className="link">Add credit</Link></Notice>}
                   {review.estimate.placeholderRates && <p className="mt-1 text-xs text-mist-500">Prices are provisional while providers are being chosen.</p>}
                 </Row>
