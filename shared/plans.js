@@ -1,6 +1,9 @@
 // GatherHQ plans and prices (USD). Shared by the pricing page, the billing screen and the server.
 export const CURRENCY = 'USD'
-export const TRIAL_DAYS = 30
+export const TRIAL_DAYS = 14
+// Churches that signed up before the trial changed from 30 to 14 days keep the 30 days they were promised.
+export const LEGACY_TRIAL_DAYS = 30
+export const TRIAL_CHANGED_AT = '2026-11-12T16:30:00Z'
 // Churches that existed before billing launched get a full trial from launch day.
 export const BILLING_LAUNCH = '2026-11-02T00:00:00Z'
 
@@ -42,8 +45,11 @@ export function billingStatus(org, now = new Date()) {
   if (b.status === 'cancelled' && renewsAt && renewsAt > now) return { state: 'active', plan: b.plan, interval: b.interval, renewsAt, cancelling: true }
   if (b.status === 'cancelled') return { state: 'expired', plan: b.plan, lapsed: true }
   const own = toD(org?.trial_ends_at) || now
-  const launch = new Date(new Date(BILLING_LAUNCH).getTime() + TRIAL_DAYS * 86400e3)
-  const trialEndsAt = own > launch ? own : launch
+  // Churches from before 2 November get a full trial from launch day; that promise stays for churches created before the change.
+  const created = toD(org?.created_at)
+  const legacy = !created || created < new Date(TRIAL_CHANGED_AT)
+  const launch = legacy ? new Date(new Date(BILLING_LAUNCH).getTime() + LEGACY_TRIAL_DAYS * 86400e3) : null
+  const trialEndsAt = launch && launch > own ? launch : own
   const daysLeft = Math.ceil((trialEndsAt - now) / 86400e3)
   return daysLeft > 0 ? { state: 'trialing', plan: 'trial', trialEndsAt, daysLeft } : { state: 'expired', plan: 'trial', trialEndsAt }
 }

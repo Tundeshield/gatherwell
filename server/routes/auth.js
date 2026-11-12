@@ -2,7 +2,7 @@ import { fb, plain } from '../firebase.js'
 import { bad, conflict, unauthorized, str, email as emailV, json, clientIp, notFound, forbidden } from '../http.js'
 import { rateLimit, slugify, shortId, sha256, audit } from '../util.js'
 import { whatsappFor } from '../../shared/automation.js'
-import { billingStatus } from '../../shared/plans.js'
+import { billingStatus, TRIAL_DAYS } from '../../shared/plans.js'
 import { billingEnabled } from '../billing.js'
 import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
 
@@ -30,7 +30,7 @@ async function createOrganisation(db, { orgName, branchName, timezone, country, 
         tx.set(slugRef, { org_id: orgRef.id })
         tx.set(orgRef, {
           name: orgName, slug, timezone, country: country || null, contact_email: contactEmail || null, contact_phone: null,
-          status: 'active', plan: 'trial', trial_ends_at: new Date(now.getTime() + 30 * 86400e3), settings, created_at: now, updated_at: now,
+          status: 'active', plan: 'trial', trial_ends_at: new Date(now.getTime() + TRIAL_DAYS * 86400e3), settings, created_at: now, updated_at: now,
         })
         tx.set(branchRef, { name: branchName, address: null, phone: null, timezone, status: 'active', created_at: now, updated_at: now })
         tx.set(db.collection('memberships').doc(membershipId(orgRef.id, owner.id)), {

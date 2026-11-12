@@ -59,10 +59,10 @@ export default function Landing() {
           <h1 className="max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.025em] text-ink sm:text-[54px]">Know your people. Welcome every visitor. Follow through.</h1>
           <p className="mt-6 max-w-lg text-[18px] leading-relaxed text-ink-soft">QR check-in, visitor follow-up, WhatsApp and email, children’s check-in and events in one calm place, so no one who walks through your doors is forgotten.</p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link to={signedIn ? '/app' : '/signup'} className="rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Start your free 30 days'}</Link>
+            <Link to={signedIn ? '/app' : '/signup'} className="rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Start your free 14 days'}</Link>
             {!signedIn && <Link to="/login" className="rounded-lg border border-mist-200 bg-white px-6 py-3 text-[15px] font-medium text-ink hover:border-mist-300">Sign in</Link>}
           </div>
-          <p className="mt-4 text-sm text-mist-500">Free for 30 days. No card needed. Set up in minutes: import your members from a spreadsheet.</p>
+          <p className="mt-4 text-sm text-mist-500">Free for 14 days. No card needed. Set up in minutes: import your members from a spreadsheet.</p>
         </div>
         <PhoneMock />
       </section>
@@ -118,7 +118,7 @@ export default function Landing() {
 
       <section className="mx-auto max-w-page px-6 py-20 text-center">
         <h2 className="text-[30px] font-semibold text-ink">No visitor forgotten. No child unaccounted for.</h2>
-        <p className="mx-auto mt-3 max-w-lg text-[16px] text-mist-600">Try everything free for 30 days, then from $19 a month. Cancel any time, with a 30-day money-back guarantee.</p>
+        <p className="mx-auto mt-3 max-w-lg text-[16px] text-mist-600">Try everything free for 14 days, then from $19 a month. Cancel any time, with a 30-day money-back guarantee.</p>
         <Link to={signedIn ? '/app' : '/signup'} className="mt-8 inline-block rounded-lg bg-brand-700 px-6 py-3 text-[15px] font-medium text-white hover:bg-brand-800">{signedIn ? 'Open your workspace' : 'Create your church account'}</Link>
       </section>
 

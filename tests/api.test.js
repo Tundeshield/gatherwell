@@ -888,7 +888,7 @@ test('billing: trial, Stripe checkout, webhooks, read-only after expiry, plan ch
   let me = (await c.get('/me')).data
   const orgId = me.org.id, branchId = me.branches[0].id
   assert.equal(me.org.billing.state, 'trialing')
-  assert.ok(me.org.billing.daysLeft >= 30)
+  assert.ok(me.org.billing.daysLeft >= 13 && me.org.billing.daysLeft <= 14, 'new churches get 14 days')
   let r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
   assert.equal(r.status, 400, 'no payments before Stripe is connected')
 
@@ -1172,4 +1172,13 @@ test('trial reminders: 7, 3 and 1 day before, and on the day it ends', async () 
   const e = trialEmail({ name: 'Grace Chapel', timezone: 'Africa/Lagos' }, 'd3', { trialEndsAt: new Date(now.getTime() + 3 * 86400e3).toISOString() }, 'https://gatherhq.org')
   assert.equal(e.subject, 'Your GatherHQ trial ends in 3 days')
   assert.ok(e.html.includes('https://gatherhq.org/app/settings?tab=billing'))
+})
+
+test('trial: 14 days for new churches, the promised 30 days kept for earlier ones', async () => {
+  const { billingStatus } = await import('../shared/plans.js')
+  const now = new Date('2026-11-20T12:00:00Z')
+  const old = billingStatus({ created_at: new Date('2026-10-20T00:00:00Z'), trial_ends_at: new Date('2026-11-19T00:00:00Z') }, now)
+  assert.equal(old.state, 'trialing'); assert.equal(new Date(old.trialEndsAt).toISOString(), '2026-12-02T00:00:00.000Z', 'earlier churches keep 30 days from launch')
+  const fresh = billingStatus({ created_at: new Date('2026-11-14T00:00:00Z'), trial_ends_at: new Date('2026-11-28T00:00:00Z') }, now)
+  assert.equal(new Date(fresh.trialEndsAt).toISOString(), '2026-11-28T00:00:00.000Z', 'new churches get their own 14 days')
 })

@@ -87,7 +87,7 @@ function Terms() {
       <P>Don’t use GatherHQ to send spam or messages to people who haven’t agreed to hear from you, to store information you have no right to hold, to harass anyone, to break the law, or to try to access another church’s data or disrupt the service. We may suspend accounts that do.</P>
       <H>Plans and payment</H>
       <UL items={[
-        <>Every church starts with a 30-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep using GatherHQ; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
+        <>Every church starts with a 14-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep using GatherHQ; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
         'Paid plans are billed monthly or yearly in advance and renew automatically until cancelled. You can cancel at any time in Settings › Billing; your plan stays active until the end of the period you have paid for.',
         'Payments are processed securely by Stripe, which emails a receipt for every payment. Prices are in US dollars. Where we are required to collect sales tax or VAT, it is added at checkout.',
         <>Refunds are covered by our <Link to="/legal/refunds" className="link">Refund Policy</Link>.</>,
