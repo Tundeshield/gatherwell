@@ -8,6 +8,13 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 const raw = process.env.FIREBASE_SERVICE_ACCOUNT
 const warn = (m) => console.warn(`\n⚠ ${m}\n`)
 
+// Only a site's own production-context build may change its database. Previews and branch
+// deploys on Netlify receive production secrets, so they must not publish rules or indexes.
+if (process.env.CONTEXT && process.env.CONTEXT !== 'production') {
+  console.log(`Skipping Firestore rules/index setup for the ${process.env.CONTEXT} build.`)
+  process.exit(0)
+}
+
 if (!raw) {
   warn('FIREBASE_SERVICE_ACCOUNT is not set — skipping Firestore rules/index setup. The app needs it to work.')
   process.exit(0)
