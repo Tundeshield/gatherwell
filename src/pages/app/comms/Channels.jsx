@@ -89,7 +89,7 @@ export default function Channels() {
           <p className="px-5 pt-4 text-sm text-mist-600">Each country has its own rules for who a text can come from. Some need your church’s sender name approved before texts can go out.</p>
           {setup.length ? (
             <ul className="mt-2 divide-y divide-mist-100">
-              {setup.map(s => { const [tone, Icon, label] = STATE[s.state] || STATE.unsupported; return (
+              {setup.map(s => { const [tone, Icon, label] = s.state === 'ready' && s.sender?.status === 'pending' ? ['success', CheckCircle2, 'Ready · own name pending'] : (STATE[s.state] || STATE.unsupported); return (
                 <li key={s.country} className="px-5 py-4">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="min-w-0 flex-1 text-[15px] font-medium text-ink">{s.name}</span>
@@ -99,10 +99,12 @@ export default function Channels() {
                   <ul className="mt-2 space-y-1 text-sm text-mist-600">
                     {s.state === 'unsupported' && <li>GatherHQ can’t send texts to {s.name} yet. People there can still get emails.</li>}
                     {s.state !== 'unsupported' && s.price != null && <li>About <strong className="text-ink">{money(s.price)}</strong> per text part.</li>}
-                    {s.state !== 'unsupported' && <li>{s.needsRegistration ? 'Needs a registered sender name.' : s.senderType === 'alpha' ? `Texts show “${s.from || data.sms.senderName}” as the sender.` : 'Texts come from a GatherHQ phone number.'}{s.twoWay ? ' People can reply.' : ' Replies can’t be received in this country, except STOP.'}</li>}
+                    {s.state !== 'unsupported' && s.shared && <li>Texts come from “{s.from}”, and start with your church’s name so people know who it’s from (for example “{data.churchName || 'Your church'}: Hi Ada, …”). The name counts towards the text’s length.</li>}
+                    {s.state !== 'unsupported' && !s.shared && <li>{s.needsRegistration ? 'Needs a registered sender name.' : s.senderType === 'alpha' ? `Texts show “${s.from || data.sms.senderName}” as the sender.` : 'Texts come from a GatherHQ phone number.'}{s.twoWay ? ' People can reply.' : ' Replies can’t be received in this country, except STOP.'}</li>}
                     {s.sender && <li>Sender name: <strong className="text-ink">{s.sender.value}</strong>{s.sender.status === 'pending' ? ' · sent for approval' + (s.sender.submitted_at ? ` on ${fmtDateTime(s.sender.submitted_at)}` : '') + '. This usually takes 1–5 working days.' : s.sender.status === 'rejected' ? ` · not approved${s.sender.note ? `: ${s.sender.note}` : ''}` : ' · approved'}</li>}
                   </ul>
                   {admin && s.state === 'ready' && s.senderType === 'alpha' && !s.needsRegistration && <Button size="sm" variant="ghost" className="mt-2" onClick={() => setSender({ country: s.country, name: s.name, value: s.sender?.value || s.from || data.sms.senderName })}>Change sender name</Button>}
+                  {admin && s.shared && s.canRegister && !s.sender && <Button size="sm" variant="ghost" className="mt-2" onClick={() => setSender({ country: s.country, name: s.name, value: data.sms.senderName })}>Use your own sender name instead</Button>}
                   {admin && ['needs_sender', 'rejected'].includes(s.state) && <Button size="sm" variant="secondary" className="mt-3" onClick={() => setSender({ country: s.country, name: s.name, value: s.sender?.value || data.sms.senderName })}>{s.state === 'rejected' ? 'Try another sender name' : 'Register a sender name'}</Button>}
                   {data.staging && s.sender?.status === 'pending' && <Button size="sm" variant="ghost" icon={FlaskConical} className="mt-3" loading={busy === `ap${s.country}`} onClick={() => run(`ap${s.country}`, () => api.post(`/comms/simulate/sender/${s.country}`, { status: 'approved' }), 'Approved (staging)')}>Approve now (staging)</Button>}
                 </li>

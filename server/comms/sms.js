@@ -230,10 +230,10 @@ const DOCUMENTED = {
     US: cap(0.02, { senderTypes: ['provider'], registration: 'required', twoWay: true, note: 'Needs a registered toll-free or 10DLC number (A2P registration).' }),
     CA: cap(0.02, { senderTypes: ['provider'], twoWay: true, note: 'Long code or toll-free number; no alphanumeric senders.' }),
     IE: cap(0.09, { senderTypes: ['alpha', 'provider'] }), DE: cap(0.12, { senderTypes: ['alpha', 'provider'] }), AU: cap(0.07, { senderTypes: ['alpha', 'provider'] }) },
-  termii: { NG: cap(0.03, { registration: 'required', route: 'dnd', note: 'Sender ID must be registered with Termii; DND route reaches numbers on the DND list.' }),
+  termii: { NG: cap(0.03, { registration: 'required', route: 'dnd', sharedSender: 'GatherHQ', note: 'Sender ID must be registered with Termii; DND route reaches numbers on the DND list. Churches without their own approved name send as GatherHQ, with the church name at the start of the text.' }),
     GH: cap(0.04, { registration: 'required' }) },
   africastalking: { KE: cap(0.02, { registration: 'required', note: 'Alphanumeric sender IDs are registered per network.' }), UG: cap(0.03, { registration: 'required' }),
-    TZ: cap(0.03, { registration: 'required' }), NG: cap(0.03, { registration: 'required' }), GH: cap(0.04, { registration: 'required' }), RW: cap(0.03, { registration: 'required' }) },
+    TZ: cap(0.03, { registration: 'required' }), NG: cap(0.03, { registration: 'required', sharedSender: 'GatherHQ' }), GH: cap(0.04, { registration: 'required' }), RW: cap(0.03, { registration: 'required' }) },
 }
 // Staging: the test providers cover a spread of countries with realistic rules.
 const MOCK_COUNTRIES = {
@@ -350,6 +350,9 @@ function senderFor(pid, c, church, sender) {
   const approved = sender?.status === 'approved' && (!sender.approved_for?.length || sender.approved_for.includes(pid))
   if (c.registration === 'required') {
     if (types.includes('provider') && !types.includes('alpha')) return { ok: true, from: c.from || null, type: 'provider' } // provider-managed registered number
+    if (approved && sender?.value) return { ok: true, from: sender.value, type: sender.type || 'alpha' }
+    // A registered platform-wide name (e.g. GatherHQ): the church's name goes at the start of the text instead.
+    if (c.sharedSender) return { ok: true, from: c.sharedSender, type: 'alpha', shared: true }
     if (!sender?.value || sender.status === 'draft' || !sender.status) return { ok: false, reason: 'sender_needed' }
     if (sender.status === 'rejected') return { ok: false, reason: 'sender_rejected' }
     if (!approved) return { ok: false, reason: 'sender_pending' }
@@ -359,6 +362,14 @@ function senderFor(pid, c, church, sender) {
   if (types.includes('alpha')) return { ok: true, from: cleanSenderName(sender?.value || church.sms_sender || church.name) || null, type: 'alpha' }
   if (types.includes('provider') || types.includes('number')) return { ok: true, from: c.from || null, type: 'provider' }
   return { ok: false, reason: 'sender_needed' }
+}
+
+// Texts sent under a shared platform sender name start with the church's name, so people know who it's from.
+export function brandSms(org, body, candidate) {
+  if (!candidate?.shared) return body
+  const name = String(org?.name || '').trim()
+  if (!name || body.trim().toLowerCase().startsWith(name.toLowerCase())) return body
+  return `${name}: ${body}`
 }
 
 // --- routing ------------------------------------------------------------------------------------
@@ -382,7 +393,7 @@ export async function routeForCountry(cfg, org, senders, country, { category = '
     if (isDown(hs[id])) { reason = 'provider_down'; continue }
     const s = senderFor(id, c, org, sender)
     if (!s.ok) { reason = s.reason; continue }
-    candidates.push({ id, from: s.from, senderType: s.type, country, unit: unitPriceOf(c, cfg.taxPct), route: c.route || null, cap: c })
+    candidates.push({ id, from: s.from, senderType: s.type, shared: !!s.shared, country, unit: unitPriceOf(c, cfg.taxPct), route: c.route || null, cap: c })
   }
   const pref = cfg.routes?.[country] || []
   const rank = (id) => { const i = pref.indexOf(id); return i < 0 ? 999 : i }

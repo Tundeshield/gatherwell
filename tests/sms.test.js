@@ -442,3 +442,34 @@ test('provider credentials are stored encrypted and never returned', async () =>
   delete process.env.COMMS_SECRET_KEY
   clearConfigCache()
 })
+
+test('a shared platform sender name lets churches text Nigeria before their own name is approved, with the church name first', async () => {
+  const c = await church('Shared Sender Chapel', 'shared@sms.test')
+  await c.post('/comms/credits/test', { amount: 5 })
+  const ng = await person(c, 'Bisi', { phone: '08031110077' })
+  let r = await c.post('/comms/preview', { channel: 'sms', body: 'Hi', audience: { mode: 'people', people: [ng] } })
+  assert.equal(r.data.estimate.unroutable.sender_needed.count, 1, 'no shared sender yet: blocked')
+  const cfg = (await S.ops.get('/platform/comms/sms')).data
+  const providers = Object.fromEntries(cfg.providers.map(p => [p.id, { enabled: p.enabled, countries: p.countries }]))
+  const original = structuredClone(providers.mock_sms.countries.NG)
+  providers.mock_sms.countries.NG = { ...original, sharedSender: 'Gather-HQ!' }
+  assert.equal((await S.ops.post('/platform/comms/sms', { providers })).status, 200)
+  r = await c.get('/comms/channels')
+  const row = r.data.sms.setup.find(x => x.country === 'NG')
+  assert.equal(row.state, 'ready'); assert.equal(row.shared, true); assert.equal(row.from, 'GatherHQ', 'cleaned to a valid sender name')
+  // 150 characters fits one part alone, but not with the church name in front: the estimate counts it.
+  const body = 'x'.repeat(150)
+  r = await c.post('/comms/preview', { channel: 'sms', body, audience: { mode: 'people', people: [ng] } })
+  assert.equal(r.data.estimate.byCountry.NG.segments, 2)
+  r = await sendSms(c, { mode: 'people', people: [ng] }, 'Hi {first_name}, see you Sunday')
+  const [d] = await deliveriesOf(r.data.message.orgId || (await c.get('/me')).data.org.id, r.data.message.id)
+  assert.equal(d.preview, 'Shared Sender Chapel: Hi Bisi, see you Sunday')
+  // Once the church's own name is approved, it is used instead, without the prefix.
+  await c.post('/comms/sms/senders', { country: 'NG', value: 'SHAREDCH' })
+  await c.post('/comms/simulate/sender/NG', { status: 'approved' })
+  r = await sendSms(c, { mode: 'people', people: [ng] }, 'Hi {first_name}, see you Sunday')
+  const [d2] = await deliveriesOf((await c.get('/me')).data.org.id, r.data.message.id)
+  assert.equal(d2.preview, 'Hi Bisi, see you Sunday')
+  providers.mock_sms.countries.NG = original
+  await S.ops.post('/platform/comms/sms', { providers })
+})

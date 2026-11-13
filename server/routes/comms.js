@@ -111,11 +111,12 @@ async function journeyEstimate(ctx, w) {
   const { eligible } = sortRecipients('sms', people)
   const sample = { first_name: 'Christopher' }
   const segs = smsSteps.map(s => Math.max(1, smsInfo(fillText(s.body, { first_name: sample.first_name, last_name: '', church_name: ctx.org.name, event_name: 'Youth Conference', event_date: 'Saturday 21 November, 10:00' })).segments))
+  const sharedSegs = smsSteps.map(s => Math.max(1, smsInfo(`${ctx.org.name}: ${fillText(s.body, { first_name: sample.first_name, last_name: '', church_name: ctx.org.name, event_name: 'Youth Conference', event_date: 'Saturday 21 November, 10:00' })}`).segments))
   const plan = await smsPlan(ctx.org, eligible, { body: smsSteps[0].body, category: smsSteps[0].category })
   const byCountry = {}
   let total = 0
   for (const [cc, c] of Object.entries(plan.byCountry)) {
-    const perPerson = segs.reduce((a, n) => a + n * c.unit, 0)
+    const perPerson = (c.shared ? sharedSegs : segs).reduce((a, n) => a + n * c.unit, 0)
     byCountry[cc] = { name: countryName(cc), people: c.count, unit: c.unit, perPerson: Math.round(perPerson * 10000) / 10000, per100: Math.round(perPerson * 100 * 100) / 100 }
     total += perPerson * c.count
   }

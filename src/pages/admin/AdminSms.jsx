@@ -77,7 +77,7 @@ export default function AdminSms() {
                 <td className="px-5 py-3"><span className="font-medium text-ink">{countryName(cc)}</span> <span className="text-mist-400">{cc}</span></td>
                 <td className="px-2 py-3"><ul className="space-y-1">{offers.map(([id, p]) => { const c = p.countries[cc]; return (
                   <li key={id}><button type="button" className="text-left hover:underline" onClick={() => setCap({ provider: id, cc, c: structuredClone(c) })}>
-                    <span className={c.verified && p.enabled ? 'text-ink' : 'text-mist-400'}>{label[id]}</span> <span className="text-mist-500">· ${Number(c.rate).toFixed(3)}{c.surcharge ? ` + ${c.surcharge}` : ''} · {c.senderTypes.join('/')}{c.registration === 'required' ? ' · registration' : ''}{c.twoWay ? ' · 2-way' : ''}{c.promotional === false ? ' · updates only' : ''}</span>
+                    <span className={c.verified && p.enabled ? 'text-ink' : 'text-mist-400'}>{label[id]}</span> <span className="text-mist-500">· ${Number(c.rate).toFixed(3)}{c.surcharge ? ` + ${c.surcharge}` : ''} · {c.senderTypes.join('/')}{c.registration === 'required' ? ' · registration' : ''}{c.sharedSender ? ` · shared “${c.sharedSender}”` : ''}{c.twoWay ? ' · 2-way' : ''}{c.promotional === false ? ' · updates only' : ''}</span>
                     {!c.verified && <Badge className="ml-1">Not verified</Badge>}
                   </button></li>
                 ) })}</ul>
@@ -133,6 +133,7 @@ export default function AdminSms() {
           <p className="label">Sender types this route supports</p>
           <div className="mb-3 flex flex-wrap gap-x-4">{SENDER_TYPES.map(([k, l]) => <Checkbox key={k} label={l} checked={cap.c.senderTypes.includes(k)} onChange={e => setCap(x => ({ ...x, c: { ...x.c, senderTypes: e.target.checked ? [...x.c.senderTypes, k] : x.c.senderTypes.filter(t => t !== k) } }))} />)}</div>
           <Select label="Sender registration" value={cap.c.registration} onChange={e => setCap(x => ({ ...x, c: { ...x.c, registration: e.target.value } }))}><option value="none">Not needed</option><option value="required">Required before sending</option></Select>
+          <Input label="Shared sender for churches without their own (optional)" value={cap.c.sharedSender || ''} maxLength={11} onChange={e => setCap(x => ({ ...x, c: { ...x.c, sharedSender: e.target.value.replace(/[^A-Za-z0-9 ]/g, '') } }))} hint="A name GatherHQ has registered, e.g. GatherHQ. Texts start with the church’s name." />
           <Input label="Default sender (optional)" value={cap.c.from || ''} onChange={e => setCap(x => ({ ...x, c: { ...x.c, from: e.target.value } }))} hint="A number or name GatherHQ sends from when the church has none of its own." />
           <div className="space-y-1">
             <Checkbox label="Two-way (people can reply)" checked={!!cap.c.twoWay} onChange={e => setCap(x => ({ ...x, c: { ...x.c, twoWay: e.target.checked } }))} />

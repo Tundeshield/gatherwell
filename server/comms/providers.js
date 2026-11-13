@@ -104,7 +104,7 @@ export async function smsCountries() {
   for (const [id, p] of Object.entries(cfg.sms.providers || {})) {
     const a = SMS_ADAPTERS[id]
     if (!a || !p.enabled || !a.available(await credentials(id))) continue
-    for (const [cc, c] of Object.entries(p.countries || {})) if (c.verified) (out[cc] ||= []).push({ id, mock: !!a.mock, registration: c.registration, senderTypes: c.senderTypes })
+    for (const [cc, c] of Object.entries(p.countries || {})) if (c.verified) (out[cc] ||= []).push({ id, mock: !!a.mock, registration: c.registration, senderTypes: c.senderTypes, sharedSender: c.sharedSender || null })
   }
   return out
 }

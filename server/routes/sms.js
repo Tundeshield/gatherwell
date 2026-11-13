@@ -33,13 +33,13 @@ export default function (r) {
     const rows = []
     for (const cc of list) {
       const offered = live[cc] || []
-      const needsRegistration = offered.length > 0 && offered.every(o => o.registration === 'required' && !(o.senderTypes || []).includes('provider'))
+      const needsRegistration = offered.length > 0 && offered.every(o => o.registration === 'required' && !o.sharedSender && !(o.senderTypes || []).includes('provider'))
       const s = senders[cc] || null
       const route = cc === 'OTHER' ? { candidates: [], reason: 'unsupported_country' } : await routeForCountry(cfg, ctx.org, senders, cc, { category: 'utility' })
       const best = route.candidates[0]
       const state = !offered.length ? 'unsupported' : route.candidates.length ? 'ready' : route.reason === 'sender_pending' ? 'pending' : route.reason === 'sender_rejected' ? 'rejected' : route.reason === 'provider_down' ? 'issue' : 'needs_sender'
       rows.push({ country: cc, name: countryName(cc), people: counts[cc]?.people || 0, consented: counts[cc]?.consented || 0, state, needsRegistration,
-        price: best ? best.unit : null, senderType: best?.senderType || null, from: best?.senderType === 'alpha' ? best.from : null, twoWay: !!best?.cap?.twoWay,
+        price: best ? best.unit : null, senderType: best?.senderType || null, from: best?.senderType === 'alpha' ? best.from : null, shared: !!best?.shared, canRegister: offered.some(o => o.registration === 'required'), twoWay: !!best?.cap?.twoWay,
         sender: s ? { value: s.value, type: s.type || 'alpha', status: s.status, note: s.note || null, submitted_at: iso(s.submitted_at) } : null })
     }
     rows.sort((a, b) => (b.country === home) - (a.country === home) || b.people - a.people)
@@ -57,7 +57,7 @@ export default function (r) {
     ])
     const avg = usage.sms.count ? usage.sms.cost / usage.sms.count : (setup.find(x => x.price)?.price || 0)
     return {
-      channels, timezone: ctx.org.timezone || 'UTC', staging: !isProduction(), whatsappAutomation: WHATSAPP_AUTOMATION,
+      channels, churchName: ctx.org.name, timezone: ctx.org.timezone || 'UTC', staging: !isProduction(), whatsappAutomation: WHATSAPP_AUTOMATION,
       quiet: { start: Number(ctx.org.settings?.quietStart ?? DEFAULT_QUIET.start), end: Number(ctx.org.settings?.quietEnd ?? DEFAULT_QUIET.end) },
       emailLimit: Number(process.env.EMAIL_DAILY_LIMIT || 2000),
       credits: { balance: balanceOf(ctx.org), packs: packList, purchases: billingEnabled(), placeholder: !!cfg.sms.placeholder, level: ctx.org.credits?.alert_level || 0, lowAlerts: cfg.sms.lowAlerts, taxPct: cfg.sms.taxPct || 0,
@@ -186,7 +186,7 @@ export default function (r) {
     const senderTypes = (c.senderTypes || []).filter(t => TYPES.includes(t))
     if (!senderTypes.length) throw bad('Choose at least one sender type for each country.')
     return { verified: !!c.verified, rate: c.rate, surcharge: c.surcharge || 0, cost: c.cost ?? null, senderTypes, registration: c.registration === 'required' ? 'required' : 'none', twoWay: !!c.twoWay,
-      promotional: c.promotional !== false, route: c.route === 'dnd' ? 'dnd' : null, from: c.from ? String(c.from).slice(0, 20) : null, note: c.note ? String(c.note).slice(0, 300) : null }
+      promotional: c.promotional !== false, route: c.route === 'dnd' ? 'dnd' : null, from: c.from ? String(c.from).slice(0, 20) : null, sharedSender: c.sharedSender ? String(c.sharedSender).replace(/[^A-Za-z0-9 ]/g, '').trim().slice(0, 11) || null : null, note: c.note ? String(c.note).slice(0, 300) : null }
   }
   r.post('/platform/comms/sms', { auth: 'platform' }, async ({ ctx, body }) => {
     const cur = (await platformConfig({ fresh: true })).sms

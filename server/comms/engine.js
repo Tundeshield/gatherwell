@@ -16,7 +16,7 @@ import { cleanAudience, audiencePeople, brandingFor } from '../routes/messages.j
 import { fromAddress, unsubscribeUrl, siteOrigin, emailProvider, sendEmails } from '../email.js'
 import { activeProvider, platformConfig, smsCountries } from './providers.js'
 import { rates, unitPrice, addCredits, balanceOf, money, reserve, settle, release, refundFailed } from './credits.js'
-import { routeFor, sendVia, ROUTE_REASON, SMS_ADAPTERS, errorText } from './sms.js'
+import { routeFor, sendVia, ROUTE_REASON, SMS_ADAPTERS, errorText, brandSms } from './sms.js'
 import { followupDoc, followupCounters } from '../domain.js'
 import { isExpired } from '../billing.js'
 
@@ -86,9 +86,9 @@ export async function smsPlan(org, eligible, content = {}) {
   for (const x of eligible) {
     const r = await routeFor(cfg, org, senders, x.to, { category: content.category })
     if (!r.candidates.length) { (unroutable[r.reason] ||= { count: 0, countries: [] }).count++; if (!unroutable[r.reason].countries.includes(r.country)) unroutable[r.reason].countries.push(r.country); continue }
-    const seg = Math.max(1, smsInfo(fillText(content.body, vars(org, x.p))).segments)
+    const seg = Math.max(1, smsInfo(brandSms(org, fillText(content.body, vars(org, x.p)), r.candidates[0])).segments)
     const unit = r.candidates[0].unit
-    const c = (byCountry[r.country] ||= { count: 0, segments: 0, unit, cost: 0 })
+    const c = (byCountry[r.country] ||= { count: 0, segments: 0, unit, cost: 0, shared: !!r.candidates[0].shared })
     c.count++; c.segments += seg; c.cost = money(c.cost + seg * unit); cost += seg * unit
     routable.push(x)
   }
@@ -138,10 +138,10 @@ async function sendSmsRows(db, org, { rows, content, ctx = {}, messageId = null,
     const prev = snap.exists ? snap.data() : null
     if (prev && !['queued', 'sending'].includes(prev.status)) continue // already handled
     if (prev?.status === 'sending' && prev.calling_at) { await ref.update({ status: 'unknown', error: 'Interrupted while sending. Not retried, to avoid a duplicate.' }); continue }
-    const body = fillText(content.body, vars(org, r.p, ctx))
+    const route = await routeFor(cfg, org, senders, r.to, { category: content.category })
+    const body = brandSms(org, fillText(content.body, vars(org, r.p, ctx)), route.candidates[0])
     const info = smsInfo(body)
     const segments = Math.max(1, info.segments)
-    const route = await routeFor(cfg, org, senders, r.to, { category: content.category })
     const base = { message_id: messageId, enrolment_id: enrolmentId, person_id: r.p.id, name: personName(r.p), channel: 'sms', to: r.to, billing: 'platform', country: route.country, segments, preview: body.slice(0, 300), test: false }
     if (!prev) await ref.set({ ...base, status: 'sending', error: null, cost: 0, attempts: 0, created_at: new Date() })
     if (!route.candidates.length) {
