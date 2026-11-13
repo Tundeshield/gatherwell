@@ -4,7 +4,7 @@
 import { billingStatus, monthlyValue, PLANS } from '../../shared/plans.js'
 import { fb, col, plain } from '../firebase.js'
 import { notFound, oneOf, bad } from '../http.js'
-import { audit } from '../util.js'
+import { audit, platformAudit } from '../util.js'
 import { platformAdminEmails, ROLE_LABELS } from '../access.js'
 import { emailProvider, sendEmails } from '../email.js'
 
@@ -33,10 +33,11 @@ async function orgRow(db, o, since) {
   }
 }
 
-const userOut = (snap) => {
+const grantsOf = async (db) => new Set((await db.collection('platformAdmins').where('active', '==', true).get()).docs.map(d => d.id))
+const userOut = (snap, grants = new Set()) => {
   const u = snap.data()
   return { id: snap.id, email: u.email, name: u.name, created_at: plain(u.created_at) || null, last_login_at: plain(u.last_login_at) || null,
-    is_platform_admin: !!u.is_platform_admin || platformAdminEmails().includes(String(u.email).toLowerCase()),
+    is_platform_admin: platformAdminEmails().includes(String(u.email).toLowerCase()) || grants.has(snap.id),
     admin_from_settings: platformAdminEmails().includes(String(u.email).toLowerCase()) }
 }
 
@@ -126,7 +127,7 @@ export default function (r) {
   r.patch('/platform/orgs/:id', { auth: 'platform' }, async ({ ctx, params, body }) => {
     const { db } = await fb()
     const { ref, o, d } = await getOrg(db, params.id)
-    const log = (action, meta = {}) => audit({ org: { id: o.id }, user: ctx.user }, action, 'organisation', o.id, { by: ctx.user.email, ...meta })
+    const log = async (action, meta = {}) => { await audit({ org: { id: o.id }, user: ctx.user }, action, 'organisation', o.id, { by: ctx.user.email, ...meta }); await platformAudit(ctx, action, { type: 'church', id: o.id, name: d.name }, meta) }
     // Make a church complimentary (never charged) or put it back on the normal trial and plans.
     if (body.plan !== undefined) {
       const plan = body.plan === 'free' ? 'free' : 'trial'
@@ -186,6 +187,7 @@ export default function (r) {
     const status = oneOf(body.status, ['active', 'suspended', 'closed'], { name: 'Status' })
     if (!status) throw bad('Choose a status.')
     if (status === 'closed' && body.confirm !== 'close') throw bad('Type-confirm required to close an organisation.')
+    if (status === 'suspended' && body.confirm !== 'suspend') throw bad('Confirm to suspend this church.')
     await ref.update({ status, updated_at: new Date() })
     await log(`platform.org_${status}`)
     return { id: o.id, name: d.name, status }
@@ -196,7 +198,8 @@ export default function (r) {
     const { db } = await fb()
     const q = String(query.q || '').trim().toLowerCase().slice(0, 100)
     const snaps = await db.collection('users').orderBy('created_at', 'desc').limit(3000).get()
-    const all = snaps.docs.map(userOut)
+    const grants = await grantsOf(db)
+    const all = snaps.docs.map(s => userOut(s, grants))
     const rows = q ? all.filter(u => `${u.email} ${u.name}`.toLowerCase().includes(q)) : all
     return { total: rows.length, users: rows.slice(0, 200) }
   })
@@ -209,7 +212,7 @@ export default function (r) {
     const orgIds = [...new Set(ms.docs.map(m => m.data().org_id))]
     const orgs = orgIds.length ? await db.getAll(...orgIds.map(id => db.collection('orgs').doc(id))) : []
     const name = new Map(orgs.filter(x => x.exists).map(x => [x.id, x.data().name]))
-    return { ...userOut(snap), churches: ms.docs.map(m => { const x = m.data(); return { org_id: x.org_id, org_name: name.get(x.org_id) || '(deleted church)', role: x.role, role_label: ROLE_LABELS[x.role] || x.role, status: x.status } }) }
+    return { ...userOut(snap, await grantsOf(db)), churches: ms.docs.map(m => { const x = m.data(); return { org_id: x.org_id, org_name: name.get(x.org_id) || '(deleted church)', role: x.role, role_label: ROLE_LABELS[x.role] || x.role, status: x.status } }) }
   })
 
   r.patch('/platform/users/:id', { auth: 'platform' }, async ({ ctx, params, body }) => {
@@ -221,8 +224,8 @@ export default function (r) {
     const on = body.platformAdmin === true
     if (!on && snap.id === ctx.user.id) throw bad('You can’t remove your own admin access.')
     if (!on && platformAdminEmails().includes(String(snap.data().email).toLowerCase())) throw bad('This person is an admin through the PLATFORM_ADMIN_EMAILS setting in Netlify. Remove them there.')
-    await ref.update({ is_platform_admin: on })
-    console.log('platform admin', on ? 'granted to' : 'removed from', snap.data().email, 'by', ctx.user.email)
+    await db.collection('platformAdmins').doc(snap.id).set(on ? { email: snap.data().email, active: true, granted_by: ctx.user.email, granted_at: new Date() } : { active: false, revoked_by: ctx.user.email, revoked_at: new Date() }, { merge: true })
+    await platformAudit(ctx, on ? 'admin.granted' : 'admin.revoked', { type: 'user', id: snap.id, name: snap.data().email })
     return { id: snap.id, is_platform_admin: on }
   })
 

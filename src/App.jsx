@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 import { lazyPage } from './lib/lazyPage'
 import PageErrorBoundary from './components/PageErrorBoundary'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
@@ -49,12 +49,18 @@ function MessageRedirect() {
   return <Navigate to={`/app/communications/messages/${id}`} replace />
 }
 
-function RequireAuth({ children, cap, platform = false }) {
+// The admin console has its own address in production; on staging and locally it's also at /admin.
+function AdminOnMainSite() {
+  const live = /(^|\.)gatherhq\.org$/i.test(window.location.hostname) && !/staging/i.test(window.location.hostname)
+  useEffect(() => { if (live) window.location.replace('https://admin.gatherhq.org') }, [live])
+  return live ? null : <AdminApp />
+}
+
+function RequireAuth({ children, cap }) {
   const { me, can } = useSession()
   const location = useLocation()
   if (me === undefined) return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>
   if (!me) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
-  if (platform) return me.user.isPlatformAdmin ? children : <Navigate to="/app" replace />
   if (!me.org) return <Navigate to="/welcome" replace />
   if (cap && !can(cap)) return <Navigate to="/app" replace />
   return children
@@ -72,13 +78,6 @@ function Home() {
   const { me, can } = useSession()
   if (me.org?.childrenEnabled && can('children.view') && !can('reports.view') && !can('attendance.view')) return <Navigate to="/app/children" replace />
   return <Overview />
-}
-
-function AdminGuest({ children }) {
-  const { me } = useSession()
-  if (me === undefined) return <div className="flex min-h-screen items-center justify-center"><PageLoader /></div>
-  if (me) return <Navigate to="/" replace />
-  return children
 }
 
 function GuestOnly({ children }) {
@@ -99,7 +98,6 @@ export default function App() {
           <Suspense fallback={<div className="flex min-h-screen items-center justify-center"><PageLoader /></div>}>
             {isAdminHost ? (
               <Routes>
-                <Route path="/login" element={<AdminGuest><Login /></AdminGuest>} />
                 <Route path="/*" element={<AdminApp />} />
               </Routes>
             ) : (
@@ -116,7 +114,7 @@ export default function App() {
               <Route path="/e/:token" element={<EventRegister />} />
               <Route path="/welcome" element={<NoOrg />} />
               <Route path="/platform" element={<Navigate to="/admin" replace />} />
-              <Route path="/admin/*" element={<AdminApp />} />
+              <Route path="/admin/*" element={<AdminOnMainSite />} />
 
               <Route path="/app/children/checkin" element={<RequireAuth><RequireChildren cap="children.checkin"><ChildrenCheckin /></RequireChildren></RequireAuth>} />
               <Route path="/app/children/pickup" element={<RequireAuth><RequireChildren cap="children.checkin"><ChildrenPickup /></RequireChildren></RequireAuth>} />

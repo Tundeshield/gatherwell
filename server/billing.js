@@ -1,6 +1,7 @@
 // Billing through Stripe. Switched on by STRIPE_SECRET_KEY (sk_live_… or sk_test_…).
 // Products and prices are created in Stripe automatically the first time they're needed,
 // found again by their lookup keys (gatherhq_<plan>_<interval>).
+import { recordStripeEvent } from './payments.js'
 import crypto from 'node:crypto'
 import { fb } from './firebase.js'
 import { HttpError, bad } from './http.js'
@@ -15,7 +16,7 @@ export const billingEnabled = () => !!process.env.STRIPE_SECRET_KEY && stripeKey
 // Pricing rules (read-only after the trial) only apply once churches can actually pay.
 export const billingEnforced = () => billingEnabled() && process.env.BILLING_ENFORCED !== 'false'
 export const isExpired = (org) => billingEnforced() && billingStatus(org).state === 'expired'
-const mode = () => (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live') ? 'live' : 'test')
+export const mode = () => (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live') ? 'live' : 'test')
 
 // Stripe takes form-encoded bodies with bracketed keys: items[0][price]=…
 function encode(obj, prefix = '', out = new URLSearchParams()) {
@@ -30,7 +31,7 @@ function encode(obj, prefix = '', out = new URLSearchParams()) {
   return out
 }
 
-async function stripe(method, path, params) {
+export async function stripe(method, path, params) {
   const get = method === 'GET'
   const qs = get && params ? `?${encode(params)}` : ''
   const res = await fetch(`${API}${path}${qs}`, {
@@ -80,7 +81,7 @@ export async function priceId(plan, interval) {
   return id
 }
 
-function planFromPrice(p) {
+export function planFromPrice(p) {
   const m = /^gatherhq_(church|network)_(monthly|yearly)$/.exec(p?.lookup_key || '')
   if (m) return { plan: m[1], interval: m[2] }
   if (p?.recurring) return { interval: p.recurring.interval === 'year' ? 'yearly' : 'monthly' }
@@ -231,6 +232,22 @@ export function validSignature(raw, header, now = Date.now()) {
   return sigs.some(s => s.length === want.length && crypto.timingSafeEqual(Buffer.from(s), Buffer.from(want)))
 }
 
+// A plain record of subscription starts, plan changes and cancellations, for the admin console.
+const RANK = { church: 1, network: 2 }
+async function logSubscriptionChange(org, before, after, evt) {
+  let kind = null
+  if (!before.subscription_id || before.subscription_id !== after.subscription_id) kind = after.status === 'active' ? 'started' : null
+  else if (after.status === 'cancelled' && before.status !== 'cancelled') kind = 'cancelled'
+  else if (after.status === 'active' && before.status === 'cancelled') kind = 'reactivated'
+  else if (after.plan && before.plan && after.plan !== before.plan) kind = (RANK[after.plan] || 0) > (RANK[before.plan] || 0) ? 'upgraded' : 'downgraded'
+  else if (after.interval && before.interval && after.interval !== before.interval) kind = 'interval_changed'
+  if (!kind) return
+  const { db } = await fb()
+  await db.collection('subscriptionChanges').doc(String(evt.id).slice(0, 200)).set({ org_id: org.id, org_name: org.name || null, kind,
+    from: { plan: before.plan || null, interval: before.interval || null, status: before.status || null }, to: { plan: after.plan || null, interval: after.interval || null, status: after.status || null },
+    subscription_id: after.subscription_id || null, at: new Date((evt.created || Date.now() / 1000) * 1000) }).catch(e => console.error('subscription change log', e.message))
+}
+
 // Stripe notifications. Each event is processed once; older events never overwrite newer state.
 export async function handleEvent(evt) {
   const { db } = await fb()
@@ -239,6 +256,8 @@ export async function handleEvent(evt) {
   const customerId = typeof d.customer === 'string' ? d.customer : d.customer?.id
   const meta = d.metadata?.org_id ? d.metadata : d.subscription_details?.metadata || (d.client_reference_id ? { org_id: d.client_reference_id } : null)
   const org = await orgFor(customerId, meta)
+  // Every payment-related event also updates the platform's payment records (used by the admin console).
+  try { await recordStripeEvent(evt, org?.id || null) } catch (e) { console.error('payment record failed', evt.type, e.message) }
   if (!org) return { ignored: 'no church found' }
   const at = evt.created || Math.floor(Date.now() / 1000)
   const newer = !org.billing?.event_at || typeof org.billing.event_at !== 'number' || at >= org.billing.event_at
@@ -262,6 +281,7 @@ export async function handleEvent(evt) {
       const patch = await fromSubscription(d)
       if (!patch) return { ignored: 'incomplete' }
       await rememberCustomer(customerId, org.id)
+      await logSubscriptionChange(org, org.billing || {}, patch, evt)
       await setBilling(org, { ...patch, event_at: at })
       return { ok: true }
     }

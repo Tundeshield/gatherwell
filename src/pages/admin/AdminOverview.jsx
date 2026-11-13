@@ -1,75 +1,71 @@
 import { Link } from 'react-router-dom'
-import { Clock, CreditCard, Moon } from 'lucide-react'
 import { api } from '../../lib/api'
-import { useLoad, PageLoader, ErrorState } from '../../components/ui'
-import { relative, fmtDate } from '../../lib/format'
+import { useLoad, Skeleton, ErrorState, Notice } from '../../components/ui'
 import { adminPath } from '../../lib/host'
-import { money, Stat, WeekBars, PlanBadge } from './shared'
-
-function Attention({ icon: Icon, title, empty, rows, detail }) {
-  return (
-    <section className="panel overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-mist-100 px-4 py-3">
-        <Icon size={16} className="text-mist-400" /><h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-        <span className="ml-auto rounded-full bg-mist-100 px-2 text-xs font-medium text-mist-600">{rows.length}</span>
-      </div>
-      {rows.length === 0 ? <p className="px-4 py-6 text-sm text-mist-400">{empty}</p> : (
-        <ul className="max-h-80 divide-y divide-mist-100 overflow-y-auto">
-          {rows.map(o => (
-            <li key={o.id}>
-              <Link to={adminPath(`/churches/${o.id}`)} className="block px-4 py-3 hover:bg-mist-50">
-                <div className="flex items-center justify-between gap-2"><span className="truncate font-medium text-ink">{o.name}</span><PlanBadge billing={o.billing} /></div>
-                <div className="mt-0.5 truncate text-xs text-mist-500">{o.owner_email || 'No owner'} · {detail(o)}</div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  )
-}
+import { Kpi, Panel, PageTitle, MonthBars, PayStatus, fmtMoney, fmtDate, PlanBadge } from './shared'
 
 export default function AdminOverview() {
-  const { data, error, loading, reload } = useLoad(() => api.get('/platform/summary'), [])
-  if (loading && !data) return <PageLoader />
+  const { data, error, loading, reload } = useLoad(() => api.get('/platform/business?range=month'), [])
+  const health = useLoad(() => api.get('/platform/health').catch(() => null), [])
   if (error) return <ErrorState error={error} onRetry={reload} />
-  const t = data.totals, a = data.attention
-  const newThisWeek = data.signups[data.signups.length - 1]?.count || 0
+  if (loading) return <div className="space-y-4"><Skeleton className="h-10 w-60" /><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-24" />)}</div></div>
+  const c = data.currency, m = (n) => fmtMoney(n, c, false)
+  const rv = data.revenue, ch = data.churches, rec = data.recurring
+  const change = rv.last_month.net ? Math.round(100 * (rv.month.net - rv.last_month.net) / rv.last_month.net) : null
+  const h = health.data
+  const issues = h ? [
+    !h.scheduler.ok && 'The scheduler hasn’t run in the last 10 minutes.',
+    h.scheduler.overdue_items > 0 && `${h.scheduler.overdue_items} scheduled messages or workflow steps are overdue.`,
+    h.webhooks.failed > 0 && `${h.webhooks.failed} recent Stripe webhooks failed to process.`,
+    h.failures.deliveries_24h > 0 && `${h.failures.deliveries_24h} messages failed in the last 24 hours.`,
+    h.errors.length > 0 && `${h.errors.length} recent server errors.`,
+    h.providers.sms.some(p => p.down_until && new Date(p.down_until) > new Date()) && 'An SMS provider is paused after repeated failures.',
+  ].filter(Boolean) : []
+
   return (
-    <div>
-      <h1 className="text-[26px] font-semibold text-ink">Overview</h1>
-      <p className="mt-1 text-sm text-mist-500">How GatherHQ is doing. Church member records are never shown here.</p>
+    <div className="space-y-6">
+      <PageTitle title="Overview" sub={`Revenue figures are ${c.toUpperCase()}, from Stripe payment records${data.payments_synced_at ? `, last synced ${fmtDate(data.payments_synced_at)}` : ''}.`} />
+      {!data.stripe && <Notice tone="warning">Stripe isn’t connected in this environment, so there are no payment records to show yet.</Notice>}
+      {issues.length > 0 && <Notice tone="warning" title="Needs attention"><ul className="list-disc pl-5">{issues.map(i => <li key={i}>{i}</li>)}</ul><Link to={adminPath('/health')} className="link mt-1 inline-block">Platform health</Link></Notice>}
 
-      <section className="panel mt-6 grid grid-cols-2 divide-mist-100 sm:grid-cols-3 lg:grid-cols-6 lg:divide-x">
-        <Stat strong label="Monthly revenue" value={money(t.mrr, t.mrr % 1 !== 0)} hint={`${money(t.arr)} a year`} />
-        <Stat strong label="Paying churches" value={t.paying} hint={t.past_due ? `${t.past_due} with payment due` : 'All payments up to date'} />
-        <Stat strong label="On free trial" value={t.trialing} hint={`${a.trials_ending.length} ending this week`} />
-        <Stat strong label="New churches" value={t.new_7d} hint={`${t.new_30d} in 30 days`} />
-        <Stat strong label="Check-ins, 7 days" value={t.checkins_7d.toLocaleString()} hint={`${t.active_orgs} active ${t.active_orgs === 1 ? "church" : "churches"}`} />
-        <Stat strong label="People recorded" value={t.people.toLocaleString()} hint={`${t.users} team logins`} />
-      </section>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_1fr]">
-        <section className="panel px-5 py-4">
-          <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-ink">New churches each week</h2><span className="text-xs text-mist-400">Last 12 weeks · this week {newThisWeek}</span></div>
-          <div className="mt-6"><WeekBars data={data.signups} label="New churches each week" /></div>
-        </section>
-        <section className="panel px-5 py-4">
-          <h2 className="text-[15px] font-semibold text-ink">Where churches stand</h2>
-          <dl className="mt-3 divide-y divide-mist-100 text-sm">
-            {[['Paying', t.paying], ['On free trial', t.trialing], ['Free (comp)', t.free], ['Payment due', t.past_due], ['Trial or plan ended', t.expired], ['Suspended', t.suspended], ['All churches', t.orgs]].map(([l, n]) => (
-              <div key={l} className="flex justify-between py-2"><dt className="text-mist-600">{l}</dt><dd className="tabular font-medium text-ink">{n}</dd></div>
-            ))}
-          </dl>
-        </section>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Kpi label="Net revenue this month" value={m(rv.month.net)} sub={change == null ? `Last month ${m(rv.last_month.net)}` : `${change >= 0 ? '+' : ''}${change}% vs last month (${m(rv.last_month.net)})`} />
+        <Kpi label="MRR" value={m(rec.mrr)} sub={`ARR ${m(rec.arr)}${rec.manual_mrr ? ` · ${m(rec.manual_mrr)} set by hand` : ''}`} />
+        <Kpi label="Paying churches" value={ch.paying} sub={`${m(rec.arppc)} average per month`} />
+        <Kpi label="Revenue this year" value={m(rv.year.net)} sub={`${m(rv.total.net)} all time`} />
+        <Kpi label="Free trials" value={ch.trialing} sub={`${ch.trials_ending_7d} ending within 7 days`} tone={ch.trials_ending_7d ? 'warn' : undefined} />
+        <Kpi label="Failed payments this month" value={rv.month.failed} sub={rv.month.failed ? m(rv.month.failed_amount) : 'None'} tone={rv.month.failed ? 'bad' : undefined} />
+        <Kpi label="Churned" value={ch.churned} sub={`${ch.past_due} past due · ${ch.expired_trials} trials ended unpaid`} tone={ch.past_due ? 'warn' : undefined} />
+        <Kpi label="Users" value={data.users.total} sub={`${data.users.active_30d} signed in within 30 days`} />
       </div>
 
-      <h2 className="mt-8 text-[17px] font-semibold text-ink">Needs attention</h2>
-      <div className="mt-3 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Attention icon={Clock} title="Trials ending this week" rows={a.trials_ending} empty="No trials end in the next 7 days." detail={o => `ends ${fmtDate(o.billing.trialEndsAt)} · ${o.people} people`} />
-        <Attention icon={CreditCard} title="Payment problems" rows={a.payment_problems} empty="No failed or lapsed payments." detail={o => (o.billing.state === 'past_due' ? `grace ends ${fmtDate(o.billing.graceEnds)}` : 'plan has lapsed')} />
-        <Attention icon={Moon} title="Gone quiet" rows={a.quiet} empty="Every church has checked people in recently." detail={o => (o.last_checkin_at ? `last check-in ${relative(o.last_checkin_at)}` : 'never checked anyone in')} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
+        <Panel title="Net revenue, last 12 months" action={<Link to={adminPath('/revenue')} className="text-sm text-brand-700 hover:underline">Revenue & analytics</Link>}>
+          <div className="px-5 py-4"><MonthBars data={data.series.map(x => ({ ...x, subscription_net: Math.max(0, x.subscription - (x.refunds * (x.subscription / (x.gross || 1)))), one_off_net: Math.max(0, x.one_off - (x.refunds * (x.one_off / (x.gross || 1)))) }))}
+            series={[{ key: 'subscription_net', label: 'Subscriptions', color: '#0e7490' }, { key: 'one_off_net', label: 'One-off (credit)', color: '#67e8f9' }]} format={m} label="Net revenue per month" /></div>
+        </Panel>
+        <Panel title="New churches per month">
+          <div className="px-5 py-4"><MonthBars data={data.signups} series={[{ key: 'count', label: 'New churches', color: '#334155' }]} label="New churches per month" /></div>
+        </Panel>
       </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Panel title="Recent payments" action={<Link to={adminPath('/payments')} className="text-sm text-brand-700 hover:underline">All payments</Link>}>
+          {data.recent_payments.length ? <ul className="divide-y divide-slate-100">{data.recent_payments.map(p => (
+            <li key={p.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium text-slate-900">{p.org_name || 'Unknown church'}</span><span className="text-xs text-slate-500">{p.kind === 'subscription' ? 'Subscription' : p.description} · {fmtDate(p.paid_at || p.created_at)}</span></span>
+              <span className="tabular">{fmtMoney(p.amount, p.currency)}</span><PayStatus status={p.status} />
+            </li>))}</ul> : <p className="px-5 py-6 text-sm text-slate-500">No payments recorded yet.</p>}
+        </Panel>
+        <Panel title="Newest churches" action={<Link to={adminPath('/churches')} className="text-sm text-brand-700 hover:underline">All churches</Link>}>
+          <ul className="divide-y divide-slate-100">{data.recent_signups.map(o => (
+            <li key={o.id}><Link to={adminPath(`/churches/${o.id}`)} className="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-slate-50">
+              <span className="min-w-0 flex-1 truncate font-medium text-slate-900">{o.name}</span><span className="text-xs text-slate-500">{fmtDate(o.created_at)}</span>
+              <PlanBadge billing={o.billing} />
+            </Link></li>))}</ul>
+        </Panel>
+      </div>
+      <ul className="space-y-1 text-xs text-slate-500">{data.notes.map(n => <li key={n}>{n}</li>)}</ul>
     </div>
   )
 }

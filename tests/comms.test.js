@@ -12,25 +12,27 @@ import { localToUtc, nextWeekdayAt } from '../shared/comms.js'
 process.env.APP_ENV = 'staging'
 process.env.GW_INSECURE_COOKIES = '1'
 process.env.PLATFORM_ADMIN_EMAILS = 'ops@gatherhq.test'
+process.env.ADMIN_ANY_HOST = '1'
 let fake
 before(() => { fake = createFakeFirebase(); setFirebase(fake) })
 
 let ipSeq = 0
 function client() {
-  let cookie = ''
+  const jar = new Map()
   const ip = `10.7.0.${++ipSeq}`
   const call = async (method, path, body) => {
     const init = { method, headers: { 'x-nf-client-connection-ip': ip } }
-    if (cookie) init.headers.cookie = cookie
+    if (jar.size) init.headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ')
     if (body !== undefined) { init.body = JSON.stringify(body); init.headers['content-type'] = 'application/json' }
     const res = await handle(new Request('http://test.local/api' + path, init))
-    const set = res.headers.get('set-cookie'); if (set) cookie = set.split(';')[0]
+    const set = res.headers.get('set-cookie'); if (set) { const [kv] = set.split(';'); const i = kv.indexOf('='); const v = kv.slice(i + 1); if (v) jar.set(kv.slice(0, i), v); else jar.delete(kv.slice(0, i)) }
     const data = (res.headers.get('content-type') || '').includes('json') ? await res.json() : await res.text()
     return { status: res.status, data }
   }
   return {
     get: (p) => call('GET', p), post: (p, b) => call('POST', p, b ?? {}), patch: (p, b) => call('PATCH', p, b), del: (p) => call('DELETE', p),
     login: (email, pw) => call('POST', '/auth/session', { idToken: fake.auth.signIn(email, pw) }),
+    adminLogin: (email, pw = 'password123') => call('POST', '/admin/auth/session', { idToken: fake.auth.signIn(email, pw) }),
   }
 }
 async function church(name, email) {
@@ -53,6 +55,7 @@ test('setup: two churches, the team switches email to the test provider', async 
   S.a = await church('Comms Church A', 'a@comms.test')
   S.b = await church('Comms Church B', 'b@comms.test')
   S.ops = await church('Ops', 'ops@gatherhq.test')
+  assert.equal((await S.ops.adminLogin('ops@gatherhq.test')).status, 200)
   let r = await S.a.post('/platform/comms/provider', { channel: 'email', provider: 'mock_email' })
   assert.equal(r.status, 403, 'churches cannot change providers')
   r = await S.ops.post('/platform/comms/provider', { channel: 'email', provider: 'mock_email' })

@@ -22,7 +22,7 @@ const server = http.createServer(async (req, res) => {
     const chunks = []
     for await (const c of req) chunks.push(c)
     let body = chunks.length ? Buffer.concat(chunks) : undefined
-    if (req.url === '/api/auth/session' && body) {
+    if ((req.url === '/api/auth/session' || req.url === '/api/admin/auth/session') && body) {
       const j = JSON.parse(body.toString())
       if (j.devEmail) body = Buffer.from(JSON.stringify({ idToken: fake.auth.signIn(j.devEmail, j.devPassword) || 'bad' }))
     }

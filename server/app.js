@@ -1,7 +1,7 @@
-import { Router, HttpError, json, forbidden, unauthorized } from './http.js'
+import { Router, HttpError, json, forbidden, unauthorized, notFound } from './http.js'
 import { fb } from './firebase.js'
 import { ensureIndexes } from './setup.js'
-import { loadContext, requireOrg, requireUser } from './access.js'
+import { loadContext, loadAdminContext, requireOrg, requireUser } from './access.js'
 import authRoutes from './routes/auth.js'
 import orgRoutes from './routes/org.js'
 import peopleRoutes from './routes/people.js'
@@ -18,8 +18,9 @@ import billingRoutes from './routes/billing.js'
 import childrenRoutes from './routes/children.js'
 import commsRoutes from './routes/comms.js'
 import smsRoutes from './routes/sms.js'
+import businessRoutes from './routes/business.js'
 import { isExpired, billingEnabled } from './billing.js'
-import { appEnv, hostAllowed } from './env.js'
+import { appEnv, hostAllowed, adminHostAllowed } from './env.js'
 import { COMMIT } from './version.js'
 
 // What an account whose trial has ended may still do: pay, manage its account, and erase people.
@@ -28,7 +29,7 @@ const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/o
   /^\/children\/(pickup|pickup\/lookup)$/]
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes, smsRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes, smsRoutes, businessRoutes]) {
   register(router)
 }
 
@@ -69,13 +70,16 @@ export async function handle(req) {
 
     const mode = route.opts.auth || 'org'
     let ctx = null
-    if (mode !== 'public' || route.opts.optionalUser) ctx = await loadContext(req)
+    if (mode === 'platform') {
+      // Only on the admin address in production, and only with the separate admin session.
+      if (!adminHostAllowed(url, req)) throw notFound()
+      ctx = await loadAdminContext(req)
+      // A church session never counts here: signed in to a church but not to the console is 'forbidden'.
+      if (!ctx?.user) throw /(^|;\s*)gw_session=/.test(req.headers.get('cookie') || '') ? forbidden() : unauthorized('Sign in to the GatherHQ admin console.')
+      if (!ctx.admin) throw forbidden()
+    } else if (mode !== 'public' || route.opts.optionalUser) ctx = await loadContext(req)
     if (mode === 'user') requireUser(ctx)
     if (mode === 'org') requireOrg(ctx)
-    if (mode === 'platform') {
-      if (!ctx?.user) throw unauthorized()
-      if (!ctx.user.isPlatformAdmin) throw forbidden()
-    }
 
     // After the free trial, an unpaid church can still view and download everything, but not make changes.
     if (mode === 'org' && !['GET', 'HEAD'].includes(method) && isExpired(ctx.org) && !READ_ONLY_ALLOWED.some(re => re.test(path) && (re.method ? re.method === method : true))) {
@@ -97,6 +101,8 @@ export async function handle(req) {
       return json({ error }, 503)
     }
     console.error('API error', method, path, e)
+    // Kept for the admin console's health page: route and message only (no request bodies or personal data).
+    fb().then(({ db }) => db.collection('errorLog').add({ at: new Date(), method, path: String(path).replace(/[A-Za-z0-9_-]{16,}/g, ':id').slice(0, 200), message: String(e?.message || e).slice(0, 300) })).catch(() => {})
     return json({ error: 'Something went wrong on our side. Please try again.' }, 500)
   }
 }

@@ -42,7 +42,15 @@ export default function (r) {
   // Stripe calls this for every payment and subscription change.
   r.post('/webhooks/stripe', { auth: 'public' }, async ({ req, raw, body }) => {
     if (!validSignature(raw || '', req.headers.get('stripe-signature'))) return json({ error: 'Invalid signature.' }, 401)
-    const res = await handleEvent(body)
+    const { fb } = await import('../firebase.js')
+    const { db } = await fb()
+    const log = db.collection('billingEvents').doc(String(body.id || '').slice(0, 200) || 'unknown')
+    let res
+    try { res = await handleEvent(body) } catch (e) {
+      await log.set({ ok: false, error: String(e.message || e).slice(0, 300), done_at: new Date() }, { merge: true }).catch(() => {})
+      throw e
+    }
+    if (!res?.duplicate) await log.set({ ok: true, result: res?.ignored ? `ignored: ${res.ignored}` : 'processed', done_at: new Date() }, { merge: true }).catch(() => {})
     return json({ ok: true, ...res })
   })
 }

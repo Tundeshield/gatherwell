@@ -39,3 +39,11 @@ export function hostAllowed(host) {
   if (!h.endsWith('.netlify.app')) return true
   return PRODUCTION_NETLIFY.test(h)
 }
+
+// The GatherHQ team's console API only answers on the admin address in production (admin.gatherhq.org).
+// Staging and local work also allow /admin on the main address for testing.
+export function adminHostAllowed(url, req) {
+  if (!isProduction() || process.env.ADMIN_ANY_HOST === '1') return true
+  const host = String(req?.headers?.get?.('x-forwarded-host') || url.host || '').split(',')[0].trim().toLowerCase()
+  return /^admin\./.test(host)
+}

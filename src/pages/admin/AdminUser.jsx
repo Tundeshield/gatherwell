@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Copy, KeyRound, LogOut, Mail } from 'lucide-react'
 import { api } from '../../lib/api'
-import { useSession } from '../../lib/session'
+import { useAdmin } from './AdminApp'
 import { useLoad, PageLoader, ErrorState, Button, Toggle, Notice, Badge, useToast, useConfirm } from '../../components/ui'
 import { fmtDate, relative } from '../../lib/format'
 import { adminPath } from '../../lib/host'
 
 export default function AdminUser() {
   const { id } = useParams()
-  const { me } = useSession()
+  const { me } = useAdmin()
   const toast = useToast()
   const confirm = useConfirm()
   const { data: u, error, loading, reload } = useLoad(() => api.get(`/platform/users/${id}`), [id])

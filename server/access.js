@@ -50,6 +50,39 @@ export function platformAdminEmails() {
   return (process.env.PLATFORM_ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 }
 
+// --- GatherHQ team (platform owner) access ----------------------------------------------------
+// Completely separate from church roles: a church owner or admin never gets platform access.
+// Authorised only by PLATFORM_ADMIN_EMAILS (Netlify setting) or an explicit grant in platformAdmins/{uid},
+// and only through the separate admin session cookie issued by the admin sign-in.
+export const ADMIN_COOKIE = 'ghq_admin'
+export const ADMIN_SESSION_HOURS = 12
+export function adminCookie(value, maxAge = ADMIN_SESSION_HOURS * 3600) {
+  const secure = process.env.NETLIFY_DEV === 'true' || process.env.GW_INSECURE_COOKIES === '1' ? '' : '; Secure'
+  return `${ADMIN_COOKIE}=${value}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure}`
+}
+export const clearAdminCookie = () => `${ADMIN_COOKIE}=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0`
+
+export async function isPlatformAdmin(db, uid, email) {
+  if (!uid) return false
+  if (platformAdminEmails().includes(String(email || '').toLowerCase())) return true
+  const g = await db.collection('platformAdmins').doc(String(uid)).get()
+  return g.exists && g.data().active === true
+}
+
+// The platform team's own session: separate cookie, re-checked against the allow-list on every request.
+export async function loadAdminContext(req) {
+  const cookie = parseCookies(req)[ADMIN_COOKIE]
+  if (!cookie) return null
+  const { db, auth } = await fb()
+  let claims
+  try { claims = await auth.verifySessionCookie(cookie, true) } catch { return null }
+  const snap = await db.collection('users').doc(claims.uid).get()
+  if (!snap.exists) return null
+  const u = snap.data()
+  if (!(await isPlatformAdmin(db, claims.uid, u.email))) return { user: { id: claims.uid, email: u.email, name: u.name, isPlatformAdmin: false } }
+  return { admin: true, user: { id: claims.uid, email: u.email, name: u.name, isPlatformAdmin: true }, org: null, caps: [] }
+}
+
 // Resolves user, active organisation, membership, capabilities and branch scope from the session cookie.
 export async function loadContext(req) {
   const cookie = parseCookies(req)[SESSION_COOKIE]
@@ -63,7 +96,7 @@ export async function loadContext(req) {
   const u = userSnap.data()
   const ctx = {
     cookie,
-    user: { id: uid, email: u.email, name: u.name, isPlatformAdmin: !!u.is_platform_admin || platformAdminEmails().includes(String(u.email).toLowerCase()) },
+    user: { id: uid, email: u.email, name: u.name }, // never platform access from a church session
     org: null, membership: null, caps: [], branchScope: null,
   }
 

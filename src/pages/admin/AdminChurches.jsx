@@ -1,64 +1,48 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { api } from '../../lib/api'
-import { useLoad, PageLoader, ErrorState, Table, Th, Td, SearchInput, Segmented, EmptyState } from '../../components/ui'
-import { fmtDate, relative } from '../../lib/format'
+import { useLoad, Button, Skeleton, ErrorState, EmptyState, Badge } from '../../components/ui'
 import { adminPath } from '../../lib/host'
-import { money, PlanBadge, StatusBadge } from './shared'
+import { PageTitle, Panel, PlanBadge, StatusBadge, fmtMoney, fmtDate } from './shared'
 
-const FILTERS = {
-  all: () => true,
-  trial: o => o.billing.state === 'trialing',
-  paying: o => o.billing.state === 'active' && o.mrr > 0,
-  free: o => o.billing.state === 'free' || (o.billing.state === 'active' && !o.mrr),
-  issues: o => o.billing.state === 'past_due' || o.billing.state === 'expired',
-  suspended: o => o.status !== 'active',
-}
+const FILTERS = [['', 'All churches'], ['paying', 'Paying'], ['annual', 'On annual plans'], ['trialing', 'In trial'], ['trial_ending', 'Trial ending in 7 days'], ['failed', 'Payment problems'], ['expired', 'Trial or plan ended'], ['churned', 'Churned'], ['free', 'Free'], ['suspended', 'Suspended']]
 
 export default function AdminChurches() {
   const navigate = useNavigate()
-  const { data, error, loading, reload } = useLoad(() => api.get('/platform/summary'), [])
-  const [q, setQ] = useState('')
-  const [filter, setFilter] = useState('all')
-  if (loading && !data) return <PageLoader />
-  if (error) return <ErrorState error={error} onRetry={reload} />
-  const count = (k) => data.orgs.filter(FILTERS[k]).length
-  const rows = data.orgs.filter(FILTERS[filter]).filter(o => !q || `${o.name} ${o.owner_email} ${o.owner_name} ${o.slug} ${o.country}`.toLowerCase().includes(q.toLowerCase()))
+  const [params, setParams] = useSearchParams()
+  const q = params.get('q') || '', state = params.get('state') || '', page = Number(params.get('page') || 1)
+  const set = (p) => setParams(Object.fromEntries(Object.entries({ q, state, page: 1, ...p }).filter(([, v]) => v)))
+  const { data, error, loading, reload } = useLoad(() => api.get(`/platform/churches?q=${encodeURIComponent(q)}&state=${state}&page=${page}`), [q, state, page])
   return (
     <div>
-      <h1 className="text-[26px] font-semibold text-ink">Churches</h1>
-      <p className="mt-1 text-sm text-mist-500">{data.orgs.length} churches. Open one to change its plan, trial, features or status.</p>
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="max-w-full overflow-x-auto">
-          <Segmented size="sm" value={filter} onChange={setFilter} options={[
-            { value: 'all', label: `All ${count('all')}` }, { value: 'trial', label: `Trial ${count('trial')}` }, { value: 'paying', label: `Paying ${count('paying')}` },
-            { value: 'free', label: `Free ${count('free')}` }, { value: 'issues', label: `Payment issues ${count('issues')}` }, { value: 'suspended', label: `Suspended ${count('suspended')}` },
-          ]} />
-        </div>
-        <SearchInput value={q} onChange={setQ} placeholder="Search church, owner or country" className="w-full sm:w-72" />
+      <PageTitle title="Churches" sub={data ? `${data.total} ${data.total === 1 ? 'church' : 'churches'}` : null} />
+      <div className="mb-4 flex flex-wrap gap-2">
+        <input type="search" aria-label="Search churches" placeholder="Search by name or email" defaultValue={q} className="field !w-64" onKeyDown={e => e.key === 'Enter' && set({ q: e.target.value })} />
+        <select aria-label="Filter" className="field !w-auto" value={state} onChange={e => set({ state: e.target.value })}>{FILTERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
       </div>
-      <section className="panel mt-4 overflow-hidden">
-        {rows.length === 0 ? <EmptyState title="No churches match">Try another filter or search.</EmptyState> : (
-          <Table>
-            <thead><tr><Th>Church</Th><Th>Owner</Th><Th>Plan</Th><Th className="text-right">Revenue / mo</Th><Th className="text-right">People</Th><Th className="text-right">Check-ins 7d</Th><Th>Last check-in</Th><Th>Joined</Th></tr></thead>
-            <tbody>{rows.map(o => (
-              <tr key={o.id} onClick={() => navigate(adminPath(`/churches/${o.id}`))} className="cursor-pointer hover:bg-mist-50">
-                <Td>
-                  <div className="flex items-center gap-2"><span className="font-medium text-ink">{o.name}</span>{o.status !== 'active' && <StatusBadge status={o.status} />}</div>
-                  <div className="text-xs text-mist-500">{[o.country, o.multi_branch ? `${o.branches} branches` : null].filter(Boolean).join(' · ') || '—'}</div>
-                </Td>
-                <Td><div className="text-ink">{o.owner_name || '—'}</div><div className="text-xs text-mist-500">{o.owner_email}</div></Td>
-                <Td><PlanBadge billing={o.billing} /></Td>
-                <Td className="tabular text-right">{o.mrr ? money(o.mrr, o.mrr % 1 !== 0) : '—'}</Td>
-                <Td className="tabular text-right">{o.people.toLocaleString()}</Td>
-                <Td className="tabular text-right">{o.checkins_7d}</Td>
-                <Td className="whitespace-nowrap text-mist-600">{o.last_checkin_at ? relative(o.last_checkin_at) : 'Never'}</Td>
-                <Td className="whitespace-nowrap text-mist-600">{fmtDate(o.created_at)}</Td>
-              </tr>
-            ))}</tbody>
-          </Table>
-        )}
-      </section>
+      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <Skeleton className="h-72" /> : !data.rows.length ? <EmptyState title="No churches match" /> : (
+        <Panel>
+          <div className="overflow-x-auto"><table className="w-full text-sm">
+            <thead><tr className="border-b border-slate-100 text-left text-xs text-slate-500">
+              <th className="px-4 py-2.5 font-medium">Church</th><th className="px-3 py-2.5 font-medium">Plan</th><th className="px-3 py-2.5 font-medium">Next billing / trial end</th>
+              <th className="px-3 py-2.5 text-right font-medium">People</th><th className="px-3 py-2.5 text-right font-medium">Branches</th><th className="px-3 py-2.5 text-right font-medium">Users</th>
+              <th className="px-3 py-2.5 font-medium">Last activity</th><th className="px-4 py-2.5 text-right font-medium">Lifetime revenue</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{data.rows.map(o => (
+              <tr key={o.id} onClick={() => navigate(adminPath(`/churches/${o.id}`))} className="cursor-pointer hover:bg-slate-50">
+                <td className="px-4 py-2.5"><div className="flex items-center gap-2.5">
+                  {o.logo_url ? <img src={o.logo_url} alt="" className="h-7 w-7 rounded object-cover" /> : <span className="flex h-7 w-7 items-center justify-center rounded bg-slate-100 text-xs font-semibold text-slate-500">{(o.name || '?').slice(0, 1)}</span>}
+                  <span className="min-w-0"><span className="block truncate font-medium text-slate-900">{o.name}</span><span className="text-xs text-slate-500">Joined {fmtDate(o.created_at)}{o.contact_email ? ` · ${o.contact_email}` : ''}</span></span>
+                  {o.status !== 'active' && <StatusBadge status={o.status} />}{o.has_failed_payment && <Badge tone="danger">Payment failed</Badge>}
+                </div></td>
+                <td className="px-3 py-2.5"><PlanBadge billing={{ state: o.sub.state, plan: o.sub.plan, interval: o.sub.interval, daysLeft: o.sub.days_left, manual: o.sub.manual, cancelling: o.sub.cancelling, lapsed: o.sub.ever_paid }} /></td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{fmtDate(o.sub.renews_at || o.sub.trial_ends_at)}</td>
+                <td className="tabular px-3 py-2.5 text-right">{o.people ?? '—'}</td><td className="tabular px-3 py-2.5 text-right">{o.branches ?? '—'}</td><td className="tabular px-3 py-2.5 text-right">{o.users ?? '—'}</td>
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{o.last_activity_at ? fmtDate(o.last_activity_at) : 'No check-ins yet'}</td>
+                <td className="tabular whitespace-nowrap px-4 py-2.5 text-right">{Object.keys(o.lifetime).length ? Object.entries(o.lifetime).map(([c, v]) => fmtMoney(v, c)).join(' + ') : '—'}{o.payments ? <span className="block text-xs text-slate-500">{o.payments} payments</span> : null}</td>
+              </tr>))}</tbody>
+          </table></div>
+          {data.pages > 1 && <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 text-sm"><span className="text-slate-500">Page {data.page} of {data.pages}</span><span className="flex gap-2"><Button size="sm" variant="secondary" disabled={page <= 1} onClick={() => set({ page: page - 1 })}>Previous</Button><Button size="sm" variant="secondary" disabled={page >= data.pages} onClick={() => set({ page: page + 1 })}>Next</Button></span></div>}
+        </Panel>
+      )}
     </div>
   )
 }

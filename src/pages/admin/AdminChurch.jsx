@@ -5,7 +5,7 @@ import { api } from '../../lib/api'
 import { useLoad, PageLoader, ErrorState, Table, Th, Td, Button, Modal, Select, Input, Toggle, useToast, useConfirm, Badge } from '../../components/ui'
 import { fmtDate, relative } from '../../lib/format'
 import { adminPath } from '../../lib/host'
-import { money, planLabel, PlanBadge, StatusBadge, Stat, WeekBars, actionLabel } from './shared'
+import { money, planLabel, PlanBadge, StatusBadge, Stat, WeekBars, actionLabel, fmtMoney, PayStatus } from './shared'
 
 function Row({ label, children }) {
   return <div className="flex justify-between gap-4 py-2 text-sm"><dt className="text-mist-500">{label}</dt><dd className="text-right text-ink">{children}</dd></div>
@@ -75,6 +75,8 @@ export default function AdminChurch() {
             <Stat label="Events" value={o.counts.events} />
             <Stat label="Messages" value={o.counts.messages} />
           </section>
+
+          <ChurchBusiness id={id} />
 
           <section className="panel px-5 py-4">
             <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-ink">Check-ins each week</h2><span className="text-xs text-mist-400">Last 8 weeks</span></div>
@@ -165,7 +167,7 @@ export default function AdminChurch() {
             </dl>
             <div className="mt-3 flex flex-col gap-2">
               {o.status === 'active'
-                ? <Button variant="secondary" onClick={() => ask({ title: `Suspend ${o.name}?`, message: 'Their team keeps their logins but loses access, and public check-in links stop working, until you reactivate them. No data is deleted.', confirmLabel: 'Suspend', danger: true }, { status: 'suspended' }, `${o.name} suspended`)}>Suspend church</Button>
+                ? <Button variant="secondary" onClick={() => ask({ title: `Suspend ${o.name}?`, message: 'Their team keeps their logins but loses access, and public check-in links stop working, until you reactivate them. No data is deleted.', confirmLabel: 'Suspend', danger: true }, { status: 'suspended', confirm: 'suspend' }, `${o.name} suspended`)}>Suspend church</Button>
                 : <Button onClick={() => patch({ status: 'active' }, `${o.name} reactivated`)}>Reactivate church</Button>}
               {o.status !== 'closed' && <Button variant="ghost" className="text-red-700" onClick={() => setModal('close')}>Close church…</Button>}
             </div>
@@ -176,5 +178,37 @@ export default function AdminChurch() {
       <ManualPlanModal open={modal === 'manual'} onClose={() => setModal(null)} onSave={f => patch({ manualPlan: { ...f, until: new Date(`${f.until}T23:59:59Z`).toISOString() } }, 'Plan set')} />
       <CloseModal open={modal === 'close'} onClose={() => setModal(null)} name={o.name} onConfirm={() => patch({ status: 'closed', confirm: 'close' }, `${o.name} closed`)} />
     </div>
+  )
+}
+
+// Payments, credit, onboarding and Stripe links for one church.
+function ChurchBusiness({ id }) {
+  const { data, loading, error } = useLoad(() => api.get(`/platform/churches/${id}/business`), [id])
+  if (loading) return <section className="panel h-40 animate-pulse" />
+  if (error || !data) return null
+  const life = Object.entries(data.lifetime)
+  return (
+    <>
+      <section className="panel">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mist-100 px-5 py-3">
+          <h2 className="text-[15px] font-semibold text-ink">Payments</h2>
+          <span className="flex flex-wrap gap-3 text-sm">
+            {life.map(([c, v]) => <span key={c} className="text-mist-600">Lifetime net <strong className="text-ink">{fmtMoney(v.net, c)}</strong>{v.failed ? ` · ${v.failed} failed` : ''}</span>)}
+            <Link to={adminPath(`/payments?org=${id}`)} className="text-brand-700 hover:underline">All payments</Link>
+            {data.stripe.customer && <a href={data.stripe.customer} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">Stripe customer</a>}
+            {data.stripe.subscription && <a href={data.stripe.subscription} target="_blank" rel="noreferrer" className="text-brand-700 hover:underline">Stripe subscription</a>}
+          </span>
+        </div>
+        {data.payments.length ? <ul className="divide-y divide-mist-100 text-sm">{data.payments.slice(0, 8).map(p => (
+          <li key={p.id} className="flex items-center gap-3 px-5 py-2.5"><span className="w-28 text-mist-500">{fmtDate(p.paid_at || p.created_at)}</span><span className="min-w-0 flex-1 truncate">{p.kind === 'subscription' ? `Subscription${p.plan ? ` · ${p.plan} ${p.interval || ''}` : ''}` : p.description}{p.failure_reason && <span className="block text-xs text-red-700">{p.failure_reason}</span>}</span><span className="tabular">{fmtMoney(p.amount, p.currency)}</span><PayStatus status={p.status} /></li>
+        ))}</ul> : <p className="px-5 py-4 text-sm text-mist-500">No payments recorded.</p>}
+        <p className="border-t border-mist-100 px-5 py-2.5 text-sm text-mist-600">Messaging credit balance: <strong className="text-ink">{fmtMoney(data.credits.balance)}</strong>{data.sub.last_error && <span className="ml-3 text-red-700">{data.sub.last_error}</span>}</p>
+      </section>
+      <section className="panel px-5 py-4">
+        <div className="flex items-baseline justify-between"><h2 className="text-[15px] font-semibold text-ink">Getting started</h2><span className="text-sm text-mist-500">{data.onboarding.done} of {data.onboarding.total}</span></div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100"><div className="h-full bg-brand-600" style={{ width: `${(100 * data.onboarding.done) / data.onboarding.total}%` }} /></div>
+        <ul className="mt-3 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">{data.onboarding.steps.map(s => <li key={s.label} className={s.done ? 'text-ink' : 'text-mist-400'}>{s.done ? '✓' : '○'} {s.label}</li>)}</ul>
+      </section>
+    </>
   )
 }

@@ -110,7 +110,8 @@ export async function rateLimit(key, limit, windowSeconds) {
 
 export async function audit(ctx, action, entity, entityId, meta = {}) {
   try {
-    if (!ctx?.org?.id) return
+    // Admin-console actions with no church attached go to the platform's own log.
+    if (!ctx?.org?.id) return ctx?.admin ? platformAudit(ctx, action, { type: entity, id: entityId }, meta) : undefined
     const { db } = await fb()
     await db.collection('orgs').doc(ctx.org.id).collection('audit').add({
       action, entity: entity || null, entity_id: entityId ? String(entityId) : null, meta: JSON.parse(JSON.stringify(meta || {})),
@@ -188,4 +189,17 @@ export function validateAnswers(form, input) {
     if (v !== undefined && v !== '') answers[f.id] = v
   }
   return { answers, errors }
+}
+
+// The GatherHQ team's own audit trail (admin console actions), separate from churches' logs.
+export async function platformAudit(ctx, action, target = {}, meta = {}) {
+  try {
+    const { db } = await fb()
+    await db.collection('platformAudit').add({
+      action, target_type: target.type || null, target_id: target.id ? String(target.id) : null, target_name: target.name || null,
+      meta: JSON.parse(JSON.stringify(meta || {})), by_id: ctx?.user?.id || null, by_email: ctx?.user?.email || null, created_at: new Date(),
+    })
+  } catch (e) {
+    console.error('platform audit failed', action, e.message)
+  }
 }

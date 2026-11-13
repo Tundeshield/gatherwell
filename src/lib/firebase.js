@@ -53,17 +53,18 @@ export function authMessage(e) {
   return MESSAGES[code] || e?.message || 'Sign-in failed. Please try again.'
 }
 
-export async function signInWithPassword(email, password) {
+// path: '/auth/session' for church sign-in, '/admin/auth/session' for the separate GatherHQ admin session.
+export async function signInWithPassword(email, password, path = '/auth/session') {
   // Local demo server only (no Firebase web settings): it converts these into a stand-in token.
   if (!firebaseConfigured() && ['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-    await api.post('/auth/session', { devEmail: email, devPassword: password })
+    await api.post(path, { devEmail: email, devPassword: password })
     return
   }
   const { a, A } = await auth()
   try {
     const cred = await A.signInWithEmailAndPassword(a, email.trim(), password)
     const idToken = await cred.user.getIdToken()
-    await api.post('/auth/session', { idToken })
+    await api.post(path, { idToken })
     await A.signOut(a)
   } catch (e) {
     if (e.code) throw new Error(authMessage(e))

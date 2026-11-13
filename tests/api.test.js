@@ -8,6 +8,7 @@ import { createFakeFirebase } from './fake-firebase.js'
 
 process.env.GW_INSECURE_COOKIES = '1'
 process.env.PLATFORM_ADMIN_EMAILS = 'ops@gatherhq.test'
+process.env.ADMIN_ANY_HOST = '1'
 
 let fake
 before(() => { fake = createFakeFirebase(); setFirebase(fake) })
@@ -15,15 +16,15 @@ before(() => { fake = createFakeFirebase(); setFirebase(fake) })
 // Tiny client with a cookie jar.
 let ipSeq = 0
 function client() {
-  let cookie = ''
+  const jar = new Map()
   const ip = `10.9.${Math.floor(ipSeq / 250)}.${(ipSeq++ % 250) + 1}` // each client is its own visitor
   const call = async (method, path, body, headers = {}) => {
     const init = { method, headers: { 'x-nf-client-connection-ip': ip, ...headers } }
-    if (cookie) init.headers.cookie = cookie
+    if (jar.size) init.headers.cookie = [...jar].map(([k, v]) => `${k}=${v}`).join('; ')
     if (body !== undefined) { init.body = typeof body === 'string' ? body : JSON.stringify(body); init.headers['content-type'] ??= 'application/json' }
     const res = await handle(new Request('http://test.local/api' + path, init))
     const set = res.headers.get('set-cookie')
-    if (set) cookie = set.split(';')[0]
+    if (set) { const [kv] = set.split(';'); const i = kv.indexOf('='); const v = kv.slice(i + 1); if (v) jar.set(kv.slice(0, i), v); else jar.delete(kv.slice(0, i)) }
     const ct = res.headers.get('content-type') || ''
     const data = ct.includes('json') ? await res.json() : await res.text()
     return { status: res.status, data }
@@ -36,6 +37,7 @@ function client() {
       if (!idToken) return { status: 401 }
       return call('POST', '/auth/session', { idToken })
     },
+    adminLogin: (email, pw = 'password123') => call('POST', '/admin/auth/session', { idToken: fake.auth.signIn(email, pw) }),
   }
   return c
 }
@@ -78,6 +80,7 @@ test('sign-up creates org, branch and owner; /me reports caps', async () => {
   assert.match(r.data.error, /Church network plan/)
   S.ops = client()
   await signup(S.ops, { orgName: 'Ops Test', name: 'Ops', email: 'ops@gatherhq.test', password: 'password123' })
+  assert.equal((await S.ops.adminLogin('ops@gatherhq.test')).status, 200)
   r = await S.a.patch(`/platform/orgs/${me.data.org.id}`, { multiBranch: true })
   assert.equal(r.status, 403, 'a church owner cannot switch it on themselves')
   r = await S.ops.patch(`/platform/orgs/${me.data.org.id}`, { multiBranch: true })
@@ -420,7 +423,7 @@ test('platform admin area is separate from church ownership', async () => {
   assert.ok(r.data.totals.orgs >= 3)
   assert.ok(!JSON.stringify(r.data).includes('Chidi'), 'no member data in platform view')
   const grace = r.data.orgs.find(o => o.name === 'Grace Chapel')
-  r = await ops.patch(`/platform/orgs/${grace.id}`, { status: 'suspended' })
+  r = await ops.patch(`/platform/orgs/${grace.id}`, { status: 'suspended', confirm: 'suspend' })
   assert.equal(r.data.status, 'suspended')
   // Suspended org: members lose capabilities and public links stop working
   r = await S.a.get('/people')
@@ -1057,11 +1060,16 @@ test('admin console: revenue, church controls, users and support', async () => {
     r = await S.ops.post(`/platform/users/${uid}/reset-link`, {})
     assert.equal(r.status, 200, JSON.stringify(r.data)); assert.ok(r.data.link.startsWith('https://'))
     assert.equal((await c.get('/platform/users')).status, 403)
+    assert.equal((await c.adminLogin('kemi@console.test')).status, 403, 'not an admin: the console sign-in refuses')
     r = await S.ops.patch(`/platform/users/${uid}`, { platformAdmin: true })
     assert.equal(r.status, 200)
+    // Being granted access doesn't turn the church session into an admin session…
+    assert.equal((await c.get('/platform/users')).status, 403)
+    // …only signing in to the console does.
+    assert.equal((await c.adminLogin('kemi@console.test')).status, 200)
     assert.equal((await c.get('/platform/users')).status, 200)
     await S.ops.patch(`/platform/users/${uid}`, { platformAdmin: false })
-    assert.equal((await c.get('/platform/users')).status, 403)
+    assert.equal((await c.get('/platform/users')).status, 403, 'revoked access ends at the next request')
     const opsId = (await S.ops.get('/me')).data.user.id
     assert.equal((await S.ops.patch(`/platform/users/${opsId}`, { platformAdmin: false })).status, 400)
   } finally {
