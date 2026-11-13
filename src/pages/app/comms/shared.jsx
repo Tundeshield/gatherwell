@@ -14,7 +14,7 @@ export const ACTIONS = [
   { to: '/app/communications/workflows?new=1', icon: Workflow, title: 'Automate it', body: 'Welcome visitors, remind, follow up, every time.' },
 ]
 
-const TABS = [['', 'Overview', true], ['messages', 'Messages'], ['workflows', 'Journeys'], ['templates', 'Templates'], ['channels', 'Channels & usage']]
+const TABS = [['', 'Overview', true], ['messages', 'Messages'], ['workflows', 'Workflows'], ['templates', 'Templates'], ['channels', 'Channels & usage']]
 export function CommsLayout() {
   return (
     <div className="mx-auto max-w-page px-4 py-6 sm:px-6">

@@ -37,7 +37,7 @@ export default function Templates() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-2xl text-sm text-mist-600">Save the emails and texts you send often, then reuse them in messages and journeys.</p>
+        <p className="max-w-2xl text-sm text-mist-600">Save the emails and texts you send often, then reuse them in messages and workflows.</p>
         <Button icon={Plus} onClick={() => setEdit({ ...EMPTY })}>New template</Button>
       </div>
       {data.own.length ? (

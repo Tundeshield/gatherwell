@@ -154,7 +154,7 @@ async function activationProblems(ctx, w) {
   if (sends.some(s => s.channel === 'sms') && status.sms.ready) {
     const est = await journeyEstimate(ctx, w)
     if (est.people > 0 && est.reachable === 0) out.push(est.blocked[0]?.text || 'None of your people can be texted yet. Check SMS setup in Channels & usage.')
-    if (est.perPerson > 0 && balanceOf(ctx.org) < est.perPerson) out.push(`Add messaging credit first: each person in this journey costs about $${est.perPerson.toFixed(2)} in texts, and your balance is $${balanceOf(ctx.org).toFixed(2)}.`)
+    if (est.perPerson > 0 && balanceOf(ctx.org) < est.perPerson) out.push(`Add messaging credit first: each person in this workflow costs about $${est.perPerson.toFixed(2)} in texts, and your balance is $${balanceOf(ctx.org).toFixed(2)}.`)
   }
   for (const s of w.steps || []) if (s.type === 'wait' && s.wait.kind === 'before_event' && w.trigger.type !== 'event_registered') out.push('“Before the event” waits only work in workflows that start when someone registers for an event.')
   return [...new Set(out)]

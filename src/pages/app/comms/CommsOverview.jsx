@@ -42,7 +42,7 @@ export default function CommsOverview() {
       {error ? <ErrorState error={error} onRetry={reload} /> : loading ? <div className="grid gap-4 lg:grid-cols-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-40" />)}</div> : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label="Journeys on" value={data.workflows.length} sub={`${data.enrolled} ${data.enrolled === 1 ? 'person' : 'people'} in them`} />
+            <Stat label="Workflows on" value={data.workflows.length} sub={`${data.enrolled} ${data.enrolled === 1 ? 'person' : 'people'} in them`} />
             <Stat label="Emails, last 30 days" value={data.stats.email.sent} sub={data.stats.email.rate != null ? `${data.stats.email.rate}% delivered` : 'No delivery reports yet'} />
             <Stat label="Texts, last 30 days" value={data.stats.sms.sent} sub={data.stats.sms.rate != null ? `${data.stats.sms.rate}% delivered${data.stats.sms.failed ? ` · ${data.stats.sms.failed} not delivered` : ''}` : 'No delivery reports yet'} />
             <Link to="/app/communications/channels" className="rounded-2xl border border-mist-200 bg-white p-4 hover:border-brand-300">
@@ -54,7 +54,7 @@ export default function CommsOverview() {
           {(data.repliesWaiting > 0 || data.blockedEnrolments > 0) && (
             <div className="flex flex-wrap gap-3">
               {data.repliesWaiting > 0 && <Link to="/app/followups" className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm text-ink hover:border-brand-300"><MessageSquareReply size={16} className="text-brand-700" />{data.repliesWaiting} {data.repliesWaiting === 1 ? 'reply needs' : 'replies need'} a response</Link>}
-              {data.blockedEnrolments > 0 && <Link to="/app/communications/channels" className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"><Wallet size={16} />{data.blockedEnrolments} journey {data.blockedEnrolments === 1 ? 'text is' : 'texts are'} waiting for credit</Link>}
+              {data.blockedEnrolments > 0 && <Link to="/app/communications/channels" className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900"><Wallet size={16} />{data.blockedEnrolments} workflow {data.blockedEnrolments === 1 ? 'text is' : 'texts are'} waiting for credit</Link>}
             </div>
           )}
 
@@ -100,7 +100,7 @@ export default function CommsOverview() {
               ) : <p className="px-5 py-6 text-sm text-mist-500">No messages sent yet.</p>}
             </Section>
 
-            <Section title="Journeys" link={['/app/communications/workflows', 'All journeys']}>
+            <Section title="Workflows" link={['/app/communications/workflows', 'All workflows']}>
               {data.workflows.length ? (
                 <ul className="divide-y divide-mist-100">
                   {data.workflows.map(w => (
@@ -110,7 +110,7 @@ export default function CommsOverview() {
                     </Link></li>
                   ))}
                 </ul>
-              ) : <EmptyState title="No journeys switched on" className="py-6">Welcome every first-time visitor automatically. <Link to="/app/communications/workflows?new=1" className="link">Set one up</Link></EmptyState>}
+              ) : <EmptyState title="No workflows switched on" className="py-6">Welcome every first-time visitor automatically. <Link to="/app/communications/workflows?new=1" className="link">Set one up</Link></EmptyState>}
             </Section>
 
             <Section title="Channels" link={['/app/communications/channels', 'Channels & usage']}>

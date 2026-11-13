@@ -118,7 +118,7 @@ export function WorkflowBuilder() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/app/communications/workflows" className="mb-3 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Journeys</Link>
+      <Link to="/app/communications/workflows" className="mb-3 inline-flex items-center gap-1.5 text-sm text-mist-500 hover:text-ink"><ArrowLeft size={15} />Workflows</Link>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <input value={wf.name} onChange={e => update({ name: e.target.value })} aria-label="Workflow name" maxLength={100}
@@ -168,8 +168,8 @@ export function WorkflowBuilder() {
           {wf.steps.some(x => x.type === 'send' && x.channel === 'sms') && <SmsCost estimate={estimate} dirty={dirty} />}
           {!scheduled && <div className="panel mt-5 divide-y divide-mist-100 px-5">
             <div className="py-4"><Toggle checked={wf.pause_on_reply} onChange={v => update({ pause_on_reply: v })} label="Pause and tell someone when a person replies" hint="Their follow-up waits, and a follow-up task is created so a person can respond. Replying “STOP” always opts them out." /></div>
-            {['first_visit', 'second_visit', 'absent'].includes(wf.trigger.type) && <div className="py-4"><Toggle checked={!!wf.exit_on_return} onChange={v => update({ exit_on_return: v })} label="Stop when they come back" hint="If they attend again before a message is due, the rest of the journey is cancelled, so nobody is invited back after they’ve already returned." /></div>}
-            <div className="py-4 text-sm text-mist-600"><p className="font-medium text-ink">If a message can’t be delivered</p><p className="mt-0.5">It’s marked as not delivered and the journey carries on. Texts that couldn’t be sent aren’t charged. If messaging credit runs out, texts wait (emails keep going) and are skipped if they’d go out more than two days late.</p></div>
+            {['first_visit', 'second_visit', 'absent'].includes(wf.trigger.type) && <div className="py-4"><Toggle checked={!!wf.exit_on_return} onChange={v => update({ exit_on_return: v })} label="Stop when they come back" hint="If they attend again before a message is due, the rest of the workflow is cancelled, so nobody is invited back after they’ve already returned." /></div>}
+            <div className="py-4 text-sm text-mist-600"><p className="font-medium text-ink">If a message can’t be delivered</p><p className="mt-0.5">It’s marked as not delivered and the workflow carries on. Texts that couldn’t be sent aren’t charged. If messaging credit runs out, texts wait (emails keep going) and are skipped if they’d go out more than two days late.</p></div>
           </div>}
           <div className="mt-6 flex flex-wrap justify-between gap-3">
             <Button variant="danger-ghost" icon={Trash2} onClick={async () => { if (await confirm({ title: 'Delete this workflow?', message: 'It stops for everyone in it. Messages it already sent stay in your history.', confirmLabel: 'Delete', danger: true })) { await api.del(`/comms/workflows/${id}`); toast('Deleted'); navigate('/app/communications/workflows') } }}>Delete workflow</Button>
@@ -201,7 +201,7 @@ function SmsCost({ estimate: e, dirty }) {
         <h3 className="text-[15px] font-semibold text-ink">Text message cost</h3>
         <span className="text-sm text-mist-500">Balance: <span className={e.balance < e.perPerson ? 'font-medium text-amber-800' : 'text-ink'}>{money(e.balance)}</span> · <Link to="/app/communications/channels" className="link">Add credit</Link></span>
       </div>
-      <p className="mt-1 text-sm text-mist-600">This journey sends {e.smsSteps === 1 ? 'one text' : `${e.smsSteps} texts`} per person ({e.segments} {e.segments === 1 ? 'part' : 'parts'} in total).{e.perPerson > 0 ? <> At today’s rates that’s about <strong className="text-ink">{money(e.perPerson)}</strong> per person, so 100 people would cost about <strong className="text-ink">{money(e.per100)}</strong>.</> : ''}</p>
+      <p className="mt-1 text-sm text-mist-600">This workflow sends {e.smsSteps === 1 ? 'one text' : `${e.smsSteps} texts`} per person ({e.segments} {e.segments === 1 ? 'part' : 'parts'} in total).{e.perPerson > 0 ? <> At today’s rates that’s about <strong className="text-ink">{money(e.perPerson)}</strong> per person, so 100 people would cost about <strong className="text-ink">{money(e.per100)}</strong>.</> : ''}</p>
       {rows.length > 1 && <table className="mt-3 w-full max-w-lg text-sm"><thead><tr className="text-left text-xs text-mist-500"><th className="py-1 font-medium">Where your people are</th><th className="py-1 text-right font-medium">People</th><th className="py-1 text-right font-medium">Per person</th><th className="py-1 text-right font-medium">Per 100</th></tr></thead>
         <tbody className="divide-y divide-mist-100">{rows.map(([cc, c]) => <tr key={cc}><td className="py-1.5">{c.name}</td><td className="tabular py-1.5 text-right">{c.people}</td><td className="tabular py-1.5 text-right">{money(c.perPerson)}</td><td className="tabular py-1.5 text-right">{money(c.per100)}</td></tr>)}</tbody></table>}
       {e.blocked?.length > 0 && <ul className="mt-3 space-y-1 text-sm text-amber-800">{e.blocked.map(b => <li key={b.reason}>• {b.text}</li>)}</ul>}
@@ -231,7 +231,7 @@ function StepPicker({ open, onClose, onPick, scheduled }) {
   const items = scheduled ? [['send', 'Send a message', 'Email, WhatsApp or SMS.']] : [
     ['wait', 'Wait', 'For a few days, or until a day and time.'], ['send', 'Send a message', 'Email, WhatsApp or SMS.'],
     ['check', 'Check something', 'Did they come back? Did they reply?'], ['task', 'Create a follow-up task', 'Ask someone on your team to call.'],
-    ['tag', 'Add a tag', 'Group them, for example “Newcomers”.'], ['start_workflow', 'Move to another workflow', 'Hand over to another journey.'], ['end', 'End', 'Stop the workflow here.'],
+    ['tag', 'Add a tag', 'Group them, for example “Newcomers”.'], ['start_workflow', 'Move to another workflow', 'Hand over to another workflow.'], ['end', 'End', 'Stop the workflow here.'],
   ]
   return (
     <Modal open={open} onClose={onClose} title="Add a step">
@@ -310,7 +310,7 @@ function StepEditor({ step: s, trigger, onChange, channels, templates, tags, ass
           ) })}
         </div>
         {channels.whatsapp?.comingSoon && <p className="-mt-2 mb-4 text-xs text-mist-500">{WHATSAPP_COMING_SOON}</p>}
-        {s.channel === 'whatsapp' && channels.whatsapp?.comingSoon && <Notice tone="warning" className="mb-4">This step uses WhatsApp, which can’t be automated yet. Choose SMS or email so the journey can be switched on.</Notice>}
+        {s.channel === 'whatsapp' && channels.whatsapp?.comingSoon && <Notice tone="warning" className="mb-4">This step uses WhatsApp, which can’t be automated yet. Choose SMS or email so the workflow can be switched on.</Notice>}
         {s.channel !== 'email' && !channels[s.channel]?.ready && !channels[s.channel]?.comingSoon && <Notice tone="warning" className="mb-4">{channelLabel(s.channel)} isn’t connected yet. You can prepare the step, but the workflow can’t be switched on until it is.</Notice>}
         <Input label="Step name" hint="Only your team sees this." value={s.title || ''} onChange={e => set({ title: e.target.value })} maxLength={80} />
         {s.channel === 'email' && <>

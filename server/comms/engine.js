@@ -570,7 +570,7 @@ export async function processEnrolment(orgId, id, { now = new Date() } = {}) {
       const allowed = nextSendingTime(now, tzOf(org), q)
       if (allowed > now) { log('wait', 'Waiting for sending hours', { until: allowed }); await finish({ ...at, wait_until: null, next_at: allowed }); return { nextAt: allowed } }
       if (wf.exit_on_return && ['first_visit', 'second_visit', 'absent'].includes(wf.trigger?.type) && person.last_seen_at && toDate(person.last_seen_at) > toDate(e.started_at)) {
-        log('end', 'They came back, so the rest of this journey was cancelled'); await finish({ status: 'completed', step_id: null, wait_until: null, completed_at: new Date(), ended_by: 'returned' }); return { done: true }
+        log('end', 'They came back, so the rest of this workflow was cancelled'); await finish({ status: 'completed', step_id: null, wait_until: null, completed_at: new Date(), ended_by: 'returned' }); return { done: true }
       }
       if (step.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) { log('skip', 'Not sent: automated WhatsApp isn’t available yet', { result: 'skipped' }); next(); continue }
       const r = reachable(step.channel, person)

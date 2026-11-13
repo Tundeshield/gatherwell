@@ -133,7 +133,7 @@ export default function Channels() {
             <ul className="divide-y divide-mist-100">
               {usage.data.rows.slice(0, 12).map(x => { const [tone, label] = DSTATUS[x.status] || ['neutral', x.status]; return (
                 <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-5 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate text-ink">{x.name}<span className="text-mist-500"> · {x.countryName}{x.segments ? ` · ${x.segments} ${x.segments === 1 ? 'part' : 'parts'}` : ''}{x.workflow ? ' · journey' : ''}</span></span>
+                  <span className="min-w-0 flex-1 truncate text-ink">{x.name}<span className="text-mist-500"> · {x.countryName}{x.segments ? ` · ${x.segments} ${x.segments === 1 ? 'part' : 'parts'}` : ''}{x.workflow ? ' · workflow' : ''}</span></span>
                   <span className="tabular text-mist-600">{x.cost ? money(x.cost) : '—'}</span>
                   <Badge tone={tone}>{label}</Badge>
                   {x.error && x.status !== 'sent' && <span className="w-full text-xs text-mist-500">{x.error}</span>}
@@ -193,7 +193,7 @@ export default function Channels() {
               <ul className="mt-2 space-y-1">
                 {data.resume.messages.map(m => <li key={m.id}>• <Link to={`/app/communications/messages/${m.id}`} className="link">{m.title || 'Text message'}</Link>: {m.remaining} still to send</li>)}
                 {data.resume.journeys.slice(0, 8).map(j => <li key={j.id}>• {j.person} in “{j.workflow}”</li>)}
-                {data.resume.journeys.length > 8 && <li>…and {data.resume.journeys.length - 8} more in journeys</li>}
+                {data.resume.journeys.length > 8 && <li>…and {data.resume.journeys.length - 8} more in workflows</li>}
               </ul>
             </div>
           </Panel>
