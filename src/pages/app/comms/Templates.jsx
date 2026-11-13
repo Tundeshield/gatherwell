@@ -7,7 +7,7 @@ import { BubblePreview } from './shared'
 import { useSession } from '../../../lib/session'
 
 const WA = { not_submitted: ['neutral', 'Not sent for WhatsApp approval'], pending: ['gold', 'Waiting for WhatsApp approval'], approved: ['success', 'Approved for WhatsApp'], rejected: ['danger', 'Rejected by WhatsApp'] }
-const EMPTY = { name: '', purpose: 'general', subject: '', body: '', category: 'marketing' }
+const EMPTY = { name: '', purpose: 'general', subject: '', body: '', category: 'utility' }
 
 export default function Templates() {
   const { me } = useSession()

@@ -70,7 +70,7 @@ export default function Compose() {
   const [blocks, setBlocks] = useState(() => withKeys(blocksFromBody('Hi {first_name},\n\n')))
   const [body, setBody] = useState('')
   const [templateId, setTemplateId] = useState('')
-  const [category, setCategory] = useState('marketing')
+  const [category, setCategory] = useState('utility')
   const [sendDate, setSendDate] = useState('')
   const [sendTime, setSendTime] = useState('19:00')
   const [counts, setCounts] = useState({})
@@ -84,7 +84,7 @@ export default function Compose() {
     const m = existing.data?.message
     if (!m) return
     setAudience(m.audience); setChannel(m.channel); setSubject(m.subject || ''); setPreheader(m.preheader || ''); setBlocks(withKeys(m.blocks || []))
-    setBody(m.body || ''); setTemplateId(m.template_id || ''); setCategory(m.category || 'marketing')
+    setBody(m.body || ''); setTemplateId(m.template_id || ''); setCategory(m.category || 'utility')
     if (m.send_local && m.status === 'scheduled' && m.mode === 'scheduled') { setScheduled(true); setSendDate(m.send_local.date); setSendTime(m.send_local.time) }
   }, [existing.data])
 
@@ -230,10 +230,11 @@ export default function Compose() {
 
       {step === 'what' && (ch === 'sms' || isOneTap) && (
         <Card title="What would you like to say?" hint="Keep it short and friendly. Use {first_name} to greet each person by name.">
-          <TemplatePick templates={templates.data} onPick={(t) => setBody(t.body)} />
+          <TemplatePick templates={templates.data} onPick={(t) => { setBody(t.body); if (t.category) setCategory(t.category) }} />
           <Textarea label="Message" rows={5} value={body} onChange={e => setBody(e.target.value)} maxLength={ch === 'sms' ? 918 : 1024} />
           <p className="-mt-2 mb-4 flex flex-wrap gap-x-3 text-xs text-mist-500">{FIELDS.slice(0, 3).map(([k, l]) => <button key={k} type="button" className="hover:text-ink" onClick={() => setBody(b => b + k)}>+ {l}</button>)}</p>
           {ch === 'sms' && <p className={`mb-4 text-sm ${smsMeta.segments > 2 ? 'text-amber-800' : 'text-mist-600'}`}>{smsMeta.length} characters · {smsMeta.segments} {smsMeta.segments === 1 ? 'text' : 'texts'} per person{smsMeta.unicode ? ' (emoji or special letters make each text shorter)' : ''}{smsMeta.segments > 1 ? '. Longer messages cost more.' : ''}</p>}
+          {ch === 'sms' && <Select label="Type of text" value={category} onChange={e => setCategory(e.target.value)} hint="Some countries only allow reminders and updates by text, not invitations or news."><option value="utility">Reminder or update (service times, events they signed up for, follow-ups)</option><option value="marketing">Invitation or news</option></Select>}
           <BubblePreview channel={ch} text={body} churchName={me.org.name} />
         </Card>
       )}
@@ -322,7 +323,7 @@ function WhatsAppContent({ templates, approved, templateId, setTemplateId, setBo
   const [creating, setCreating] = useState(approved.length === 0)
   const [name, setName] = useState('')
   const [text, setText] = useState('Hi {first_name}, ')
-  const [cat, setCat] = useState('marketing')
+  const [cat, setCat] = useState('utility')
   const [busy, setBusy] = useState(false)
   const pick = (t) => { setTemplateId(t.id); setBody(t.body); setCategory(t.category) }
   async function create() {

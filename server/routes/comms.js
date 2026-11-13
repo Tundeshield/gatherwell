@@ -17,7 +17,7 @@ const stagingOnly = () => { if (isProduction()) throw forbidden('This is only av
 
 // --- content ---------------------------------------------------------------------------------
 function readContent(channel, body) {
-  const c = { category: oneOf(body.category, ['marketing', 'utility'], { fallback: 'marketing' }) }
+  const c = { category: oneOf(body.category, ['marketing', 'utility'], { fallback: 'utility' }) }
   if (channel === 'email') {
     c.subject = str(body.subject, { max: 200, required: true, name: 'Subject' })
     c.preheader = str(body.preheader, { max: 200 }) || ''
@@ -34,7 +34,7 @@ function readContent(channel, body) {
 
 const msgOut = (m, zone) => ({
   id: m.id, channel: m.channel, subject: m.subject || null, preheader: m.preheader || null, body: m.body || '', blocks: cleanBlocks(m.blocks?.length ? m.blocks : blocksFromBody(m.body)),
-  category: m.category || 'marketing', template_id: m.template_id || null, template_name: m.template_name || null, audience: m.audience, status: m.status, mode: m.mode || 'now',
+  category: m.category || 'utility', template_id: m.template_id || null, template_name: m.template_name || null, audience: m.audience, status: m.status, mode: m.mode || 'now',
   send_at: iso(m.send_at), send_local: m.send_at ? utcToLocal(toDate(m.send_at), zone) : null, sent_at: iso(m.sent_at), created_at: iso(m.created_at),
   recipient_count: m.recipient_count || 0, audience_total: m.audience_total ?? null, excluded: m.excluded || null,
   sent_count: m.sent_count || 0, failed_count: m.failed_count || 0, skipped_count: m.skipped_count || 0, delivered_count: m.delivered_count || 0, read_count: m.read_count || 0,
@@ -76,7 +76,7 @@ function cleanStep(s = {}) {
   }
   if (type === 'send') {
     const channel = oneOf(s.channel, CHANNEL_KEYS, { fallback: 'email' })
-    const step = { id, type, channel, title: str(s.title, { max: 80 }) || '', purpose: s.purpose && PURPOSES[s.purpose] ? s.purpose : 'general', category: oneOf(s.category, ['marketing', 'utility'], { fallback: 'marketing' }) }
+    const step = { id, type, channel, title: str(s.title, { max: 80 }) || '', purpose: s.purpose && PURPOSES[s.purpose] ? s.purpose : 'general', category: oneOf(s.category, ['marketing', 'utility'], { fallback: 'utility' }) }
     step.body = str(s.body, { max: channel === 'sms' ? 918 : channel === 'whatsapp' ? 1024 : 4000 }) || ''
     if (channel === 'email') { step.subject = str(s.subject, { max: 200 }) || step.title; step.preheader = str(s.preheader, { max: 200 }) || ''; step.blocks = s.blocks?.length ? cleanBlocks(s.blocks) : [] }
     else { step.templateId = s.templateId && isUuid(s.templateId) ? s.templateId : null; step.templateName = str(s.templateName, { max: 120 }) || null }
@@ -210,7 +210,7 @@ export default function (r) {
     const audience = cleanAudience(body.audience)
     const people = await audiencePeople(ctx, audience)
     const { eligible, excluded } = sortRecipients(channel, people)
-    const est = await estimate(ctx.org, channel, eligible, { body: body.body || '', category: body.category || 'marketing' })
+    const est = await estimate(ctx.org, channel, eligible, { body: body.body || '', category: body.category || 'utility' })
     const sorted = [...people].sort((a, b) => String(a.first_name).localeCompare(String(b.first_name)))
     return {
       total: people.length, eligible: eligible.length, excluded, estimate: est,
@@ -347,7 +347,7 @@ export default function (r) {
     requireCap(ctx, 'messages.manage')
     const { db } = await fb()
     const m = await loadMsg(db, ctx, params.id)
-    const data = { channel: m.channel, subject: m.subject || null, preheader: m.preheader || null, blocks: m.blocks || [], body: m.body || '', category: m.category || 'marketing',
+    const data = { channel: m.channel, subject: m.subject || null, preheader: m.preheader || null, blocks: m.blocks || [], body: m.body || '', category: m.category || 'utility',
       template_id: m.template_id || null, template_name: m.template_name || null, audience: m.audience, status: 'draft', mode: 'now', send_at: null, scope: ctx.branchScope || null,
       recipient_count: 0, created_by: ctx.user.id, created_by_name: ctx.user.name, created_at: new Date(), updated_at: new Date() }
     const ref = await col(db, ctx.org.id, 'messages').add(data)
@@ -518,7 +518,7 @@ export default function (r) {
   })
 
   // --- templates -------------------------------------------------------------------------------
-  const tplOut = (t) => ({ id: t.id, name: t.name, purpose: t.purpose, subject: t.subject || '', body: t.body || '', category: t.category || 'marketing',
+  const tplOut = (t) => ({ id: t.id, name: t.name, purpose: t.purpose, subject: t.subject || '', body: t.body || '', category: t.category || 'utility',
     whatsapp: t.whatsapp || { status: 'not_submitted' }, starter: !!t.starter, updated_at: iso(t.updated_at), sms: smsInfo(t.body || '') })
   r.get('/comms/templates', async ({ ctx }) => {
     requireCap(ctx, 'messages.manage')
@@ -532,7 +532,7 @@ export default function (r) {
     return {
       name: str(body.name, { max: 100, required: true, name: 'Name' }), purpose: PURPOSES[body.purpose] ? body.purpose : 'general',
       subject: str(body.subject, { max: 200 }) || '', body: str(body.body, { max: 1024, required: true, name: 'Message' }),
-      category: oneOf(body.category, ['marketing', 'utility'], { fallback: 'marketing' }),
+      category: oneOf(body.category, ['marketing', 'utility'], { fallback: 'utility' }),
     }
   }
   r.post('/comms/templates', async ({ ctx, body }) => {

@@ -179,7 +179,7 @@ export function WorkflowBuilder() {
       ) : <EnrolledPeople wf={wf} names={names} />}
 
       <StepPicker open={adding !== null} scheduled={scheduled} onClose={() => setAdding(null)} onPick={(type) => {
-        const s = type === 'wait' ? { id: stepId(), type, wait: { kind: 'for', amount: 2, unit: 'days' } } : type === 'send' ? { id: stepId(), type, channel: 'email', title: 'New message', subject: '', body: 'Hi {first_name}, ', category: 'marketing' }
+        const s = type === 'wait' ? { id: stepId(), type, wait: { kind: 'for', amount: 2, unit: 'days' } } : type === 'send' ? { id: stepId(), type, category: 'utility', channel: 'email', title: 'New message', subject: '', body: 'Hi {first_name}, ', category: 'marketing' }
           : type === 'check' ? { id: stepId(), type, condition: 'attended', ifYes: 'end', ifNo: 'continue' } : type === 'task' ? { id: stepId(), type, title: 'Follow up with {first_name}', dueHours: 48 } : { id: stepId(), type }
         const a = [...wf.steps]; a.splice(adding, 0, s); setSteps(a); setEditing(adding); setAdding(null)
       }} />
@@ -326,6 +326,7 @@ function StepEditor({ step: s, trigger, onChange, channels, templates, tags, ass
           {s.body && <BubblePreview channel="whatsapp" text={s.body} churchName={churchName} />}
         </>}
         {s.channel === 'sms' && <>
+          <Select label="Type of text" value={s.category || 'utility'} onChange={e => set({ category: e.target.value })} hint="Some countries only allow reminders and updates by text, not invitations or news."><option value="utility">Reminder or update (service times, events they signed up for, follow-ups)</option><option value="marketing">Invitation or news</option></Select>
           <Textarea label="Message" rows={5} value={s.body || ''} onChange={e => set({ body: e.target.value })} maxLength={918} />
           <p className="-mt-2 mb-3 text-sm text-mist-500">{info.length} characters · {info.segments} {info.segments === 1 ? 'text' : 'texts'} per person</p>
           <BubblePreview channel="sms" text={s.body} churchName={churchName} />

@@ -216,7 +216,7 @@ export const stepId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}`
 // `channel` is the channel for short messages (SMS when the church has it, otherwise email).
 export function presetWorkflow(key, channel = 'email') {
   if (channel === 'whatsapp' && !WHATSAPP_AUTOMATION) channel = 'email'
-  const send = (title, purpose, body, subject, ch = channel) => ({ id: stepId(), type: 'send', channel: ch, title, purpose, subject: subject || title, body, category: 'marketing' })
+  const send = (title, purpose, body, subject, ch = channel) => ({ id: stepId(), type: 'send', channel: ch, title, purpose, subject: subject || title, body, category: purpose === 'invitation' || purpose === 'announcement' ? 'marketing' : 'utility' })
   const P = {
     welcome: {
       name: 'Welcome first-time visitors', trigger: { type: 'first_visit' }, exit_on_return: true, steps: [
@@ -272,13 +272,13 @@ export const PRESETS = [
 
 // Starter templates the church can use as they are or customise.
 export const STARTER_TEMPLATES = [
-  { key: 'welcome', purpose: 'welcome', name: 'Welcome a first-time visitor', subject: 'Welcome to {church_name}, {first_name}', body: 'Hi {first_name}, thank you for worshipping with us at {church_name}. It was a joy to have you. If there’s anything we can pray about or help with, just reply to this message.', category: 'marketing' },
+  { key: 'welcome', purpose: 'welcome', name: 'Welcome a first-time visitor', subject: 'Welcome to {church_name}, {first_name}', body: 'Hi {first_name}, thank you for worshipping with us at {church_name}. It was a joy to have you. If there’s anything we can pray about or help with, just reply to this message.', category: 'utility' },
   { key: 'invite', purpose: 'invitation', name: 'Invite back on Sunday', subject: 'See you on Sunday, {first_name}?', body: 'Hi {first_name}, we’d love to see you this Sunday at {church_name}. Save a seat for a friend too!', category: 'marketing' },
   { key: 'announce', purpose: 'announcement', name: 'Church announcement', subject: 'News from {church_name}', body: 'Hi {first_name}, we have some news to share with you from {church_name}.', category: 'marketing' },
   { key: 'event', purpose: 'event', name: 'Event invitation', subject: 'You’re invited: {event_name}', body: 'Hi {first_name}, you’re invited to {event_name} on {event_date}. We’d love you to come!', category: 'marketing' },
   { key: 'reminder', purpose: 'reminder', name: 'Event reminder', subject: 'Reminder: {event_name}', body: 'Hi {first_name}, a reminder that {event_name} is on {event_date}. We look forward to seeing you!', category: 'utility' },
-  { key: 'missed', purpose: 'followup', name: 'We’ve missed you', subject: 'We’ve missed you, {first_name}', body: 'Hi {first_name}, we’ve missed you at {church_name} these past few weeks. We hope you’re well, and we’re here if you need anything.', category: 'marketing' },
-  { key: 'thanks', purpose: 'appreciation', name: 'Thank you for serving', subject: 'Thank you, {first_name}', body: 'Hi {first_name}, thank you for serving at {church_name}. Your time and care make a real difference.', category: 'marketing' },
+  { key: 'missed', purpose: 'followup', name: 'We’ve missed you', subject: 'We’ve missed you, {first_name}', body: 'Hi {first_name}, we’ve missed you at {church_name} these past few weeks. We hope you’re well, and we’re here if you need anything.', category: 'utility' },
+  { key: 'thanks', purpose: 'appreciation', name: 'Thank you for serving', subject: 'Thank you, {first_name}', body: 'Hi {first_name}, thank you for serving at {church_name}. Your time and care make a real difference.', category: 'utility' },
   { key: 'update', purpose: 'general', name: 'Weekly update', subject: 'This week at {church_name}', body: 'Hi {first_name}, here’s what’s happening at {church_name} this week.', category: 'marketing' },
 ]
 
