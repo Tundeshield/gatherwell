@@ -123,7 +123,7 @@ const twilio = {
 // POST {base}/api/sms/send; the base URL is shown in each Termii dashboard. Delivery reports are
 // signed with X-Termii-Signature (HMAC-SHA512 of the raw body, keyed with the secret key).
 const termii = {
-  id: 'termii', label: 'Termii', env: ['TERMII_API_KEY', 'TERMII_SECRET_KEY', 'TERMII_BASE_URL'], optional: ['TERMII_BASE_URL'], billsFailed: true,
+  id: 'termii', label: 'Termii', env: ['TERMII_API_KEY', 'TERMII_SECRET_KEY', 'TERMII_WEBHOOK_SECRET', 'TERMII_BASE_URL'], optional: ['TERMII_SECRET_KEY', 'TERMII_WEBHOOK_SECRET', 'TERMII_BASE_URL'], billsFailed: true,
   base: (c) => (c.TERMII_BASE_URL || 'https://v3.api.termii.com').replace(/\/$/, ''),
   available: (c) => !!c.TERMII_API_KEY,
   async test(c) {
@@ -143,7 +143,11 @@ const termii = {
       return null
     })
   },
-  verify({ raw, headers }, c) { return !!c.TERMII_SECRET_KEY && same(hmac('sha512', c.TERMII_SECRET_KEY, raw || ''), headers.get('x-termii-signature') || '') },
+  // The dashboard's webhook "signing secret" (tsk_…) if set, otherwise the account secret key.
+  verify({ raw, headers }, c) {
+    const sig = headers.get('x-termii-signature') || ''
+    return [c.TERMII_WEBHOOK_SECRET, c.TERMII_SECRET_KEY].filter(Boolean).some(k => same(hmac('sha512', k, raw || ''), sig))
+  },
   parse({ json }) {
     const j = json || {}
     if (!j.message_id) return { reports: [], inbound: [] }

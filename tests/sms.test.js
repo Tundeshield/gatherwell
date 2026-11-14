@@ -417,6 +417,8 @@ test('provider adapters: request format, error normalisation and signature check
     assert.equal(JSON.parse(seen.at(-1)[1].body).channel, 'dnd')
     const raw = JSON.stringify({ message_id: '9001', status: 'Delivered' })
     assert.equal(te.verify({ raw, headers: new Headers({ 'x-termii-signature': crypto.createHmac('sha512', 'sk').update(raw).digest('hex') }) }, { TERMII_SECRET_KEY: 'sk' }), true)
+    assert.equal(te.verify({ raw, headers: new Headers({ 'x-termii-signature': crypto.createHmac('sha512', 'tsk_x').update(raw).digest('hex') }) }, { TERMII_SECRET_KEY: 'sk', TERMII_WEBHOOK_SECRET: 'tsk_x' }), true, 'webhook signing secret')
+    assert.equal(te.verify({ raw, headers: new Headers({ 'x-termii-signature': 'bad' }) }, { TERMII_WEBHOOK_SECRET: 'tsk_x' }), false)
     assert.equal(te.parse({ json: JSON.parse(raw) }).reports[0].status, 'delivered')
     // Africa's Talking
     const at = SMS_ADAPTERS.africastalking
