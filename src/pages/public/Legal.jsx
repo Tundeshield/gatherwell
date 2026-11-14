@@ -8,6 +8,7 @@ const UPDATED = '12 November 2026'
 const CONTACT = 'privacy@gatherhq.org'
 const HELLO = 'hello@gatherhq.org'
 export const COMPANY = 'GatherHQ'
+export const ADDRESS = 'Alma 2 Unit 2, Richmond Gate Estate, Lekki Peninsula II, Lagos 101245, Nigeria'
 const COMPANY_FULL = 'Babatunde Adepegba, an individual trading as GatherHQ'
 const Mail = () => <a href={`mailto:${CONTACT}`} className="link">{CONTACT}</a>
 const Hello = () => <a href={`mailto:${HELLO}`} className="link">{HELLO}</a>
@@ -206,7 +207,7 @@ export function LegalFooter({ className = '' }) {
           <Link to="/legal/dpa" className="hover:text-ink">Data Processing Agreement</Link>
           <a href={`mailto:${CONTACT}`} className="hover:text-ink">{CONTACT}</a>
         </nav>
-        <span>© {new Date().getFullYear()} {COMPANY}</span>
+        <span className="text-right">© {new Date().getFullYear()} {COMPANY}<span className="block text-xs">{ADDRESS}</span></span>
       </div>
     </footer>
   )
