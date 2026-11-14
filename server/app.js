@@ -19,6 +19,7 @@ import childrenRoutes from './routes/children.js'
 import commsRoutes from './routes/comms.js'
 import smsRoutes from './routes/sms.js'
 import businessRoutes from './routes/business.js'
+import analyticsRoutes from './routes/analytics.js'
 import { isExpired, billingEnabled } from './billing.js'
 import { appEnv, hostAllowed, adminHostAllowed } from './env.js'
 import { COMMIT } from './version.js'
@@ -29,13 +30,13 @@ const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/o
   /^\/children\/(pickup|pickup\/lookup)$/]
 
 const router = new Router()
-for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes, smsRoutes, businessRoutes]) {
+for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes, smsRoutes, businessRoutes, analyticsRoutes]) {
   register(router)
 }
 
 // Route options:
 //   auth: 'public' | 'user' (signed in, no org needed) | 'org' (default) | 'platform'
-export async function handle(req) {
+export async function handle(req, nf = null) {
   const url = new URL(req.url)
   const path = url.pathname.replace(/^\/api/, '') || '/'
   const method = req.method.toUpperCase()
@@ -85,7 +86,7 @@ export async function handle(req) {
     if (mode === 'org' && !['GET', 'HEAD'].includes(method) && isExpired(ctx.org) && !READ_ONLY_ALLOWED.some(re => re.test(path) && (re.method ? re.method === method : true))) {
       return json({ error: 'Your free trial has ended. Choose a plan in Settings › Billing to keep using GatherHQ. Everything you’ve recorded is safe.', details: { code: 'billing_required' } }, 402)
     }
-    const result = await route.handler({ req, url, params, body, raw, query: Object.fromEntries(url.searchParams), ctx })
+    const result = await route.handler({ req, nf, url, params, body, raw, query: Object.fromEntries(url.searchParams), ctx })
     if (result instanceof Response) return result
     return json(result ?? { ok: true })
   } catch (e) {

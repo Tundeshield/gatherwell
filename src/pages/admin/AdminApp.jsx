@@ -1,7 +1,7 @@
 // The GatherHQ team's business console. Its own sign-in and session (separate from any church account).
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { LayoutDashboard, Building2, Users, Receipt, Repeat, LineChart, Wallet, MessagesSquare, PlugZap, Activity, ScrollText, Settings, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Building2, Users, Receipt, Repeat, LineChart, Wallet, MessagesSquare, PlugZap, Activity, ScrollText, Settings, LogOut, Menu, X, Globe } from 'lucide-react'
 import { api } from '../../lib/api'
 import { signInWithPassword, sendReset } from '../../lib/firebase'
 import { Button, Input, Notice, PageLoader } from '../../components/ui'
@@ -15,6 +15,7 @@ import AdminUser from './AdminUser'
 import AdminComms from './AdminComms'
 import { AdminPayments, AdminSubscriptions, AdminRevenue } from './AdminMoney'
 import AdminExpenses from './AdminExpenses'
+import AdminVisitors from './AdminVisitors'
 import { AdminMessaging, AdminHealth, AdminAudit, AdminSettings } from './AdminOps'
 
 const AdminContext = createContext(null)
@@ -74,7 +75,7 @@ function AdminLogin() {
 }
 
 const NAV = [
-  ['/', 'Overview', LayoutDashboard, true], ['/churches', 'Churches', Building2], ['/users', 'Users', Users],
+  ['/', 'Overview', LayoutDashboard, true], ['/visitors', 'Website visitors', Globe], ['/churches', 'Churches', Building2], ['/users', 'Users', Users],
   ['/payments', 'Orders & payments', Receipt], ['/subscriptions', 'Subscriptions', Repeat], ['/revenue', 'Revenue & analytics', LineChart],
   ['/expenses', 'Expenses', Wallet], ['/messaging', 'Messaging', MessagesSquare], ['/providers', 'Providers', PlugZap],
   ['/health', 'Platform health', Activity], ['/audit', 'Audit log', ScrollText], ['/settings', 'Settings', Settings],
@@ -123,6 +124,7 @@ function Gate() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<AdminOverview />} />
+        <Route path="visitors" element={<AdminVisitors />} />
         <Route path="churches" element={<AdminChurches />} />
         <Route path="churches/:id" element={<AdminChurch />} />
         <Route path="users" element={<AdminUsers />} />

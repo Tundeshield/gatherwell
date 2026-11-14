@@ -5,6 +5,7 @@ import { whatsappFor } from '../../shared/automation.js'
 import { billingStatus, TRIAL_DAYS } from '../../shared/plans.js'
 import { billingEnabled } from '../billing.js'
 import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
+import { markSignup } from '../analytics.js'
 
 const DEFAULT_SETTINGS = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }
 
@@ -116,6 +117,7 @@ export default function (r) {
     await db.collection('users').doc(user.id).set({ email, name, is_platform_admin: false, created_at: new Date(), last_login_at: null, active_org_id: null, terms_accepted_at: new Date(), terms_version: TERMS_VERSION })
     const org = await createOrganisation(db, { orgName, branchName, timezone, country: str(body.country, { max: 64 }), contactEmail: email, settings: { ...DEFAULT_SETTINGS, defaultCountryCode: cc }, owner: user })
     await audit({ org, user }, 'org.created', 'organisation', org.id, { name: orgName })
+    await markSignup(req, { id: org.id, name: orgName })
     return json({ ok: true, signIn: true }, 201)
   })
 

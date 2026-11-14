@@ -42,6 +42,7 @@ const ChildrenCheckin = lazyPage(() => import('./pages/app/ChildrenCheckin'))
 const ChildrenRoom = lazyPage(() => import('./pages/app/ChildrenRoom'))
 const ChildrenPickup = lazyPage(() => import('./pages/app/ChildrenPickup'))
 import { isAdminHost } from './lib/host'
+import { usePageTracking } from './lib/track'
 import EnvBanner from './components/EnvBanner'
 
 function MessageRedirect() {
@@ -89,6 +90,7 @@ function GuestOnly({ children }) {
 
 export default function App() {
   const { pathname } = useLocation()
+  usePageTracking()
   return (
     <SessionProvider>
       <EnvBanner />

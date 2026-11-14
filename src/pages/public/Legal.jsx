@@ -38,18 +38,20 @@ function Privacy() {
         'Account holders: name, email address, password (stored securely by Google Firebase; we never see it), church name, country, role, and a record of activity in the account.',
         'Church records, as entered by a church or by people checking in: names, phone numbers, email addresses, attendance, event registrations, answers to check-in questions, follow-up notes, tags and similar details the church chooses to record.',
         'Technical information: a sign-in cookie, IP address and basic request logs used for security and to prevent abuse.',
+        'Website statistics: when you visit our public pages (not church check-in or event pages), we record the pages you view, how long you spend on them, the site that sent you, your approximate location (country and city), and your device, browser and language. We count each visitor once per day using a code made from your IP address and browser with a random value that changes and is deleted every day, so we never store your IP address and can’t recognise you on another day. Statistics are kept for up to 13 months. Browsers that send a “do not track” or Global Privacy Control signal are not counted.',
         'Billing: card payments are processed by Stripe, which collects card details directly. We receive the billing name, email, country, and the card type and last four digits, never full card numbers.',
       ]} />
       <H>How we use it</H>
       <UL items={[
         'To provide the service the church asked for: storing records, sending the emails it writes, showing reports and reminders.',
         'To keep accounts secure, prevent misuse and fix problems.',
+        'To understand how people find and use our website, so we can improve it.',
         'To send account holders essential service messages (for example, security notices, invitations and the Monday brief, which can be switched off).',
         'We do not sell personal information, use church data for advertising, or contact a church’s members for our own purposes.',
       ]} />
       <P>Our legal bases are performance of a contract (providing the service), our legitimate interests in running a secure and reliable service, and legal obligations. Churches are responsible for having a lawful basis, such as consent or legitimate interest, for the information they record about their people.</P>
       <H>Cookies and similar technology</H>
-      <P>We use one essential cookie to keep account holders signed in. On public check-in pages, a person can choose to have their phone number remembered on their own device. We do not use advertising or tracking cookies, so there is no cookie banner.</P>
+      <P>We use one essential cookie to keep account holders signed in. On public check-in pages, a person can choose to have their phone number remembered on their own device. We do not use advertising or tracking cookies, and our website statistics use no cookies or device storage, so there is no cookie banner.</P>
       <H>Where data is stored and who processes it</H>
       <P>We use a small number of trusted providers (subprocessors), listed in the <Link to="/legal/dpa" className="link">Data Processing Agreement</Link>. Some are in countries outside the UK or European Economic Area. Where that happens, transfers are protected by the providers’ standard contractual clauses or equivalent safeguards.</P>
       <H>How long we keep it</H>
