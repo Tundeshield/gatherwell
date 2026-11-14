@@ -478,3 +478,20 @@ test('a shared platform sender name lets churches text Nigeria before their own 
   providers.mock_sms.countries.NG = original
   await S.ops.post('/platform/comms/sms', { providers })
 })
+
+test('the GatherHQ-wide SMS switch hides SMS for churches, pauses texts and skips workflow text steps', async () => {
+  const c = await church('Switch Chapel', 'switch@sms.test')
+  await c.post('/comms/credits/test', { amount: 5 })
+  const ng = await person(c, 'Kemi', { phone: '08031110088' })
+  assert.equal((await c.post('/platform/comms/sms/enabled', { enabled: false })).status, 403, 'churches can’t flip it')
+  let r = await S.ops.post('/platform/comms/sms/enabled', { enabled: false })
+  assert.equal(r.status, 200)
+  r = await c.get('/comms/channels')
+  assert.equal(r.data.channels.sms.off, true); assert.equal(r.data.channels.sms.ready, false)
+  r = await sendSms(c, { mode: 'people', people: [ng] }, 'Hi {first_name}')
+  const msg = r.data.message?.id ? (await c.get(`/comms/messages/${r.data.message.id}`)).data.message : null
+  assert.ok(!msg || msg.status === 'paused' || r.status >= 400, 'nothing sent while off')
+  assert.ok((await S.ops.get('/platform/audit')).data.rows.some(x => x.action === 'platform.sms_switched_off'))
+  r = await S.ops.post('/platform/comms/sms/enabled', { enabled: true })
+  assert.equal((await c.get('/comms/channels')).data.channels.sms.ready, true)
+})

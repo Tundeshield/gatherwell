@@ -302,7 +302,7 @@ function StepEditor({ step: s, trigger, onChange, channels, templates, tags, ass
       <div>
         <p className="label">Send by</p>
         <div className="mb-4 grid grid-cols-3 gap-2">
-          {['email', 'sms', 'whatsapp'].map(c => { const Icon = CHANNEL_ICON[c]; const ok = channels[c]?.ready; const soon = channels[c]?.comingSoon; return (
+          {['email', 'sms', 'whatsapp'].filter(c => !channels[c]?.off || s.channel === c).map(c => { const Icon = CHANNEL_ICON[c]; const ok = channels[c]?.ready; const soon = channels[c]?.comingSoon; return (
             <button key={c} type="button" disabled={soon} onClick={() => set({ channel: c, ...(c === 'whatsapp' ? { templateId: null } : {}) })} aria-pressed={s.channel === c} title={soon ? WHATSAPP_COMING_SOON : undefined}
               className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-sm ${s.channel === c ? 'border-brand-600 bg-brand-50 font-semibold text-brand-800' : soon ? 'cursor-not-allowed border-mist-200 bg-mist-50 text-mist-400' : 'border-mist-200 text-ink'}`}>
               <Icon size={18} />{channelLabel(c)}<span className={`text-[11px] ${ok ? 'text-green-800' : 'text-mist-400'}`}>{soon ? 'Coming soon' : ok ? (channels[c].simulated ? 'Test mode' : c === 'sms' ? 'Uses credit' : 'Included') : 'Not connected'}</span>

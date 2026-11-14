@@ -178,7 +178,7 @@ export default function Compose() {
       {step === 'how' && (
         <Card title="How would you like to send it?" hint={`To: ${audienceText(audience, tagNames)}`}>
           <div className="space-y-3">
-            {['email', 'sms', 'whatsapp'].map(c => {
+            {['email', 'sms', 'whatsapp'].filter(c => !st[c]?.off).map(c => {
               const s = st[c] || {}
               const Icon = CHANNEL_ICON[c]
               const n = counts[c]

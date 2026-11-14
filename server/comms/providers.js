@@ -76,7 +76,9 @@ export async function platformConfig({ fresh = false } = {}) {
   if (cache && !fresh && Date.now() - cache.at < 30000) return cache.value
   const { db } = await fb()
   const d = (await db.collection('platform').doc('comms').get()).data() || {}
-  const value = { active: { ...DEFAULT_ACTIVE(), ...(d.active || {}) }, disabled: d.disabled || [], rates: d.rates || null, packs: d.packs || null, sms: mergeSmsConfig(d.sms || null), updated_at: d.updated_at || null, updated_by: d.updated_by || null }
+  // SMS for churches: a GatherHQ-wide switch (admin console). Off by default in production until switched on.
+  const smsEnabled = typeof d.sms_enabled === 'boolean' ? d.sms_enabled : !isProduction()
+  const value = { smsEnabled, active: { ...DEFAULT_ACTIVE(), ...(d.active || {}) }, disabled: d.disabled || [], rates: d.rates || null, packs: d.packs || null, sms: mergeSmsConfig(d.sms || null), updated_at: d.updated_at || null, updated_by: d.updated_by || null }
   cache = { at: Date.now(), value }
   return value
 }
@@ -101,6 +103,7 @@ export async function activeProvider(channel) {
 export async function smsCountries() {
   const cfg = await platformConfig()
   const out = {}
+  if (!cfg.smsEnabled) return out
   for (const [id, p] of Object.entries(cfg.sms.providers || {})) {
     const a = SMS_ADAPTERS[id]
     if (!a || !p.enabled || !a.available(await credentials(id))) continue
@@ -124,6 +127,7 @@ export async function channelStatus(org) {
       reason: adapter ? null : reason,
     }
   }
+  if (!(await platformConfig()).smsEnabled) { out.sms = { ready: false, off: true, simulated: false, billing: 'platform', canChurchBill: false, needsTemplates: false, countries: [], reason: 'off' }; return { email: out.email, sms: out.sms, whatsapp: out.whatsapp } }
   const countries = await smsCountries()
   const list = Object.values(countries).flat()
   out.sms = { ready: list.length > 0, simulated: list.length > 0 && list.every(x => x.mock), billing: 'platform', canChurchBill: false, needsTemplates: false, countries: Object.keys(countries).sort(), reason: list.length ? null : 'not_set' }

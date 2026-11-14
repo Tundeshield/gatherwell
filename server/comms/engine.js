@@ -312,6 +312,7 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
   }
   if (sms) { if (!Object.keys(await smsCountries()).length) adapter = null; else adapter = { id: 'routed', idempotent: true } }
   else adapter = (await activeProvider(m.channel)).adapter
+  if (!adapter && sms && !(await platformConfig()).smsEnabled) { await release({ status: 'paused', pause_reason: 'channel', last_error: 'Text messages are switched off for now, so nothing was sent. Send it by email, or try again later.' }); return progress({ ...m, status: 'paused', pause_reason: 'channel' }, { nextAt: null }) }
   if (!adapter) { await release({ status: 'paused', pause_reason: 'channel', last_error: `${sms ? 'SMS' : m.channel === 'whatsapp' ? 'WhatsApp' : 'Email'} isn’t connected, so nothing was sent.` }); return progress({ ...m, status: 'paused', pause_reason: 'channel' }, { nextAt: null }) }
   const content = { subject: m.subject, preheader: m.preheader, blocks: m.blocks, body: m.body, category: m.category, templateName: m.template_name }
 
@@ -575,6 +576,7 @@ export async function processEnrolment(orgId, id, { now = new Date() } = {}) {
       if (step.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) { log('skip', 'Not sent: automated WhatsApp isn’t available yet', { result: 'skipped' }); next(); continue }
       const r = reachable(step.channel, person)
       if (!r.ok) { log('skip', `Message not sent: ${r.why === 'no_consent' ? 'no consent for this channel' : r.why === 'opted_out' ? 'they opted out' : 'no contact details'}`, { result: 'skipped' }); next(); continue }
+      if (step.channel === 'sms' && !(await platformConfig()).smsEnabled) { log('skip', 'Not sent: text messages are switched off for now', { result: 'skipped' }); next(); continue }
       if (step.channel === 'sms') {
         const window = Number((await platformConfig()).sms.resumeWindowHours || 48) * 3600e3
         const dueSince = e.blocked_since ? toDate(e.blocked_since) : null

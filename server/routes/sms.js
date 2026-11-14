@@ -174,10 +174,21 @@ export default function (r) {
         countries: p.countries || {} })
     }
     const requests = await db.collection('smsSenderRequests').where('status', '==', 'pending').limit(100).get()
-    return { providers, routes: cfg.routes || {}, taxPct: cfg.taxPct || 0, lowAlerts: cfg.lowAlerts, resumeWindowHours: cfg.resumeWindowHours, placeholder: !!cfg.placeholder,
+    return { smsEnabled: (await platformConfig()).smsEnabled, providers, routes: cfg.routes || {}, taxPct: cfg.taxPct || 0, lowAlerts: cfg.lowAlerts, resumeWindowHours: cfg.resumeWindowHours, placeholder: !!cfg.placeholder,
       canStoreSecrets: canStoreSecrets(), senderRequests: requests.docs.map(d => ({ id: d.id, ...plain(d.data()) })), packs: await packs() }
   }
   r.get('/platform/comms/sms', { auth: 'platform' }, async () => platformSms())
+
+  // The GatherHQ-wide switch for text messages. Off: churches don't see SMS, nothing is sent,
+  // scheduled texts pause and workflow text steps are skipped. Settings and credit are kept.
+  r.post('/platform/comms/sms/enabled', { auth: 'platform' }, async ({ ctx, body }) => {
+    if (typeof body.enabled !== 'boolean') throw bad('Choose on or off.')
+    const { db } = await fb()
+    await db.collection('platform').doc('comms').set({ sms_enabled: body.enabled, updated_at: new Date(), updated_by: ctx.user.email }, { merge: true })
+    clearConfigCache()
+    await audit(ctx, body.enabled ? 'platform.sms_switched_on' : 'platform.sms_switched_off', 'platform', 'sms')
+    return { smsEnabled: body.enabled }
+  })
 
   const okNum = (v, max = 5) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max
   const TYPES = ['alpha', 'number', 'shortcode', 'provider']

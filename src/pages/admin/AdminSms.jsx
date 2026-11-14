@@ -1,7 +1,7 @@
 // GatherHQ team: SMS providers, credentials, country routes and prices, sender approvals, health.
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/api'
-import { useLoad, Button, Badge, Notice, Input, Select, Checkbox, Toggle, Modal, Skeleton, ErrorState, useToast } from '../../components/ui'
+import { useLoad, Button, Badge, Notice, Input, Select, Checkbox, Toggle, Modal, Skeleton, ErrorState, useToast, useConfirm } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import { countryName } from '../../../shared/comms.js'
 
@@ -9,6 +9,7 @@ const SENDER_TYPES = [['alpha', 'Sender name'], ['number', 'Phone number'], ['sh
 
 export default function AdminSms() {
   const toast = useToast()
+  const confirm = useConfirm()
   const { data, error, loading, reload } = useLoad(() => api.get('/platform/comms/sms'), [])
   const [cfg, setCfg] = useState(null)
   const [dirty, setDirty] = useState(false)
@@ -32,6 +33,22 @@ export default function AdminSms() {
         <div><h2 className="text-xl font-semibold text-ink">SMS</h2><p className="text-sm text-mist-500">Churches just choose “SMS”. These settings decide which provider carries each text.</p></div>
         {dirty && <Button loading={busy === 'save'} onClick={save}>Save SMS settings</Button>}
       </div>
+
+      {/* The switch for every church */}
+      <section className={`panel flex flex-wrap items-center gap-4 px-5 py-4 ${data.smsEnabled ? '' : 'border-amber-300 bg-amber-50'}`}>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold text-ink">Text messages for churches: {data.smsEnabled ? 'On' : 'Off'}</p>
+          <p className="mt-0.5 text-sm text-mist-600">{data.smsEnabled
+            ? 'Churches can choose SMS in messages and workflows, for countries marked verified below.'
+            : 'Churches don’t see SMS anywhere and nothing is sent. Scheduled texts pause; text steps in workflows are skipped so the rest still runs. Settings, credentials and credit are kept.'}</p>
+        </div>
+        <Button variant={data.smsEnabled ? 'secondary' : 'primary'} loading={busy === 'flag'} onClick={async () => {
+          const on = !data.smsEnabled
+          if (!(await confirm({ title: on ? 'Switch text messages on for churches?' : 'Switch text messages off for every church?', message: on ? 'Churches will see SMS for any verified country, and scheduled texts can send.' : 'SMS disappears for every church straight away. Scheduled texts pause and workflow text steps are skipped until you switch it back on.', confirmLabel: on ? 'Switch on' : 'Switch off', danger: !on }))) return
+          const r = await run('flag', () => api.post('/platform/comms/sms/enabled', { enabled: on }), on ? 'Text messages switched on' : 'Text messages switched off')
+          if (r) reload()
+        }}>{data.smsEnabled ? 'Switch off' : 'Switch on'}</Button>
+      </section>
 
       {/* Providers */}
       <section className="panel">

@@ -781,8 +781,9 @@ test('automations: welcome journey emails, Monday brief timing, opt-outs, WhatsA
 
     // Monday brief: only on Monday from 7am Lagos time, once a week
     // Next week's Monday, so the test passes whatever day it runs (a run on a Monday evening has already sent this week's)
-    let monday = new Date(Date.now() + 2 * 86400e3)
     const local = (d) => new Date(d.getTime() + tzOffsetMs('Africa/Lagos', d))
+    // The coming Monday (or the one after, if today is Monday): its brief covers the week that includes today.
+    let monday = new Date(Date.now() + (local(new Date()).getUTCDay() === 1 ? 86400e3 : 60e3))
     while (!(local(monday).getUTCDay() === 1 && local(monday).getUTCHours() === 7)) monday = new Date(monday.getTime() + 3600e3)
     monday = new Date(monday.getTime() + 30 * 60e3)
     // Earlier steps run the scheduler at the real time, which on a Monday morning sends this week's brief: count from here.

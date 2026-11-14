@@ -54,8 +54,9 @@ export default function Channels() {
     try { const r = await api.post('/comms/credits/checkout', { amount }); window.location.assign(r.url) } catch (e) { toast(e.message, 'error'); setBusy('') }
   }
 
+  const smsOff = !!data.channels.sms.off
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
+    <div className={`grid grid-cols-1 gap-6 ${smsOff ? '' : 'lg:grid-cols-[1fr_360px]'}`}>
       <div className="min-w-0 space-y-6">
         {/* Channels in plain words */}
         <Panel title="Channels">
@@ -67,13 +68,19 @@ export default function Channels() {
                 <p className="mt-1 text-sm text-mist-600">Included in your plan: no credit needed, up to {data.emailLimit.toLocaleString()} emails a day. Emails keep going even when your messaging credit runs out.</p>
               </div>
             </li>
-            <li className="flex items-start gap-3 px-5 py-4">
+            {smsOff ? <li className="flex items-start gap-3 px-5 py-4">
+              <Smartphone size={18} className="mt-0.5 text-mist-400" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2"><span className="text-[16px] font-medium text-ink">SMS (text messages)</span><Badge>Coming soon</Badge></div>
+                <p className="mt-1 text-sm text-mist-600">Text messages aren’t available yet. Use email, or the one-tap WhatsApp option when sending.</p>
+              </div>
+            </li> : <li className="flex items-start gap-3 px-5 py-4">
               <Smartphone size={18} className="mt-0.5 text-mist-500" aria-hidden />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2"><span className="text-[16px] font-medium text-ink">SMS (text messages)</span>{data.channels.sms.ready ? <Badge tone="success">{data.channels.sms.simulated ? 'Ready (test mode)' : 'Ready'}</Badge> : <Badge>Not available yet</Badge>}</div>
                 <p className="mt-1 text-sm text-mist-600">Paid from your messaging credit, per text. Long texts are sent in parts and each part is charged. GatherHQ chooses the best route for each country.{data.channels.sms.simulated ? ' On staging nothing is really sent: deliveries, failures and replies are simulated.' : ''}</p>
               </div>
-            </li>
+            </li>}
             <li className="flex items-start gap-3 px-5 py-4">
               <MessageCircle size={18} className="mt-0.5 text-mist-400" aria-hidden />
               <div className="min-w-0 flex-1">
@@ -84,6 +91,7 @@ export default function Channels() {
           </ul>
         </Panel>
 
+        {!smsOff && <>
         {/* SMS setup by country */}
         <Panel title="Text message setup">
           <p className="px-5 pt-4 text-sm text-mist-600">Each country has its own rules for who a text can come from. Some need your church’s sender name approved before texts can go out.</p>
@@ -150,6 +158,7 @@ export default function Channels() {
             <ul className="divide-y divide-mist-100 text-sm">{failures.map(x => <li key={x.id} className="px-5 py-2.5"><span className="font-medium text-ink">{x.name}</span> <span className="text-mist-500">({x.countryName}, {fmtDateTime(x.at)})</span><span className="block text-mist-600">{x.error || 'It couldn’t be delivered.'} Not charged.</span></li>)}</ul>
           </Panel>
         )}
+        </>}
 
         <Panel title="Sending hours">
           <div className="px-5 py-4">
@@ -163,7 +172,7 @@ export default function Channels() {
         </Panel>
       </div>
 
-      <aside className="space-y-6">
+      {!smsOff && <aside className="space-y-6">
         <Panel>
           <div className="px-5 py-5">
             <p className="text-sm text-mist-500">Messaging credit</p>
@@ -215,7 +224,7 @@ export default function Channels() {
           <p className="border-t border-mist-100 px-5 py-3 text-xs text-mist-500">When a text is sent, its estimated cost is held first, then settled at the actual price. Texts that aren’t sent are never charged.</p>
         </Panel>
         {c.placeholder && <Notice tone="warning">Text prices on staging are estimates for testing, not final GatherHQ prices.</Notice>}
-      </aside>
+      </aside>}
 
       <Modal open={!!sender} onClose={() => setSender(null)} title={`Sender name for ${sender?.name || ''}`}
         footer={<><Button variant="secondary" onClick={() => setSender(null)}>Cancel</Button><Button loading={busy === 'sender'} onClick={async () => { const r = await run('sender', () => api.post('/comms/sms/senders', sender), null); if (r) { toast(r.status === 'approved' ? 'Sender name saved' : 'Sent for approval'); setSender(null) } }}>Submit</Button></>}>
