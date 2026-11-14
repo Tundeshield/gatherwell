@@ -4,12 +4,12 @@ import Logo from '../../components/Logo'
 import { SiteHeader } from './site'
 
 export const LEGAL_VERSION = '2026-11-12'
-const UPDATED = '12 November 2026'
+const UPDATED = '14 November 2026'
 const CONTACT = 'privacy@gatherhq.org'
 const HELLO = 'hello@gatherhq.org'
 export const COMPANY = 'GatherHQ'
 export const ADDRESS = 'Alma 2 Unit 2, Richmond Gate Estate, Lekki Peninsula II, Lagos 101245, Nigeria'
-const COMPANY_FULL = 'Babatunde Adepegba, an individual trading as GatherHQ'
+const COMPANY_FULL = 'Avelon Technologies Ltd, a company registered in Nigeria'
 const Mail = () => <a href={`mailto:${CONTACT}`} className="link">{CONTACT}</a>
 const Hello = () => <a href={`mailto:${HELLO}`} className="link">{HELLO}</a>
 
@@ -207,7 +207,7 @@ export function LegalFooter({ className = '' }) {
           <Link to="/legal/dpa" className="hover:text-ink">Data Processing Agreement</Link>
           <a href={`mailto:${CONTACT}`} className="hover:text-ink">{CONTACT}</a>
         </nav>
-        <span className="text-right">© {new Date().getFullYear()} {COMPANY}<span className="block text-xs">{ADDRESS}</span></span>
+        <span className="text-right">© {new Date().getFullYear()} {COMPANY}, a product of Avelon Technologies Ltd<span className="block text-xs">{ADDRESS}</span></span>
       </div>
     </footer>
   )
