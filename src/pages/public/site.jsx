@@ -54,7 +54,7 @@ export function SiteHeader({ dark = false, links = true }) {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   useEffect(() => { const f = () => setScrolled(window.scrollY > 8); f(); window.addEventListener('scroll', f, { passive: true }); return () => window.removeEventListener('scroll', f) }, [])
-  const nav = [['/#product', 'Product'], ['/#tour', 'Tour'], ['/#children', 'Children’s church'], ['/pricing', 'Pricing'], ['/#faq', 'Questions']]
+  const nav = [['/#product', 'Product'], ['/#tour', 'Tour'], ['/#children', 'Children’s church'], ['/pricing', 'Pricing'], ['/#about', 'About'], ['/#faq', 'Questions']]
   const solid = scrolled || open
   const tone = dark && !solid
   const linkCls = `rounded-lg px-3 py-2 text-[15px] font-medium transition-colors ${tone ? 'text-white/80 hover:text-white' : 'text-ink-soft hover:text-ink'}`

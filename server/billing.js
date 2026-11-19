@@ -6,6 +6,7 @@ import crypto from 'node:crypto'
 import { fb } from './firebase.js'
 import { HttpError, bad } from './http.js'
 import { PLANS, CURRENCY, price, billingStatus } from '../shared/plans.js'
+import { onReferredChurchPaid } from './referrals.js'
 
 const API = 'https://api.stripe.com/v1'
 import { stripeKeyAllowed } from './env.js'
@@ -242,6 +243,7 @@ async function logSubscriptionChange(org, before, after, evt) {
   else if (after.plan && before.plan && after.plan !== before.plan) kind = (RANK[after.plan] || 0) > (RANK[before.plan] || 0) ? 'upgraded' : 'downgraded'
   else if (after.interval && before.interval && after.interval !== before.interval) kind = 'interval_changed'
   if (!kind) return
+  if (kind === 'started') await onReferredChurchPaid(org.id, { stripeFn: stripe }).catch(e => console.error('referral reward', e.message))
   const { db } = await fb()
   await db.collection('subscriptionChanges').doc(String(evt.id).slice(0, 200)).set({ org_id: org.id, org_name: org.name || null, kind,
     from: { plan: before.plan || null, interval: before.interval || null, status: before.status || null }, to: { plan: after.plan || null, interval: after.interval || null, status: after.status || null },

@@ -6,6 +6,9 @@ import { useSession } from '../../lib/session'
 import { TRIAL_DAYS } from '../../../shared/plans.js'
 import { SiteHeader, FaqList, Reveal } from './site'
 import { LegalFooter } from './Legal'
+import InviteBanner, { useInvite } from '../../components/InviteBanner'
+import WhatsAppButton from '../../components/WhatsAppButton'
+import { FOUNDER, TESTIMONIALS, whatsappLink } from '../../content/site'
 
 // Every screenshot on this page is a real GatherHQ screen, captured from the app with demo data.
 const SHOT = (name) => `/media/${name}`
@@ -92,12 +95,14 @@ export default function Landing() {
   const signedIn = !!me
   const [interval, setInterval_] = useState('monthly')
   const playTour = useRef(null)
+  const invite = useInvite()
   const primary = signedIn ? '/app' : '/signup'
   const watch = () => { document.getElementById('tour')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); playTour.current?.() }
   useEffect(() => { document.title = 'GatherHQ: check-in, visitor follow-up and children’s check-in for churches' }, [])
 
   return (
     <div className="min-h-screen bg-ivory text-ink">
+      <InviteBanner invite={invite} />
       <SiteHeader dark />
 
       {/* Hero */}
@@ -248,12 +253,48 @@ export default function Landing() {
         </Reveal>
       </section>
 
+      {/* Testimonials: real quotes only (src/content/site.js) */}
+      {TESTIMONIALS.length > 0 && (
+        <section className="border-b border-mist-200 bg-white">
+          <Reveal className="mx-auto max-w-page px-5 py-16 sm:px-6 lg:py-20">
+            <h2 className="mb-10 text-center text-[30px] font-semibold tracking-[-0.02em] text-ink sm:text-[34px]">What churches say</h2>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {TESTIMONIALS.map(t => (
+                <figure key={t.name + t.church} className="rounded-2xl border border-mist-200 bg-ivory p-6">
+                  <blockquote className="text-[16px] leading-relaxed text-ink">“{t.quote}”</blockquote>
+                  <figcaption className="mt-4 text-sm"><span className="font-semibold text-ink">{t.name}</span><span className="block text-mist-500">{[t.role, t.church, t.city].filter(Boolean).join(', ')}</span></figcaption>
+                </figure>
+              ))}
+            </div>
+          </Reveal>
+        </section>
+      )}
+
+      {/* Founder */}
+      <section id="about" className="scroll-mt-20 border-b border-mist-200">
+        <Reveal className="mx-auto grid max-w-4xl grid-cols-1 items-center gap-8 px-5 py-16 sm:px-6 md:grid-cols-[180px_1fr] lg:py-20">
+          {FOUNDER.photo
+            ? <img src={FOUNDER.photo} alt={FOUNDER.name} width={180} height={180} loading="lazy" className="mx-auto h-40 w-40 rounded-2xl object-cover md:h-44 md:w-44" />
+            : <div aria-hidden className="mx-auto flex h-40 w-40 items-center justify-center rounded-2xl bg-brand-900 text-[44px] font-semibold text-white md:h-44 md:w-44">{FOUNDER.name.split(' ').map(w => w[0]).join('')}</div>}
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">Who’s behind GatherHQ</p>
+            <h2 className="mt-2 text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[32px]">Built in Nigeria by {FOUNDER.name}</h2>
+            {FOUNDER.story.map((p, i) => <p key={i} className="mt-3 text-[16px] leading-relaxed text-mist-600">{p}</p>)}
+            <div className="mt-5 flex flex-wrap gap-3">
+              {whatsappLink() && <a href={whatsappLink(`Hello ${FOUNDER.name.split(' ')[0]}, I’d like to know more about GatherHQ for my church.`)} target="_blank" rel="noopener" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#25D366] px-5 text-[15px] font-semibold text-white hover:bg-[#1ebe5b]"><MessageCircle size={18} />Message {FOUNDER.name.split(' ')[0]} on WhatsApp</a>}
+              <a href="mailto:hello@gatherhq.org" className="inline-flex h-11 items-center gap-2 rounded-lg border border-mist-300 bg-white px-5 text-[15px] font-semibold text-ink hover:border-mist-400"><Mail size={18} />hello@gatherhq.org</a>
+            </div>
+            <p className="mt-4 text-sm text-mist-500">GatherHQ is a product of Avelon Technologies Ltd, a company registered in Nigeria.</p>
+          </div>
+        </Reveal>
+      </section>
+
       {/* FAQ */}
       <section id="faq" className="scroll-mt-20">
         <Reveal className="mx-auto max-w-3xl px-5 py-16 sm:px-6 lg:py-24">
           <h2 className="mb-8 text-center text-[30px] font-semibold tracking-[-0.02em] text-ink sm:text-[36px]">Questions churches ask</h2>
           <FaqList />
-          <p className="mt-6 text-center text-[15px] text-mist-600">Something else? Email <a href="mailto:hello@gatherhq.org" className="link">hello@gatherhq.org</a> and a person will reply.</p>
+          <p className="mt-6 text-center text-[15px] text-mist-600">Something else? Email <a href="mailto:hello@gatherhq.org" className="link">hello@gatherhq.org</a>{whatsappLink() && <> or <a href={whatsappLink()} target="_blank" rel="noopener" className="link">message us on WhatsApp</a></>} and a person will reply.</p>
         </Reveal>
       </section>
 
@@ -269,6 +310,7 @@ export default function Landing() {
         </div>
       </section>
 
+      <WhatsAppButton />
       <LegalFooter />
     </div>
   )

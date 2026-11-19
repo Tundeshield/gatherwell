@@ -1,6 +1,9 @@
 import { fb, col, docOut, docsOut, plain, getMany } from '../firebase.js'
 import { bad, forbidden, notFound, str, email as emailV, oneOf, int, uuid, isUuid } from '../http.js'
 import { TERMS_VERSION } from './auth.js'
+import { referralCode, referralLink, FREE_MONTH_DAYS } from '../referrals.js'
+
+const plainTime = (v) => (v?.toDate ? v.toDate() : new Date(v || 0)).getTime()
 import { toCsv, csvResponse } from '../domain.js'
 import { requireCap, assertBranch, orgBranches, ROLE_LABELS, membershipId, branchesEnabled } from '../access.js'
 import { randomToken, sha256, audit, sanitizeForm } from '../util.js'
@@ -97,6 +100,20 @@ export default function (r) {
       { label: 'Status', value: 'status' }, { label: 'Ticket code', value: 'code' }, { label: 'Registered at', value: 'created_at' }, { label: 'Checked in at', value: 'checked_in_at' },
     ] },
   }
+  // "Get this for your church": the church's referral link and the churches that joined through it.
+  r.get('/org/referrals', async ({ ctx, req }) => {
+    const { db } = await fb()
+    const code = await referralCode(db, ctx.org)
+    const origin = new URL(req.url).origin.replace('://admin.', '://')
+    const snap = await db.collection('referrals').where('referrer_org_id', '==', ctx.org.id).limit(200).get()
+    const rows = snap.docs.map(d => d.data()).sort((a, b) => plainTime(b.created_at) - plainTime(a.created_at))
+    return {
+      code, link: referralLink(code, origin), freeMonthDays: FREE_MONTH_DAYS,
+      referrals: rows.map(x => ({ church: x.referred_name, joined_at: plain(x.created_at), status: x.status, reward: x.referrer_reward ? { how: x.referrer_reward.how, applied: !!x.referrer_reward.applied } : null })),
+      earned: rows.filter(x => x.status === 'rewarded').length,
+    }
+  })
+
   r.get('/org/data-export/:kind', async ({ ctx, params }) => {
     requireCap(ctx, 'org.manage')
     const ex = EXPORTS[params.kind]

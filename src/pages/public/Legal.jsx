@@ -2,9 +2,10 @@ import { useEffect } from 'react'
 import { Link, NavLink, useParams } from 'react-router-dom'
 import Logo from '../../components/Logo'
 import { SiteHeader } from './site'
+import { whatsappLink } from '../../content/site'
 
-export const LEGAL_VERSION = '2026-11-12'
-const UPDATED = '14 November 2026'
+export const LEGAL_VERSION = '2026-11-19'
+const UPDATED = '19 November 2026'
 const CONTACT = 'privacy@gatherhq.org'
 const HELLO = 'hello@gatherhq.org'
 export const COMPANY = 'GatherHQ'
@@ -28,6 +29,7 @@ function Privacy() {
   return (
     <>
       <P>This policy explains how GatherHQ handles personal information. GatherHQ is software that churches use to record attendance, welcome visitors, follow up with people and run events. GatherHQ is operated by {COMPANY_FULL} (“we”, “us”).</P>
+      <P>We follow Nigeria’s Data Protection Act 2023 (NDPA) and the rules of the Nigeria Data Protection Commission (NDPC), and, for people in the UK and Europe, the UK GDPR and EU GDPR. Where these laws differ, we apply the stricter rule.</P>
       <H>Who is responsible for what</H>
       <UL items={[
         <><b>Church data.</b> When a church uses GatherHQ, the church decides what information it collects about its members, visitors and volunteers, and why. The church is the <i>data controller</i>. We process that information only on the church’s behalf and on its instructions, as its <i>data processor</i>, under our <Link to="/legal/dpa" className="link">Data Processing Agreement</Link>. If you’re a member or visitor of a church, please contact your church first about your information; we will help them respond.</>,
@@ -49,17 +51,21 @@ function Privacy() {
         'To send account holders essential service messages (for example, security notices, invitations and the Monday brief, which can be switched off).',
         'We do not sell personal information, use church data for advertising, or contact a church’s members for our own purposes.',
       ]} />
-      <P>Our legal bases are performance of a contract (providing the service), our legitimate interests in running a secure and reliable service, and legal obligations. Churches are responsible for having a lawful basis, such as consent or legitimate interest, for the information they record about their people.</P>
+      <P>Our legal bases are performance of a contract (providing the service), our legitimate interests in running a secure and reliable service, and legal obligations (section 25 of the NDPA and Article 6 of the GDPR). Churches are responsible for having a lawful basis, such as consent or legitimate interest, for the information they record about their people.</P>
+      <H>Church membership is sensitive information</H>
+      <P>A record that someone attends a church can reveal their religious beliefs, which the NDPA (section 30) and the GDPR treat as sensitive personal data, as they do health information such as a child’s allergies. Churches may record this about their own members, regular attendees and visitors in connection with the church’s purposes, but must not share it outside the church without the person’s explicit consent. GatherHQ never shares it with anyone, never uses it for advertising, and only shows it to the church’s own team according to their role.</P>
       <H>Cookies and similar technology</H>
       <P>We use one essential cookie to keep account holders signed in. On public check-in pages, a person can choose to have their phone number remembered on their own device. We do not use advertising or tracking cookies, and our website statistics use no cookies or device storage, so there is no cookie banner.</P>
       <H>Where data is stored and who processes it</H>
-      <P>We use a small number of trusted providers (subprocessors), listed in the <Link to="/legal/dpa" className="link">Data Processing Agreement</Link>. Some are in countries outside the UK or European Economic Area. Where that happens, transfers are protected by the providers’ standard contractual clauses or equivalent safeguards.</P>
+      <P>We use a small number of trusted providers (subprocessors), listed in the <Link to="/legal/dpa" className="link">Data Processing Agreement</Link>. Some store or process data outside Nigeria, the UK or the European Economic Area. Where that happens, transfers are protected as sections 41 to 43 of the NDPA and the GDPR require: by an adequacy decision, or by standard contractual clauses or equivalent safeguards agreed with the provider. We keep a record of the basis for each transfer.</P>
       <H>How long we keep it</H>
       <P>Church data is kept for as long as the church’s account is active. Churches can delete individual people, or all their people, at any time from inside GatherHQ. When a church closes its account, we delete its data within 30 days, apart from copies in backups, which expire within a further 30 days. Account holders can ask us to delete their account at any time.</P>
       <H>Security</H>
       <P>Data is encrypted in transit and at rest. Each church’s data is kept separate and is only available to that church’s team, according to their role. Public check-in pages never reveal people’s contact details. We keep an activity log of changes in each church’s account.</P>
       <H>Your rights</H>
-      <P>Depending on where you live, you may have the right to access, correct, delete, restrict or object to the use of your personal information, to move it elsewhere, and to complain to a data protection authority (in the UK, the ICO). For church records, contact your church: GatherHQ gives churches the tools to download or delete a person’s information. For your GatherHQ account, or if your church is unable to help, contact us at <Mail />. Every email a church sends through GatherHQ includes an unsubscribe link.</P>
+      <P>You have the right to be told what personal information is held about you and to get a copy, to have it corrected or deleted, to restrict or object to its use (including for direct marketing), to move it to another provider, to withdraw consent at any time, and not to be subject to decisions made only by automated means. You can complain to a data protection authority: in Nigeria, the Nigeria Data Protection Commission (ndpc.gov.ng); in the UK, the Information Commissioner’s Office (ico.org.uk); in the EU, your national authority. For church records, contact your church: GatherHQ gives churches the tools to download or delete a person’s information. For your GatherHQ account, or if your church is unable to help, contact us at <Mail />. Every email a church sends through GatherHQ includes an unsubscribe link.</P>
+      <H>If something goes wrong</H>
+      <P>If a personal data breach puts people’s rights at risk, we tell the affected churches straight away so they can meet their own duties, notify the Nigeria Data Protection Commission (and other authorities where required) within 72 hours of becoming aware of it, and tell affected people without undue delay where the law requires.</P>
       <H>Children</H>
       <P>Churches may record information about children, for example in children’s ministry. Churches are responsible for obtaining any consent required from a parent or guardian. GatherHQ accounts are only for adults.</P>
       <P>When a church uses children’s check-in, it may record a child’s name, date of birth, class, allergies and medical notes, the parents linked to them, who else may collect them, and when they were checked in and picked up. Allergies and medical notes are only visible to the church’s children’s team and administrators; allergies are printed on the child’s name label so teachers can see them. A parent can ask the church to see, correct or erase their child’s record at any time.</P>
@@ -113,13 +119,13 @@ function Terms() {
 function Dpa() {
   return (
     <>
-      <P>This Data Processing Agreement (“DPA”) forms part of the GatherHQ Terms of Service between the church using GatherHQ (the “Controller”) and {COMPANY_FULL}, which operates GatherHQ (the “Processor”). It reflects the requirements of Article 28 of the UK and EU General Data Protection Regulation and similar laws. A church owner can record acceptance in GatherHQ under Settings › Data & privacy.</P>
+      <P>This Data Processing Agreement (“DPA”) forms part of the GatherHQ Terms of Service between the church using GatherHQ (the “Controller”) and {COMPANY_FULL}, which operates GatherHQ (the “Processor”). It reflects the requirements of section 29 of Nigeria’s Data Protection Act 2023 (NDPA), Article 28 of the UK and EU General Data Protection Regulation, and similar laws. A church owner can record acceptance in GatherHQ under Settings › Data & privacy.</P>
       <H>1. What is processed</H>
       <UL items={[
         <><b>Subject matter and purpose:</b> providing GatherHQ, including recording attendance and events, managing follow-ups, and sending messages the Controller writes.</>,
         <><b>Duration:</b> for as long as the Controller uses GatherHQ, plus the deletion period below.</>,
         <><b>People:</b> church members, visitors, volunteers, staff and event attendees, including children where the Controller records them.</>,
-        <><b>Data:</b> names, contact details, attendance and event records, check-in answers, tags, follow-up notes and any other details the Controller chooses to record. The Controller should not record special category data (such as health information) in GatherHQ unless it has a lawful basis to do so. Children’s allergies and medical notes are health information: the Controller should record them only with a parent’s or guardian’s consent.</>,
+        <><b>Data:</b> names, contact details, attendance and event records, check-in answers, tags, follow-up notes and any other details the Controller chooses to record. Church attendance and membership can reveal religious beliefs, which the NDPA (section 30) and the GDPR treat as sensitive personal data; the Controller may record it for its own members, attendees and visitors in connection with the church’s purposes, and must not share it outside the church without explicit consent. The Controller should not record other sensitive data (such as health information) in GatherHQ unless it has a lawful basis to do so. Children’s allergies and medical notes are health information: the Controller should record them only with a parent’s or guardian’s consent.</>,
       ]} />
       <H>2. Processor commitments</H>
       <UL items={[
@@ -127,7 +133,7 @@ function Dpa() {
         'Ensure everyone who can access the data is bound by confidentiality.',
         'Maintain appropriate security: encryption in transit and at rest, strict separation of each church’s data, role-based access, activity logging and abuse protection.',
         'Help the Controller respond to requests from individuals (for example, by providing tools to download or delete a person’s information) and with security and impact assessments where reasonable.',
-        'Notify the Controller without undue delay, and within 72 hours where possible, after becoming aware of a personal data breach affecting its data.',
+        'Notify the Controller without undue delay after becoming aware of a personal data breach affecting its data, with the information it needs to notify the Nigeria Data Protection Commission (within 72 hours under section 40 of the NDPA) or another authority.',
         'At the end of the service, delete the Controller’s data within 30 days (backups expire within a further 30 days), after giving the Controller the chance to export it.',
         'Make available the information reasonably needed to show compliance with this DPA, and answer reasonable audit questions in writing.',
       ]} />
@@ -140,7 +146,7 @@ function Dpa() {
         </table>
       </div>
       <H>4. International transfers</H>
-      <P>Where personal data is transferred outside the UK or European Economic Area, transfers rely on adequacy decisions or on standard contractual clauses (including the UK addendum) agreed with the relevant subprocessor.</P>
+      <P>Where personal data is transferred outside Nigeria, the UK or the European Economic Area, transfers rely on a basis recognised by sections 41 to 43 of the NDPA and by the GDPR: an adequacy decision, or standard contractual clauses (including the UK addendum) or equivalent safeguards agreed with the relevant subprocessor. The Processor keeps a record of the basis for each transfer and gives it to the Controller on request.</P>
       <H>5. Controller responsibilities</H>
       <P>The Controller is responsible for the lawfulness of the data it records, for giving people appropriate privacy information, for obtaining consent where required (including from parents or guardians for children), and for the content of messages it sends.</P>
       <H>6. Contact</H>
@@ -207,7 +213,9 @@ export function LegalFooter({ className = '' }) {
           <Link to="/legal/terms" className="hover:text-ink">Terms</Link>
           <Link to="/legal/refunds" className="hover:text-ink">Refunds</Link>
           <Link to="/legal/dpa" className="hover:text-ink">Data Processing Agreement</Link>
+          <Link to="/#about" className="hover:text-ink">About</Link>
           <a href={`mailto:${CONTACT}`} className="hover:text-ink">{CONTACT}</a>
+          {whatsappLink() && <a href={whatsappLink()} target="_blank" rel="noopener" className="hover:text-ink">WhatsApp</a>}
         </nav>
         <span className="text-right">© {new Date().getFullYear()} {COMPANY}, a product of Avelon Technologies Ltd<span className="block text-xs">{ADDRESS}</span></span>
       </div>

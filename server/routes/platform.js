@@ -7,6 +7,7 @@ import { notFound, oneOf, bad } from '../http.js'
 import { audit, platformAudit } from '../util.js'
 import { platformAdminEmails, ROLE_LABELS } from '../access.js'
 import { emailProvider, sendEmails } from '../email.js'
+import { onReferredChurchPaid } from '../referrals.js'
 
 const DAY = 86400e3
 const toD = (v) => (v ? (typeof v.toDate === 'function' ? v.toDate() : new Date(v)) : null)
@@ -167,6 +168,7 @@ export default function (r) {
       if (plan === 'network') update.features = { ...(d.features || {}), branches: true }
       await ref.update(update)
       await log('platform.manual_plan', { plan, interval, until: until.toISOString() })
+      if (d.billing?.status !== 'active') await onReferredChurchPaid(o.id).catch(e => console.error('referral reward', e.message))
       return { id: o.id, plan, until: until.toISOString() }
     }
     // Switch children's church on or off for a church.

@@ -18,9 +18,11 @@
   to = "/404.html"
   status = 404
 
+# Public pages are pre-built HTML files (scripts/prerender.mjs) and are served before this rule.
+# Everything else gets the plain app shell, not the home page's content.
 [[redirects]]
   from = "/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[headers]]

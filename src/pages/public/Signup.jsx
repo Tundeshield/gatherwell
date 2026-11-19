@@ -5,6 +5,7 @@ import { useSession } from '../../lib/session'
 import { Button, Input, Select, Notice } from '../../components/ui'
 import { signInWithPassword } from '../../lib/firebase'
 import AuthLayout from './AuthLayout'
+import { useInvite } from '../../components/InviteBanner'
 
 export const COUNTRIES = [
   { name: 'Nigeria', cc: '234', tz: 'Africa/Lagos' },
@@ -25,6 +26,7 @@ export default function Signup() {
   const [loading, setLoading] = useState(false)
   const { refresh } = useSession()
   const navigate = useNavigate()
+  const invite = useInvite()
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   async function submit(e) {
@@ -40,7 +42,7 @@ export default function Signup() {
     setLoading(true); setError('')
     const c = COUNTRIES.find(x => x.name === form.country) || COUNTRIES.at(-1)
     try {
-      await api.post('/auth/signup', { ...form, timezone: c.tz, defaultCountryCode: c.cc })
+      await api.post('/auth/signup', { ...form, timezone: c.tz, defaultCountryCode: c.cc, ref: invite?.code || undefined })
       await signInWithPassword(form.email, form.password)
       await refresh()
       navigate('/app?welcome=1', { replace: true })
@@ -49,7 +51,7 @@ export default function Signup() {
   }
 
   return (
-    <AuthLayout title="Create your church account" subtitle="Free for 14 days. No card needed."
+    <AuthLayout title="Create your church account" subtitle={invite ? `Invited by ${invite.orgName}: free for 14 days plus an extra month. No card needed.` : 'Free for 14 days. No card needed.'}
       footer={<>Already using GatherHQ? <Link to="/login" className="link">Sign in</Link></>}>
       <form onSubmit={submit} noValidate>
         {error && <Notice tone="danger" className="mb-4">{error}</Notice>}

@@ -7,6 +7,7 @@ import { recordCheckin } from '../domain.js'
 import { createPerson } from './people.js'
 import { createRegistration, eventStats } from './events.js'
 import { isExpired } from '../billing.js'
+import { referralCode, orgForCode, FREE_MONTH_DAYS } from '../referrals.js'
 
 const fold = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
 
@@ -53,10 +54,18 @@ async function findByPhone(db, orgId, phoneNorm) {
 }
 
 export default function (r) {
+  // Who invited a visitor to the site ("Get this for your church" links): the church's name only.
+  r.get('/public/ref/:code', { auth: 'public' }, async ({ params }) => {
+    const { db } = await fb()
+    const o = await orgForCode(db, params.code)
+    if (!o) throw notFound('This invitation link is not valid.')
+    return { orgName: o.name, bonusDays: FREE_MONTH_DAYS }
+  })
+
   r.get('/public/g/:token', { auth: 'public' }, async ({ params }) => {
-    const { org, item: g, branchName } = await loadPublicGathering(params.token)
+    const { db, org, item: g, branchName } = await loadPublicGathering(params.token)
     return {
-      orgName: org.name, branchName, timezone: org.timezone,
+      orgName: org.name, branchName, timezone: org.timezone, ref: await referralCode(db, org).catch(() => null),
       gathering: { name: g.name, startsAt: plain(g.starts_at), status: g.status, description: g.description || null, confirmName: !!g.confirm_name },
       form: g.form,
     }
@@ -135,10 +144,10 @@ export default function (r) {
   r.get('/public/e/:token', { auth: 'public' }, async ({ params }) => {
     const res = await resolveLink(params.token, 'event')
     if (!res || res.item.status === 'draft') throw notFound('This event link is not valid.')
-    const { org, item: e, branchName } = res
+    const { db, org, item: e, branchName } = res
     const s = eventStats(e)
     return {
-      orgName: org.name, branchName, timezone: org.timezone,
+      orgName: org.name, branchName, timezone: org.timezone, ref: await referralCode(db, org).catch(() => null),
       event: {
         name: e.name, description: e.description, location: e.location, startsAt: plain(e.starts_at), endsAt: plain(e.ends_at), status: e.status,
         registrationOpensAt: plain(e.registration_opens_at), registrationClosesAt: plain(e.registration_closes_at),

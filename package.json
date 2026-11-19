@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/firebase-setup.mjs && vite build",
+    "build": "node scripts/firebase-setup.mjs && vite build && node scripts/prerender.mjs",
     "build:web": "vite build",
     "preview": "vite preview",
     "test": "env -u STRIPE_SECRET_KEY -u STRIPE_WEBHOOK_SECRET -u RESEND_API_KEY -u FIREBASE_SERVICE_ACCOUNT -u STAGING_EMAIL_ALLOWLIST -u PLATFORM_ADMIN_EMAILS APP_ENV=production node --test tests/*.test.js"

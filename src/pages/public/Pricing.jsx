@@ -5,6 +5,7 @@ import { LegalFooter } from './Legal'
 import { SiteHeader, FaqList } from './site'
 import { TRIAL_DAYS } from '../../../shared/plans.js'
 import { useSession } from '../../lib/session'
+import WhatsAppButton from '../../components/WhatsAppButton'
 
 export default function Pricing() {
   const { me } = useSession()
@@ -33,6 +34,7 @@ export default function Pricing() {
           <FaqList />
         </section>
       </main>
+      <WhatsAppButton />
       <LegalFooter />
     </div>
   )

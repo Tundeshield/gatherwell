@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { api } from './api'
 
-const SessionContext = createContext(null)
+export const SessionContext = createContext(null)
 const BRANCH_KEY = 'gw_branch'
 
 function readBranch(orgId) {

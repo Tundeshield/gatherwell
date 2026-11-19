@@ -6,12 +6,13 @@ import { LogoMark } from '../../components/Logo'
 import { Button, Notice } from '../../components/ui'
 import { fmtDateTime } from '../../lib/format'
 import DynamicForm from '../../components/DynamicForm'
+import { referralHref } from '../../lib/referral'
 
 const PHONE_KEY = 'gw_checkin_phone'
 const readPhone = () => { try { return localStorage.getItem(PHONE_KEY) || '' } catch { return '' } }
 const savePhone = (p) => { try { p ? localStorage.setItem(PHONE_KEY, p) : localStorage.removeItem(PHONE_KEY) } catch {} }
 
-export function PublicFrame({ orgName, branchName, children }) {
+export function PublicFrame({ orgName, branchName, refCode, children }) {
   return (
     <div className="flex min-h-screen flex-col bg-ivory">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-6 sm:pt-12">
@@ -22,8 +23,15 @@ export function PublicFrame({ orgName, branchName, children }) {
           </div>
         )}
         <div className="panel flex-none px-5 py-6 sm:px-7 sm:py-8">{children}</div>
-        <div className="mt-auto flex items-center justify-center gap-1.5 pt-8 text-xs text-mist-400">
-          <LogoMark size={14} /> Powered by GatherHQ · <a href="/legal/privacy" className="hover:text-ink hover:underline">Privacy</a>
+        <div className="mt-auto pt-8 text-center text-xs text-mist-400">
+          {refCode && (
+            <a href={referralHref(refCode)} target="_blank" rel="noopener" className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-mist-200 bg-white px-3 py-1.5 font-medium text-mist-600 hover:border-brand-300 hover:text-brand-700">
+              <LogoMark size={14} /> Get this for your church <span aria-hidden>→</span>
+            </a>
+          )}
+          <div className="flex items-center justify-center gap-1.5">
+            {!refCode && <LogoMark size={14} />}<a href={refCode ? referralHref(refCode) : '/'} target="_blank" rel="noopener" className="hover:text-ink hover:underline">Powered by GatherHQ</a> · <a href="/legal/privacy" className="hover:text-ink hover:underline">Privacy</a>
+          </div>
         </div>
       </div>
     </div>
@@ -115,7 +123,7 @@ export default function CheckIn() {
 
   if (info.gathering.status !== 'open') {
     return (
-      <PublicFrame orgName={info.orgName} branchName={info.branchName}>
+      <PublicFrame orgName={info.orgName} branchName={info.branchName} refCode={info.ref}>
         {head}
         <Notice tone="info">{info.gathering.status === 'scheduled' ? "Check-in hasn't opened yet. Please try again closer to the start time." : 'Check-in for this session has closed. Please see an usher if you need help.'}</Notice>
       </PublicFrame>
@@ -125,7 +133,7 @@ export default function CheckIn() {
   if (step === 'done') {
     const title = result.already ? "You're already checked in" : result.firstTime ? `Welcome, ${result.name}!` : `Welcome back, ${result.name}!`
     return (
-      <PublicFrame orgName={info.orgName} branchName={info.branchName}>
+      <PublicFrame orgName={info.orgName} branchName={info.branchName} refCode={info.ref}>
         <div className="py-4 text-center">
           <SuccessMark />
           <h1 className="mt-5 text-[24px] font-semibold text-ink">{title}</h1>
@@ -140,7 +148,7 @@ export default function CheckIn() {
   }
 
   return (
-    <PublicFrame orgName={info.orgName} branchName={info.branchName}>
+    <PublicFrame orgName={info.orgName} branchName={info.branchName} refCode={info.ref}>
       {head}
       {error && <Notice tone="danger" className="mb-4">{error}</Notice>}
 

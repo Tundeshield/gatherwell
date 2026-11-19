@@ -49,7 +49,7 @@ export default function EventRegister() {
 
   if (done) {
     return (
-      <PublicFrame orgName={info.orgName} branchName={info.branchName}>
+      <PublicFrame orgName={info.orgName} branchName={info.branchName} refCode={info.ref}>
         <div className="text-center">
           <SuccessMark />
           <h1 className="mt-5 text-[22px] font-semibold text-ink">{done.status === 'waitlist' ? "You're on the waitlist" : "You're registered"}</h1>
@@ -70,7 +70,7 @@ export default function EventRegister() {
   const state = info.registration
   const sameDay = ev.endsAt && new Date(ev.endsAt).toDateString() === new Date(ev.startsAt).toDateString()
   return (
-    <PublicFrame orgName={info.orgName} branchName={info.branchName}>
+    <PublicFrame orgName={info.orgName} branchName={info.branchName} refCode={info.ref}>
       <h1 className="text-[24px] font-semibold leading-tight text-ink">{ev.name}</h1>
       <ul className="mt-4 space-y-2 text-[15px] text-mist-600">
         <li className="flex gap-2.5"><CalendarDays size={18} className="mt-0.5 shrink-0 text-brand-600" />

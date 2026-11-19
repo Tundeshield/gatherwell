@@ -15,6 +15,7 @@ import { PLANS } from '../../../shared/plans.js'
 import ChildrenSettings from '../../components/children/ChildrenSettings'
 import PlanCards, { IntervalToggle } from '../../components/PlanCards'
 import { prepareImage } from '../../lib/image'
+import ReferChurch from './ReferChurch'
 
 const ROLE_HELP = {
   owner: 'Everything, including church settings and billing.',
@@ -871,11 +872,12 @@ export default function Settings() {
     (can('org.manage') || (me.org.childrenEnabled && can('children.manage'))) && ['children', 'Children'],
     can('org.manage') && ['billing', 'Billing'],
     can('org.manage') && ['privacy', 'Data & privacy'],
+    ['refer', 'Refer a church'],
     ['account', 'My account'],
     can('org.manage') && ['activity', 'Activity log'],
   ].filter(Boolean)
   const tab = tabs.some(t => t[0] === params.get('tab')) ? params.get('tab') : tabs[0][0]
-  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, billing: BillingTab, units: UnitsTab, templates: TemplatesTab, children: ChildrenSettings, account: AccountTab, activity: ActivityTab }[tab]
+  const Body = { church: ChurchTab, branches: BranchesTab, team: TeamTab, email: EmailTab, automations: AutomationsTab, tags: TagsTab, privacy: PrivacyTab, billing: BillingTab, units: UnitsTab, templates: TemplatesTab, children: ChildrenSettings, account: AccountTab, activity: ActivityTab, refer: ReferChurch }[tab]
   return (
     <div>
       <PageHeader title="Settings" />

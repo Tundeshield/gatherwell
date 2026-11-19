@@ -6,6 +6,7 @@ import { billingStatus, TRIAL_DAYS } from '../../shared/plans.js'
 import { billingEnabled } from '../billing.js'
 import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
 import { markSignup } from '../analytics.js'
+import { recordReferral } from '../referrals.js'
 
 const DEFAULT_SETTINGS = { absenceWeeks: 3, firstVisitFollowup: true, firstVisitHours: 48, secondVisitFollowup: true, defaultCountryCode: '234' }
 
@@ -92,7 +93,7 @@ async function accept(db, inv, invRef, user) {
 }
 
 // Version of the Terms, Privacy Policy and DPA people agree to (matches src/pages/public/Legal.jsx).
-export const TERMS_VERSION = '2026-11-12'
+export const TERMS_VERSION = '2026-11-19'
 
 export default function (r) {
   r.post('/auth/signup', { auth: 'public' }, async ({ req, body }) => {
@@ -118,6 +119,7 @@ export default function (r) {
     const org = await createOrganisation(db, { orgName, branchName, timezone, country: str(body.country, { max: 64 }), contactEmail: email, settings: { ...DEFAULT_SETTINGS, defaultCountryCode: cc }, owner: user })
     await audit({ org, user }, 'org.created', 'organisation', org.id, { name: orgName })
     await markSignup(req, { id: org.id, name: orgName })
+    if (body.ref) await recordReferral(db, { code: body.ref, newOrg: { id: org.id, name: orgName } }).catch(e => console.error('referral', e.message))
     return json({ ok: true, signIn: true }, 201)
   })
 
