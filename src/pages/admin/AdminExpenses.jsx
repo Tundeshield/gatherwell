@@ -6,7 +6,7 @@ import { Kpi, Panel, PageTitle, MonthBars, RangePicker, rangeQuery, fmtMoney, fm
 
 const CAT = { hosting: 'Hosting & infrastructure', email: 'Email services', messaging: 'SMS & WhatsApp providers', software: 'Software subscriptions', domains: 'Domains & security', marketing: 'Marketing & advertising', contractors: 'Contractors & professional services', other: 'Other operating expenses' }
 const REC = { one_off: 'One-off', monthly: 'Monthly', yearly: 'Yearly' }
-const blank = () => ({ name: '', category: 'hosting', amount: '', currency: 'usd', date: new Date().toISOString().slice(0, 10), vendor: '', description: '', recurring: 'one_off' })
+const blank = () => ({ name: '', category: 'hosting', amount: '', currency: 'ngn', date: new Date().toISOString().slice(0, 10), vendor: '', description: '', recurring: 'one_off' })
 
 export default function AdminExpenses() {
   const toast = useToast()
@@ -33,7 +33,7 @@ export default function AdminExpenses() {
     } catch (e) { toast(e.message, 'error') } finally { setBusy(false) }
   }
   const currencies = Object.keys(data.totals)
-  const main = currencies[0] || 'usd'
+  const main = currencies[0] || 'ngn'
   return (
     <div className="space-y-6">
       <PageTitle title="Expenses" sub="What it costs to run GatherHQ, recorded by hand." action={<div className="flex flex-wrap gap-2"><RangePicker value={range} onChange={setRange} /><Button icon={Plus} onClick={() => { setEdit(blank()); setFile(null) }}>Add expense</Button></div>} />
@@ -74,7 +74,7 @@ export default function AdminExpenses() {
           <Select label="Category" value={edit.category} onChange={e => setEdit({ ...edit, category: e.target.value })}>{Object.entries(CAT).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           <Input label="Vendor" value={edit.vendor || ''} onChange={e => setEdit({ ...edit, vendor: e.target.value })} placeholder="Netlify" />
           <Input label="Amount" type="number" step="0.01" min="0" value={edit.amount} onChange={e => setEdit({ ...edit, amount: e.target.value })} />
-          <Select label="Currency" value={edit.currency} onChange={e => setEdit({ ...edit, currency: e.target.value })}>{['usd', 'gbp', 'eur', 'ngn', 'ghs', 'kes', 'zar', 'xof'].map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}</Select>
+          <Select label="Currency" value={edit.currency} onChange={e => setEdit({ ...edit, currency: e.target.value })}>{['ngn', 'usd', 'gbp', 'eur', 'ghs', 'kes', 'zar', 'xof'].map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}</Select>
           <Input label="Date" type="date" value={edit.date} onChange={e => setEdit({ ...edit, date: e.target.value })} />
           <Select label="Type" value={edit.recurring} onChange={e => setEdit({ ...edit, recurring: e.target.value })}>{Object.entries(REC).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select>
           <div className="sm:col-span-2"><Textarea label="Notes (optional)" rows={2} value={edit.description || ''} onChange={e => setEdit({ ...edit, description: e.target.value })} /></div>

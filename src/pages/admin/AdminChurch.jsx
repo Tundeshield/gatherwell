@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PLANS, PAID_PLANS, naira } from '../../../shared/plans.js'
 import { Link, useParams } from 'react-router-dom'
 import { ArrowLeft, Mail } from 'lucide-react'
 import { api } from '../../lib/api'
@@ -13,13 +14,13 @@ function Row({ label, children }) {
 
 function ManualPlanModal({ open, onClose, onSave }) {
   const inAYear = new Date(Date.now() + 365 * 86400e3).toISOString().slice(0, 10)
-  const [f, setF] = useState({ plan: 'church', interval: 'yearly', until: inAYear })
+  const [f, setF] = useState({ plan: 'growing', interval: 'yearly', until: inAYear })
   const [busy, setBusy] = useState(false)
   return (
     <Modal open={open} onClose={onClose} title="Set a plan by hand" description="For a church that paid you another way, such as a bank transfer. The plan stays active until the date you choose, then the church is asked to pay as normal."
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button loading={busy} onClick={async () => { setBusy(true); try { await onSave(f) } finally { setBusy(false) } }}>Set plan</Button></>}>
       <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
-        <Select label="Plan" value={f.plan} onChange={e => setF({ ...f, plan: e.target.value })}><option value="church">Single church ($19 / $190)</option><option value="network">Church network ($59 / $590)</option></Select>
+        <Select label="Plan" value={f.plan} onChange={e => setF({ ...f, plan: e.target.value })}>{PAID_PLANS.map(k => <option key={k} value={k}>{PLANS[k].name} ({naira(PLANS[k].monthly)} / {naira(PLANS[k].yearly)})</option>)}</Select>
         <Select label="Counts as" value={f.interval} onChange={e => setF({ ...f, interval: e.target.value })}><option value="monthly">Monthly</option><option value="yearly">Yearly</option></Select>
       </div>
       <Input label="Paid until" type="date" value={f.until} min={new Date().toISOString().slice(0, 10)} onChange={e => setF({ ...f, until: e.target.value })} />
@@ -52,7 +53,7 @@ export default function AdminChurch() {
   }
   const ask = async (opts, body, msg) => { if (await confirm(opts)) await patch(body, msg) }
   const b = o.billing, bd = o.billing_detail
-  const isFree = b.state === 'free'
+  const isFree = b.state === 'comp'
 
   return (
     <div>

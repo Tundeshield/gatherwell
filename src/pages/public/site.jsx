@@ -3,17 +3,17 @@ import { Link } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import Logo from '../../components/Logo'
 import { useSession } from '../../lib/session'
-import { TRIAL_DAYS } from '../../../shared/plans.js'
+import { TRIAL_DAYS, PLANS, naira } from '../../../shared/plans.js'
 
 // Questions shared by the home page and the pricing page. Every answer must match how the product works today.
 export const FAQ = [
-  ['What happens after the free trial?', `You get ${TRIAL_DAYS} days with everything included, and no card is needed to start. To keep using GatherHQ after that, choose a plan. Nothing is deleted: you can still view and download your records, and you pick up where you left off as soon as you subscribe.`],
+  ['Is it really free for small churches?', `Yes. The Free plan covers up to ${PLANS.free.limit} people for as long as you like, with check-in, attendance, first-timer records and children’s check-in. No card needed.`],
+  ['What happens after the free trial?', `Every church gets ${TRIAL_DAYS} days with everything included and no limit on size. After that you move to the Free plan unless you choose a paid one. Check-in always keeps working. If you have more than ${PLANS.free.limit} people, automatic follow-ups and the Monday Pastor’s Brief pause, and you can’t add more people, until you choose a plan. Nothing is ever deleted.`],
   ['How long does setup take?', 'You can be ready in an afternoon. Import your members from a spreadsheet (we check for duplicates first), print or display the QR code for your next service, and invite your team.'],
   ['Do members need to download an app?', 'No. People scan the QR code with their phone camera and check in on a web page. First-time visitors share their details once; next time they only need their phone number.'],
   ['Do we need special equipment?', 'No. Any phone or tablet works for check-in. For children’s name labels, any 4×2 inch label printer (Dymo, Brother and similar) works; without a printer, the pickup code shows on screen.'],
-  ['Is there a limit on people or team members?', 'No. Both plans include unlimited people, check-ins and team members.'],
-  ['What’s the difference between the plans?', 'Single church is for one congregation. Church network adds multiple branches or campuses, with branch-level access for your team and reports across the whole church and for each branch.'],
-  ['How do we pay, and can we cancel?', 'By card, through Stripe. Prices are in US dollars; if your card is in another currency, your bank converts it. Cancel any time from Settings › Billing and your plan runs to the end of the period you paid for.'],
+  ['How are plans priced?', `By the number of people in your church: Free up to ${PLANS.free.limit}, Growing up to ${PLANS.growing.limit}, Established up to ${PLANS.established.limit.toLocaleString()}, and Network for any size with several branches or campuses. Team members and check-ins are unlimited on every plan, and visitors can always check in, even if you go over your plan’s size.`],
+  ['How do we pay, and can we cancel?', `In naira, by card, bank transfer or USSD, through Paystack. Yearly plans cost the same as 10 months (from ${naira(PLANS.growing.yearly)} a year). Pay by card and we renew automatically; pay by transfer or USSD and we remind you before your renewal date. Turn off renewal any time in Settings › Billing; your plan runs to the end of the period you paid for.`],
   ['Can we get a refund?', 'Yes. Ask within 30 days of any payment and we refund it in full. See our Refund Policy.'],
   ['Who owns our data, and who can see it?', 'Your church does. Each church’s records are kept separate on our servers, team members only see what their role allows, and you can export your data at any time or ask us to delete it. We sign a Data Processing Agreement with every church.'],
 ]

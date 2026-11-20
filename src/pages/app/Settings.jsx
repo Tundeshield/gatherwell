@@ -11,7 +11,7 @@ import EmailPreview from '../../components/EmailPreview'
 import { TagChip, TAG_STYLES, TAG_COLORS, useTags, loadTags } from '../../components/Tags'
 import EmailBlocksEditor, { withKeys, stripKeys } from '../../components/EmailBlocksEditor'
 import { JOURNEY_STEPS, DELAY_OPTIONS, WHATSAPP_KINDS } from '../../../shared/automation.js'
-import { PLANS } from '../../../shared/plans.js'
+import { PLANS, RANK as PLAN_RANK, planForSize } from '../../../shared/plans.js'
 import ChildrenSettings from '../../components/children/ChildrenSettings'
 import PlanCards, { IntervalToggle } from '../../components/PlanCards'
 import { prepareImage } from '../../lib/image'
@@ -771,32 +771,34 @@ function PrivacyTab() {
 
 
 function BillingTab() {
-  const { refresh, me } = useSession()
+  const { refresh } = useSession()
   const toast = useToast()
   const { data, error, reload } = useLoad(() => api.get('/billing'), [])
-  const [interval, setInterval_] = useState('monthly')
+  const [interval, setInterval_] = useState('yearly')
   const [busy, setBusy] = useState('')
   const [params, setParams] = useSearchParams()
-  const [confirming, setConfirming] = useState(!!params.get('session_id'))
+  const [confirming, setConfirming] = useState(!!params.get('reference'))
   useEffect(() => { if (data?.interval) setInterval_(data.interval) }, [data?.interval])
 
-  // Back from Stripe's checkout: confirm straight away (the payment notification can arrive a little later).
+  // Back from Paystack's payment page: confirm straight away (bank transfers can take a minute to arrive).
   useEffect(() => {
-    const sessionId = params.get('session_id')
-    if (!sessionId) return
+    const reference = params.get('reference') || params.get('trxref')
+    if (!reference) return
     setParams({ tab: 'billing' }, { replace: true })
-    confirm(sessionId)
+    confirm(reference)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-  async function confirm(sessionId) {
+  async function confirm(reference) {
     setConfirming(true)
     try {
       let r = { ok: false }
-      for (let i = 0; i < 4 && !r.ok; i++) {
-        if (i) await new Promise(res => setTimeout(res, 2000))
-        r = await api.post('/billing/confirm', { sessionId })
+      for (let i = 0; i < 5 && !r.ok; i++) {
+        if (i) await new Promise(res => setTimeout(res, 2500))
+        r = await api.post('/billing/confirm', { reference })
+        if (r.status === 'failed' || r.status === 'abandoned') break
       }
       if (r.ok) toast(`Thank you! You’re on the ${PLANS[r.plan]?.name} plan.`)
-      else toast('We’re still confirming your payment. It will show here in a minute.', 'info')
+      else if (r.status === 'failed' || r.status === 'abandoned') toast('The payment didn’t go through. You haven’t been charged. Try again or use another method.', 'error')
+      else toast('We’re still waiting for your payment to arrive. It will show here as soon as it does.', 'info')
     } catch (e) { toast(e.message, 'error') }
     finally { await Promise.all([reload(), refresh()]); setConfirming(false) }
   }
@@ -805,52 +807,74 @@ function BillingTab() {
     setBusy(plan)
     try {
       const r = await api.post('/billing/checkout', { plan, interval })
-      if (r.changed) { await Promise.all([reload(), refresh()]); setBusy(''); toast(`You’re now on the ${PLANS[r.plan].name} plan, ${r.interval}.`); return }
-      window.location.href = r.url // Stripe's secure checkout page; it brings them back here when done
+      if (r.scheduled) { await reload(); setBusy(''); toast(`Your plan changes to ${PLANS[plan].name} at your next renewal.`); return }
+      window.location.href = r.url // Paystack's secure payment page; it brings them back here when done
     } catch (e) { toast(e.message, 'error'); setBusy('') }
+  }
+  async function setAutoRenew(on) {
+    setBusy('renew')
+    try { await api.post('/billing/auto-renew', { on }); await reload(); toast(on ? 'Automatic renewal is on.' : 'Automatic renewal is off. We’ll remind you before your renewal date.') }
+    catch (e) { toast(e.message, 'error') } finally { setBusy('') }
   }
   async function manage() {
     setBusy('manage')
     try { const r = await api.post('/billing/manage'); window.open(r.url, '_blank', 'noopener') } catch (e) { toast(e.message, 'error') } finally { setBusy('') }
   }
+  async function cancelChange() { await api.post('/billing/cancel-change'); reload() }
 
   if (error) return <ErrorState error={error} onRetry={reload} />
   if (!data || confirming) return <div className="panel px-6 py-10 text-center text-sm text-mist-500">{confirming ? 'Confirming your payment…' : 'Loading…'}</div>
   const fmt = (d) => d ? fmtDate(d) : ''
+  const over = data.limit != null && data.people > data.limit
+  const suggested = planForSize(data.people)
   const status = {
-    free: ['Complimentary', 'Your church uses GatherHQ free of charge.'],
-    trialing: [`Free trial: ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left`, `Everything is included until ${fmt(data.trialEndsAt)}. Choose a plan any time; you won’t lose anything.`],
-    active: [`${PLANS[data.plan]?.name || 'Paid'} plan${data.interval ? `, ${data.interval}` : ''}`, data.cancelling ? `Cancelled. Your plan stays active until ${fmt(data.renewsAt)}.` : data.renewsAt ? `Renews on ${fmt(data.renewsAt)}.` : 'Active.'],
-    past_due: ['Payment needed', `${data.lastError || 'We couldn’t take your last payment.'} Update your card by ${fmt(data.graceEnds)} to keep making changes.`],
-    expired: ['No active plan', 'Check-in and changes are paused. Everything you’ve recorded is safe, and you can still view and download it. Choose a plan to pick up where you left off.'],
+    comp: ['Complimentary', 'Your church uses GatherHQ free of charge, with everything included.'],
+    free: ['Free plan', `Covers up to ${PLANS.free.limit} people.${data.lapsed ? ' Your paid plan has ended; renew any time to pick up where you left off.' : ''}`],
+    trialing: [`Free trial: ${data.daysLeft} day${data.daysLeft === 1 ? '' : 's'} left`, `Everything is included, at any size, until ${fmt(data.trialEndsAt)}. After that you move to the Free plan (up to ${PLANS.free.limit} people) unless you choose a paid plan.`],
+    active: [`${PLANS[data.plan]?.name || 'Paid'} plan${data.interval ? `, ${data.interval}` : ''}`, data.legacyStripe ? (data.renewsAt ? `Renews on ${fmt(data.renewsAt)}, by card in US dollars.` : 'Active.') : data.autoRenew ? `Paid until ${fmt(data.renewsAt)}. Renews automatically with your card that day.` : `Paid until ${fmt(data.renewsAt)}. We’ll remind you a week before; renew by card, bank transfer or USSD.`],
+    past_due: ['Payment needed', `${data.lastError ? `${data.lastError}. ` : ''}Your plan was due on ${fmt(data.renewsAt)}. Renew by ${fmt(data.graceEnds)} to keep everything running.`],
   }[data.state] || ['', '']
   const paid = data.state === 'active' || data.state === 'past_due'
   return (
     <div className="space-y-6">
-      <section className={`panel px-6 py-5 ${data.state === 'past_due' || data.state === 'expired' ? 'border-red-200' : ''}`}>
+      <section className={`panel px-6 py-5 ${data.state === 'past_due' || over ? 'border-red-200' : ''}`}>
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-mist-500">Your plan</p>
             <h2 className="mt-1 text-lg font-semibold text-ink">{status[0]}</h2>
             <p className="mt-1 max-w-xl text-sm text-mist-500">{status[1]}</p>
-            {data.card && <p className="mt-2 text-sm text-ink-soft">Paying with {data.card.brand ? `${data.card.brand} ` : 'card '}ending {data.card.last4}{data.card.exp ? `, expires ${data.card.exp}` : ''}</p>}
+            {data.card && <p className="mt-2 text-sm text-ink-soft">{data.autoRenew ? 'Renewing with' : 'Saved card:'} {data.card.brand ? `${data.card.brand.trim()} ` : 'card '}ending {data.card.last4}{data.card.exp ? `, expires ${data.card.exp}` : ''}</p>}
+            {data.nextPlan && <p className="mt-2 text-sm text-ink-soft">Changes to {PLANS[data.nextPlan]?.name} ({data.nextInterval}) at your next renewal. <button type="button" className="link" onClick={cancelChange}>Keep my current plan</button></p>}
           </div>
-          {data.hasSubscription && <Button variant="secondary" onClick={manage} loading={busy === 'manage'}>Update card or cancel</Button>}
+          <div className="flex flex-col items-end gap-2">
+            {data.legacyStripe && <Button variant="secondary" onClick={manage} loading={busy === 'manage'}>Update card or cancel</Button>}
+            {paid && !data.legacyStripe && data.canAutoRenew && <Toggle checked={data.autoRenew} onChange={(v) => setAutoRenew(v)} label="Renew automatically" disabled={busy === 'renew'} />}
+            {paid && !data.legacyStripe && (!data.autoRenew || data.state === 'past_due') && <Button onClick={() => choose(data.plan)} loading={busy === data.plan}>Renew now</Button>}
+          </div>
         </div>
+        {data.limit != null && (
+          <div className="mt-5">
+            <div className="flex justify-between text-sm"><span className="text-mist-600">People</span><span className={`tabular font-medium ${over ? 'text-red-700' : 'text-ink'}`}>{data.people.toLocaleString()} of {data.limit.toLocaleString()}</span></div>
+            <div className="mt-1.5 h-2 rounded-full bg-mist-100"><div className={`h-2 rounded-full ${over ? 'bg-red-500' : data.people / data.limit > 0.85 ? 'bg-amber-500' : 'bg-brand-600'}`} style={{ width: `${Math.min(100, (data.people / data.limit) * 100)}%` }} /></div>
+            {over && <p className="mt-2 text-sm text-red-700">You have more people than your plan covers. Check-in keeps working for everyone, but you can’t add people by hand or import{data.state === 'free' ? ', and automatic follow-ups and the Monday Brief are paused' : ''}. {PLANS[suggested]?.name} covers your church.</p>}
+          </div>
+        )}
       </section>
-      {data.state !== 'free' && (
+      {data.state !== 'comp' && !data.legacyStripe && (
         <section>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-[15px] font-semibold text-ink">{paid ? 'Change plan' : 'Choose a plan'}</h2>
             <IntervalToggle value={interval} onChange={setInterval_} />
           </div>
           {!data.ready && <Notice tone="info" className="mb-4">Payments aren’t switched on yet, so your church keeps using GatherHQ free for now.</Notice>}
-          <PlanCards interval={interval} current={paid ? data.plan : null} action={(key) => {
-            const same = paid && data.plan === key && data.interval === interval && !data.cancelling
-            return <Button className="w-full" variant={key === 'church' ? 'primary' : 'secondary'} disabled={same || !data.ready} loading={busy === key} onClick={() => choose(key)}>
-              {same ? 'Your current plan' : paid ? `Switch to ${PLANS[key].name}` : `Choose ${PLANS[key].name}`}</Button>
+          <PlanCards interval={interval} showFree={false} current={paid ? data.plan : null} recommended={suggested} action={(key) => {
+            const same = paid && data.plan === key && data.interval === interval
+            const smaller = paid && (PLAN_RANK[key] < PLAN_RANK[data.plan] || (key === data.plan && interval === 'monthly' && data.interval === 'yearly'))
+            const tooSmall = PLANS[key].limit != null && data.people > PLANS[key].limit
+            return <Button className="w-full" variant={key === suggested ? 'primary' : 'secondary'} disabled={same || !data.ready || tooSmall} loading={busy === key} onClick={() => choose(key)}>
+              {same ? 'Your current plan' : tooSmall ? 'Too small for your church' : smaller ? `Switch at renewal` : paid ? `Move to ${PLANS[key].name}` : `Choose ${PLANS[key].name}`}</Button>
           }} />
-          <p className="mt-4 text-center text-xs text-mist-500">Prices in US dollars. Secure card payment by Stripe, which emails your receipts. {me.org.branchesEnabled ? '' : 'The Church network plan also switches on multiple branches.'}</p>
+          <p className="mt-4 text-center text-xs text-mist-500">Prices in naira. Pay by card, bank transfer or USSD through Paystack, which emails your receipt. Moving up part-way through a period? The unused part of your current plan comes off the price. A 30-day money-back guarantee on every payment.</p>
         </section>
       )}
     </div>

@@ -3,7 +3,7 @@
 // church starts paying (so the reward can't be farmed with empty sign-ups).
 import { randomBytes } from 'node:crypto'
 import { fb } from './firebase.js'
-import { billingStatus, monthlyValue } from '../shared/plans.js'
+import { billingStatus, LEGACY_USD } from '../shared/plans.js'
 import { platformAudit } from './util.js'
 
 export const FREE_MONTH_DAYS = 30
@@ -65,17 +65,19 @@ export async function grantFreeMonth(db, orgId, reason, { stripeFn } = {}) {
   const st = billingStatus(org)
   const b = org.billing || {}
   const now = new Date()
-  if (st.state === 'trialing' || (st.state === 'expired' && !st.lapsed)) {
+  if (st.state === 'trialing' || st.state === 'free') {
+    // On the trial or the Free plan: a month with everything included.
     const from = st.state === 'trialing' ? st.trialEndsAt : now
     await ref.update({ trial_ends_at: new Date(from.getTime() + FREE_MONTH_DAYS * DAY) })
     return { applied: true, how: 'trial_extended' }
   }
-  if (b.manual && st.state === 'active' && st.renewsAt) {
+  if ((b.manual || b.provider === 'paystack') && ['active', 'past_due'].includes(st.state) && st.renewsAt) {
     await ref.update({ 'billing.next_payment_date': new Date(st.renewsAt.getTime() + FREE_MONTH_DAYS * DAY) })
     return { applied: true, how: 'paid_until_extended' }
   }
   if (b.provider === 'stripe' && b.customer_id && stripeFn && ['active', 'past_due'].includes(st.state)) {
-    const cents = Math.round(monthlyValue(b.plan, b.interval) * 100)
+    const usd = LEGACY_USD[b.plan]
+    const cents = usd ? Math.round((b.interval === 'yearly' ? usd.yearly / 12 : usd.monthly) * 100) : 0
     if (cents > 0) {
       await stripeFn('POST', `/customers/${b.customer_id}/balance_transactions`, { amount: -cents, currency: 'usd', description: `GatherHQ referral: one free month (${reason})` })
       return { applied: true, how: 'stripe_credit', amount: cents / 100 }

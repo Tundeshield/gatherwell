@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, Users, CalendarCheck, HeartHandshake, CalendarDays, MessageSquare, BarChart3, Settings, LogOut, Menu, X, ChevronsUpDown, Check, Building2, Baby } from 'lucide-react'
 import { useSession } from '../lib/session'
+import { api } from '../lib/api'
 import { PageLoader } from './ui'
 import Logo from './Logo'
 import PageErrorBoundary from './PageErrorBoundary'
@@ -158,20 +159,29 @@ export default function AppShell() {
   )
 }
 
-// Reminds the church about its trial or a payment problem. Only shown once payments are connected.
+// Reminds the church about its trial, a renewal that's due, or being over its plan's size.
+// Only shown once payments are connected.
 function BillingBanner({ billing, owner }) {
+  const [size, setSize] = useState(null)
+  const checkSize = billing?.ready && billing.limit != null
+  useEffect(() => { if (checkSize) api.get('/billing').then(d => setSize({ people: d.people, limit: d.limit })).catch(() => {}) }, [checkSize, billing?.state, billing?.plan])
   if (!billing?.ready) return null
   const { state, daysLeft } = billing
-  let tone = 'bg-gold-50 border-gold-200 text-gold-700', text = null
-  if (state === 'trialing' && daysLeft <= 7) text = `Your free trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`
+  let tone = 'bg-gold-50 border-gold-200 text-gold-700', text = null, cta = 'Choose a plan'
+  if (state === 'trialing' && daysLeft <= 7) text = `Your free trial ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}. After that you move to the Free plan (up to 50 people).`
   else if (state === 'trialing') { text = `Free trial: ${daysLeft} days left, with everything included.`; tone = 'bg-brand-50 border-brand-100 text-brand-800' }
-  else if (state === 'past_due') { text = 'We couldn’t take your last payment. Please update your card to keep GatherHQ running.'; tone = 'bg-red-50 border-red-200 text-red-800' }
-  else if (state === 'expired') { text = `${billing.lapsed ? 'Your subscription has ended.' : 'Your free trial has ended.'} Check-in and changes are paused until you choose a plan. Everything you’ve recorded is safe, and you can still view and download it.`; tone = 'bg-red-50 border-red-200 text-red-800' }
+  else if (state === 'past_due') { text = 'Your plan is due for renewal. Renew within 7 days to keep everything running.'; tone = 'bg-red-50 border-red-200 text-red-800'; cta = 'Renew now' }
+  else if (size && size.people > size.limit) {
+    text = state === 'free'
+      ? `You have ${size.people.toLocaleString()} people and the Free plan covers ${size.limit}. Check-in still works, but automatic follow-ups and the Monday Brief are paused and you can’t add people.`
+      : `You have ${size.people.toLocaleString()} people and your plan covers ${size.limit.toLocaleString()}. Check-in still works, but you can’t add people by hand or import until you move up a plan.`
+    tone = 'bg-red-50 border-red-200 text-red-800'
+  }
   if (!text) return null
   return (
     <div className={`border-b px-6 py-2.5 text-center text-sm ${tone}`}>
       {text}{' '}
-      {owner ? <NavLink to="/app/settings?tab=billing" className="font-semibold underline">{state === 'past_due' ? 'Update payment' : 'Choose a plan'}</NavLink> : <span>Ask your church owner to choose a plan.</span>}
+      {owner ? <NavLink to="/app/settings?tab=billing" className="font-semibold underline">{cta}</NavLink> : <span>Ask your church owner to choose a plan.</span>}
     </div>
   )
 }

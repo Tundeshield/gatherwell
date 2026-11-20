@@ -3,7 +3,8 @@ import { bad, conflict, unauthorized, str, email as emailV, json, clientIp, notF
 import { rateLimit, slugify, shortId, sha256, audit } from '../util.js'
 import { whatsappFor } from '../../shared/automation.js'
 import { billingStatus, TRIAL_DAYS } from '../../shared/plans.js'
-import { billingEnabled } from '../billing.js'
+import { paystackEnabled } from '../paystack.js'
+import { peopleLimit } from '../../shared/plans.js'
 import { sessionCookie, clearCookie, SESSION_DAYS, ROLE_LABELS, membershipId, orgBranches, branchesEnabled } from '../access.js'
 import { markSignup } from '../analytics.js'
 import { recordReferral } from '../referrals.js'
@@ -67,7 +68,7 @@ export async function mePayload(ctx) {
     user: ctx.user,
     org: o && {
       id: o.id, name: o.name, slug: o.slug, timezone: o.timezone, country: o.country, status: o.status, plan: o.plan,
-      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), billing: { ...billingStatus(o), ready: billingEnabled() }, dpaAcceptedAt: plain(o.dpa_accepted_at) || null, dpaAcceptedBy: o.dpa_accepted_by || null, branchesEnabled: branchesEnabled(o, allBranches.length), childrenEnabled: o.features?.children !== false, kidsLabels: o.settings?.kidsLabels || 'print', settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
+      trialEndsAt: plain(o.trial_ends_at), whatsappTemplates: whatsappFor(o), billing: { ...billingStatus(o), ready: paystackEnabled(), limit: peopleLimit(billingStatus(o)), autoRenew: !!o.billing?.auto_renew, provider: o.billing?.provider || null }, dpaAcceptedAt: plain(o.dpa_accepted_at) || null, dpaAcceptedBy: o.dpa_accepted_by || null, branchesEnabled: branchesEnabled(o, allBranches.length), childrenEnabled: o.features?.children !== false, kidsLabels: o.settings?.kidsLabels || 'print', settings: { ...DEFAULT_SETTINGS, ...(o.settings || {}) }, contactEmail: o.contact_email, contactPhone: o.contact_phone,
     },
     membership: ctx.membership && { role: ctx.membership.role, roleLabel: ROLE_LABELS[ctx.membership.role], branchIds: ctx.membership.branch_ids || null, canExport: !!ctx.membership.can_export },
     caps: ctx.caps,

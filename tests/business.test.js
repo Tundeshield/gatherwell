@@ -133,23 +133,31 @@ test('revenue comes only from Stripe payment records; failed, open and refunds h
   for (const p of ['/platform/business', '/platform/payments', `/platform/churches/${S.a.orgId}/business`, '/platform/messaging', '/platform/health', '/platform/expenses', '/platform/audit']) assert.equal((await S.a.get(p)).status, 403, p)
 })
 
-test('MRR, subscriptions and plan changes follow the billing state Stripe reports', async () => {
+test('MRR, subscriptions and plan changes follow naira payments through Paystack', async () => {
   const db = fake.db
-  const sub = (plan, interval, status = 'active', extra = {}) => ({ id: `sub_${S.a.orgId}`, object: 'subscription', customer: `cus_${S.a.orgId}`, status, metadata: { org_id: S.a.orgId }, current_period_end: now + 30 * 86400, items: { data: [{ price: { lookup_key: `gatherhq_${plan}_${interval}`, recurring: { interval: interval === 'yearly' ? 'year' : 'month' } } }] }, default_payment_method: null, ...extra })
-  await hook({ id: 'evt_s1', type: 'customer.subscription.created', created: now, data: { object: sub('church', 'monthly') } })
-  await hook({ id: 'evt_s2', type: 'customer.subscription.updated', created: now + 1, data: { object: sub('network', 'yearly') } })
-  let r = await S.ops.get('/platform/business')
-  assert.equal(r.data.recurring.mrr, Math.round((590 / 12) * 100) / 100)
-  assert.equal(r.data.recurring.paying, 1); assert.equal(r.data.recurring.arr, Math.round((590 / 12) * 12 * 100) / 100)
-  r = await S.ops.get('/platform/subscriptions')
-  assert.equal(r.data.counts.yearly, 1)
-  assert.deepEqual(r.data.changes.map(c => c.kind).sort(), ['started', 'upgraded'])
-  r = await S.ops.get('/platform/churches?state=annual')
-  assert.equal(r.data.rows.length, 1)
-  await hook({ id: 'evt_s3', type: 'customer.subscription.updated', created: now + 2, data: { object: sub('network', 'yearly', 'active', { cancel_at_period_end: true }) } })
-  r = await S.ops.get('/platform/subscriptions')
-  assert.equal(r.data.counts.cancelling, 1)
-  assert.ok(r.data.changes.some(c => c.kind === 'cancelled'))
+  const { applyPaystackPayment } = await import('../server/paystack.js')
+  process.env.PAYSTACK_SECRET_KEY = 'sk_test_x'
+  const pay = async (ref, plan, interval, amount) => {
+    await db.collection('paystackRefs').doc(ref).set({ org_id: S.a.orgId, org_name: 'Biz Church A', plan, interval, amount, credit: 0, kind: 'new', email: 'a@biz.test', applied: false, created_at: new Date() })
+    return applyPaystackPayment(ref, { verified: { status: 'success', reference: ref, amount: amount * 100, currency: 'NGN', channel: 'bank_transfer', customer: { email: 'a@biz.test' }, authorization: { channel: 'bank_transfer', reusable: false } } })
+  }
+  try {
+    let res = await pay('ghq_mrr_1', 'growing', 'monthly', 10000)
+    assert.equal(res.kind, 'started')
+    res = await pay('ghq_mrr_2', 'established', 'yearly', 250000)
+    assert.equal(res.kind, 'upgraded')
+    assert.equal((await applyPaystackPayment('ghq_mrr_2', { verified: { status: 'success', amount: 25000000, currency: 'NGN' } })).duplicate, true, 'each payment once')
+    let r = await S.ops.get('/platform/business')
+    assert.equal(r.data.recurring.mrr, Math.round((250000 / 12) * 100) / 100)
+    assert.equal(r.data.recurring.paying, 1); assert.equal(r.data.recurring.arr, 250000)
+    r = await S.ops.get('/platform/subscriptions')
+    assert.equal(r.data.counts.yearly, 1)
+    assert.deepEqual(r.data.changes.map(c => c.kind).filter(k => k !== 'renewed').sort(), ['started', 'upgraded'])
+    r = await S.ops.get('/platform/churches?state=annual')
+    assert.equal(r.data.rows.length, 1)
+    r = await S.ops.get('/platform/payments?org=' + S.a.orgId)
+    assert.ok(r.data.rows.some(p => p.id === 'ps_ghq_mrr_2' && p.amount === 250000 && p.currency === 'ngn'))
+  } finally { delete process.env.PAYSTACK_SECRET_KEY }
 })
 
 test('sync from Stripe pulls invoices and one-off charges, idempotently', async () => {
@@ -169,8 +177,9 @@ test('sync from Stripe pulls invoices and one-off charges, idempotently', async 
     const old = r.data.rows.find(p => p.id === 'in_old')
     assert.equal(old.method.last4, '4242')
     r = await S.ops.get('/platform/business?range=all')
-    assert.equal(r.data.revenue.range.open, 1, 'unpaid invoice shown as outstanding')
-    assert.equal(r.data.revenue.range.gross, 29 + 19 + 25)
+    const usd = r.data.currency === 'usd' ? r.data.revenue.range : r.data.revenue.other_currencies.usd // naira is the main currency once naira payments exist
+    assert.equal(usd.open, 1, 'unpaid invoice shown as outstanding')
+    assert.equal(usd.gross, 29 + 19 + 25)
     assert.ok((await S.ops.get('/platform/audit')).data.rows.some(x => x.action === 'payments.synced'))
   } finally { globalThis.fetch = real }
   assert.equal((await S.a.post('/platform/payments/sync')).status, 403)
@@ -236,7 +245,7 @@ test('church actions, provider changes and admin grants are audited; messaging a
   assert.equal(r.status, 200, JSON.stringify(r.data)); assert.equal(r.data.database.ok, true)
   assert.ok(r.data.webhooks.events.length >= 4)
   r = await S.ops.get('/platform/pricing')
-  assert.equal(r.data.plans.length, 2)
+  assert.equal(r.data.plans.length, 4); assert.equal(r.data.currency, 'NGN')
   // Logging out of the console doesn't touch the church session, and vice versa.
   await S.ops.post('/admin/auth/logout')
   assert.equal((await S.ops.get('/platform/business')).status, 403)

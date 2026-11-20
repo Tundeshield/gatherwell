@@ -20,15 +20,11 @@ import commsRoutes from './routes/comms.js'
 import smsRoutes from './routes/sms.js'
 import businessRoutes from './routes/business.js'
 import analyticsRoutes from './routes/analytics.js'
-import { isExpired, billingEnabled } from './billing.js'
+import { paystackEnabled, paystackMode } from './paystack.js'
 import { appEnv, hostAllowed, adminHostAllowed } from './env.js'
 import { COMMIT } from './version.js'
 
 // What an account whose trial has ended may still do: pay, manage its account, and erase people.
-const READ_ONLY_ALLOWED = [/^\/billing(\/|$)/, /^\/auth\//, /^\/me(\/|$)/, /^\/org\/dpa\//, Object.assign(/^\/people\/[^/]+$/, { method: 'DELETE' }), /^\/people\/[^/]+\/email-consent$/,
-  // Children already checked in must always be handed back safely, even if a trial ends mid-service.
-  /^\/children\/(pickup|pickup\/lookup)$/]
-
 const router = new Router()
 for (const register of [authRoutes, orgRoutes, peopleRoutes, gatheringRoutes, eventRoutes, followupRoutes, insightRoutes, messageRoutes, platformRoutes, publicRoutes, tagRoutes, automationRoutes, billingRoutes, childrenRoutes, commsRoutes, smsRoutes, businessRoutes, analyticsRoutes]) {
   register(router)
@@ -46,7 +42,7 @@ export async function handle(req, nf = null) {
   if (path === '/health' && method === 'GET') {
     let project = null
     try { const raw = process.env.FIREBASE_SERVICE_ACCOUNT || ''; project = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8')).project_id || null } catch {}
-    return json({ ok: true, env: appEnv(), commit: COMMIT, firebaseProject: project, billing: billingEnabled() ? (String(process.env.STRIPE_SECRET_KEY).startsWith('sk_live') ? 'live' : 'test') : 'off' })
+    return json({ ok: true, env: appEnv(), commit: COMMIT, firebaseProject: project, billing: paystackEnabled() ? paystackMode() : 'off' })
   }
 
   try {
@@ -83,9 +79,6 @@ export async function handle(req, nf = null) {
     if (mode === 'org') requireOrg(ctx)
 
     // After the free trial, an unpaid church can still view and download everything, but not make changes.
-    if (mode === 'org' && !['GET', 'HEAD'].includes(method) && isExpired(ctx.org) && !READ_ONLY_ALLOWED.some(re => re.test(path) && (re.method ? re.method === method : true))) {
-      return json({ error: 'Your free trial has ended. Choose a plan in Settings › Billing to keep using GatherHQ. Everything you’ve recorded is safe.', details: { code: 'billing_required' } }, 402)
-    }
     const result = await route.handler({ req, nf, url, params, body, raw, query: Object.fromEntries(url.searchParams), ctx })
     if (result instanceof Response) return result
     return json(result ?? { ok: true })

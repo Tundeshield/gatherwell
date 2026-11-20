@@ -18,7 +18,8 @@ const SUBPROCESSORS = [
   ['Google LLC (Firebase, Google Cloud)', 'Database, sign-in and file storage for all GatherHQ data', 'Google Cloud data centres'],
   ['Netlify, Inc.', 'Hosting the website and running the application', 'United States and global edge network'],
   ['Resend, Inc.', 'Delivering emails a church sends through GatherHQ, and account emails', 'European Union (Ireland)'],
-  ['Stripe Payments UK Ltd', 'Processing subscription payments from churches (billing details only, never member data)', 'United Kingdom and Stripe’s other locations'],
+  ['Paystack Payments Limited', 'Processing churches’ subscription payments in naira by card, bank transfer and USSD (billing details only, never member data)', 'Nigeria'],
+  ['Stripe Payments UK Ltd', 'Processing card subscriptions taken out in US dollars before naira billing (billing details only, never member data)', 'United Kingdom and Stripe’s other locations'],
 ]
 
 function H({ children }) { return <h2 className="mb-3 mt-10 text-[19px] font-semibold text-ink">{children}</h2> }
@@ -41,7 +42,7 @@ function Privacy() {
         'Church records, as entered by a church or by people checking in: names, phone numbers, email addresses, attendance, event registrations, answers to check-in questions, follow-up notes, tags and similar details the church chooses to record.',
         'Technical information: a sign-in cookie, IP address and basic request logs used for security and to prevent abuse.',
         'Website statistics: when you visit our public pages (not church check-in or event pages), we record the pages you view, how long you spend on them, the site that sent you, your approximate location (country and city), and your device, browser and language. We count each visitor once per day using a code made from your IP address and browser with a random value that changes and is deleted every day, so we never store your IP address and can’t recognise you on another day. Statistics are kept for up to 13 months. Browsers that send a “do not track” or Global Privacy Control signal are not counted.',
-        'Billing: card payments are processed by Stripe, which collects card details directly. We receive the billing name, email, country, and the card type and last four digits, never full card numbers.',
+        'Billing: payments are processed by Paystack (and, for older dollar subscriptions, Stripe), which collect card and bank details directly. We receive the billing email, the payment method used, and for cards the card type and last four digits, never full card numbers.',
       ]} />
       <H>How we use it</H>
       <UL items={[
@@ -98,9 +99,9 @@ function Terms() {
       <P>Don’t use GatherHQ to send spam or messages to people who haven’t agreed to hear from you, to store information you have no right to hold, to harass anyone, to break the law, or to try to access another church’s data or disrupt the service. We may suspend accounts that do.</P>
       <H>Plans and payment</H>
       <UL items={[
-        <>Every church starts with a 14-day free trial with everything included, and no card is needed. After that, a paid plan is needed to keep using GatherHQ; your church can still view and download everything without one. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
-        'Paid plans are billed monthly or yearly in advance and renew automatically until cancelled. You can cancel at any time in Settings › Billing; your plan stays active until the end of the period you have paid for.',
-        'Payments are processed securely by Stripe, which emails a receipt for every payment. Prices are in US dollars. Where we are required to collect sales tax or VAT, it is added at checkout.',
+        <>Every church starts with a 14-day free trial with everything included, and no card is needed. After that, churches with up to 50 people can keep using the Free plan; larger churches need a paid plan, priced by the number of people. Check-in always keeps working, and nothing is deleted. Current plans and prices are on our <Link to="/pricing" className="link">pricing page</Link>.</>,
+        'Paid plans are billed monthly or yearly in advance. Plans paid by card renew automatically with the same card until you turn renewal off in Settings › Billing; plans paid by bank transfer or USSD are renewed by paying again, and we remind you before the renewal date. Your plan stays active until the end of the period you have paid for.',
+        'Prices are in Nigerian naira. Payments are processed securely by Paystack, which emails a receipt for every payment. Where we are required to charge VAT, it is shown before you pay.',
         <>Refunds are covered by our <Link to="/legal/refunds" className="link">Refund Policy</Link>.</>,
         'If we change a price, we will tell you at least 30 days before it applies to your next renewal.',
       ]} />
@@ -164,7 +165,7 @@ function Refunds() {
       <H>How to ask for a refund</H>
       <UL items={[
         <>Email <Hello /> from the address on your account, or reply to your payment receipt.</>,
-        'We refund the payment to the original card through Stripe. It usually appears within 5–10 business days, depending on your bank.',
+        'We refund the payment to the card or bank account it came from, through Paystack (or Stripe for older dollar payments). It usually arrives within 5–10 business days, depending on your bank.',
         'After a refund your plan ends, and your church can still view and download everything it has recorded.',
       ]} />
       <H>Cancelling</H>

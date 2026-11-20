@@ -3,6 +3,7 @@ import { bad, conflict, notFound, str, oneOf, int, uuid, date, email as emailV, 
 import { requireCap, branchFilter, assertBranch, assertRowScope, can, orgBranches } from '../access.js'
 import { normalizePhone, displayPhone, exportPhone, audit } from '../util.js'
 import { toCsv, csvResponse, lockRef } from '../domain.js'
+import { assertRoomFor } from '../limits.js'
 
 export const STATUSES = ['visitor', 'member', 'inactive', 'transferred', 'archived']
 const ACTIVE_STATUSES = ['visitor', 'member', 'inactive', 'transferred']
@@ -249,6 +250,7 @@ export default function (r) {
     requireCap(ctx, 'people.edit')
     const { db } = await fb()
     const data = cleanPerson(body, ctx.org.settings?.defaultCountryCode)
+    await assertRoomFor(db, ctx.org, 1)
     const branchId = (await assertBranch(ctx, body.branchId)).id
     const p = await createPerson(ctx, data, { branch_id: branchId, unit_id: await scopedUnit(db, ctx, body.unitId), owner_user_id: await scopedOwner(db, ctx, body.ownerUserId), source: 'manual' })
     await audit(ctx, 'person.created', 'person', p.id, { name: `${p.first_name} ${p.last_name || ''}`.trim() })
@@ -452,6 +454,7 @@ export default function (r) {
     const analysis = await analyseImport(ctx, body.rows)
     const summary = { created: 0, updated: 0, skipped: analysis.rows.filter(r => r.action === 'skip').length, rejected: analysis.summary.rejected }
     const toCreate = analysis.rows.filter(r => r.action === 'create')
+    await assertRoomFor(db, ctx.org, toCreate.length)
     const C = (n) => col(db, ctx.org.id, n)
     for (let i = 0; i < toCreate.length; i += 200) {
       const chunk = toCreate.slice(i, i + 200)

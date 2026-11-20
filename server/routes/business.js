@@ -8,6 +8,7 @@ import { rateLimit, platformAudit } from '../util.js'
 import { adminCookie, clearAdminCookie, isPlatformAdmin, platformAdminEmails, ADMIN_SESSION_HOURS } from '../access.js'
 import { PLANS, billingStatus, monthlyValue } from '../../shared/plans.js'
 import { billingEnabled, stripe, mode as stripeMode } from '../billing.js'
+import { paystackEnabled, paystackMode } from '../paystack.js'
 import { paymentOut, revenueOf, monthlySeries, syncFromStripe } from '../payments.js'
 import { emailProvider } from '../email.js'
 import { health as smsHealthOf, SMS_ADAPTERS } from '../comms/sms.js'
@@ -85,7 +86,7 @@ function mrrOf(orgs, now) {
   return { mrr, arr: r2(exact * 12), stripe_mrr: r2(stripeMrr), manual_mrr: r2(manualMrr), paying, arppc: paying ? r2(exact / paying) : 0 }
 }
 
-const primaryCurrency = (by) => Object.entries(by).sort((a, b) => b[1].gross - a[1].gross)[0]?.[0] || 'usd'
+const primaryCurrency = (by) => Object.entries(by).sort((a, b) => b[1].gross - a[1].gross)[0]?.[0] || 'ngn'
 
 export default function (r) {
   // --- sign-in ------------------------------------------------------------------------------
@@ -106,7 +107,7 @@ export default function (r) {
     return json({ ok: true }, 200, { 'set-cookie': adminCookie(cookie) })
   })
   r.post('/admin/auth/logout', { auth: 'public' }, async () => json({ ok: true }, 200, { 'set-cookie': clearAdminCookie() }))
-  r.get('/admin/me', { auth: 'platform' }, async ({ ctx }) => ({ user: ctx.user, env: appEnv(), stripe: billingEnabled() ? stripeMode() : null, commit: COMMIT }))
+  r.get('/admin/me', { auth: 'platform' }, async ({ ctx }) => ({ user: ctx.user, env: appEnv(), stripe: billingEnabled() ? stripeMode() : null, paystack: paystackEnabled() ? paystackMode() : null, commit: COMMIT }))
 
   // --- business overview ----------------------------------------------------------------------
   r.get('/platform/business', { auth: 'platform' }, async ({ query }) => {
@@ -132,9 +133,9 @@ export default function (r) {
       churches: {
         total: live.length, paying: subs.filter(x => x.s.paying).length, trialing: subs.filter(x => x.s.state === 'trialing').length,
         trials_ending_7d: subs.filter(x => x.s.state === 'trialing' && x.s.days_left <= 7).length,
-        expired_trials: subs.filter(x => x.s.state === 'expired' && !x.s.ever_paid).length,
-        churned: subs.filter(x => x.s.state === 'expired' && x.s.ever_paid).length, past_due: subs.filter(x => x.s.state === 'past_due').length,
-        free: subs.filter(x => x.s.state === 'free').length, suspended: live.filter(o => o.status === 'suspended').length,
+        expired_trials: subs.filter(x => x.s.state === 'free' && !x.s.ever_paid).length,
+        churned: subs.filter(x => x.s.state === 'free' && x.s.ever_paid).length, past_due: subs.filter(x => x.s.state === 'past_due').length,
+        comp: subs.filter(x => x.s.state === 'comp').length, free: subs.filter(x => x.s.state === 'free' && !x.s.ever_paid).length, suspended: live.filter(o => o.status === 'suspended').length,
         new_in_range: live.filter(o => inRange(created(o))).length,
       },
       users: { total: users.data().count, active_30d: usersActive.data().count },
@@ -176,7 +177,7 @@ export default function (r) {
     else if (state === 'annual') rows = rows.filter(x => x.sub.paying && x.sub.interval === 'yearly')
     else if (state === 'trial_ending') rows = rows.filter(x => x.sub.state === 'trialing' && x.sub.days_left <= 7)
     else if (state === 'failed') rows = rows.filter(x => x.has_failed_payment || x.sub.state === 'past_due')
-    else if (state === 'churned') rows = rows.filter(x => x.sub.state === 'expired' && x.sub.ever_paid)
+    else if (state === 'churned') rows = rows.filter(x => x.sub.state === 'free' && x.sub.ever_paid)
     else if (state === 'suspended') rows = rows.filter(x => x.status === 'suspended')
     else if (state) rows = rows.filter(x => x.sub.state === state)
     const page = Math.max(1, Number(query.page) || 1), size = 50
@@ -277,13 +278,13 @@ export default function (r) {
     const everPaid = rows.filter(x => x.ever_paid)
     const in30 = new Date(now.getTime() + 30 * DAY)
     const list = query.state ? rows.filter(x => query.state === 'renewing' ? x.paying && !x.cancelling && x.renews_at && new Date(x.renews_at) <= in30
-      : query.state === 'cancelling' ? x.cancelling : query.state === 'churned' ? x.state === 'expired' && x.ever_paid : query.state === 'expired_trial' ? x.state === 'expired' && !x.ever_paid
+      : query.state === 'cancelling' ? x.cancelling : query.state === 'churned' ? x.state === 'free' && x.ever_paid : query.state === 'expired_trial' ? x.state === 'free' && !x.ever_paid
         : query.state === 'paying' ? x.paying : x.state === query.state) : rows
     const prices = billing.data()?.stripe?.[stripeMode()]?.prices || {}
     return {
       counts: {
-        active: count(x => x.state === 'active' && !x.cancelling), trialing: count(x => x.state === 'trialing'), expired_trial: count(x => x.state === 'expired' && !x.ever_paid),
-        cancelling: count(x => x.cancelling), churned: count(x => x.state === 'expired' && x.ever_paid), past_due: count(x => x.state === 'past_due'), free: count(x => x.state === 'free'),
+        active: count(x => x.state === 'active' && !x.cancelling), trialing: count(x => x.state === 'trialing'), expired_trial: count(x => x.state === 'free' && !x.ever_paid),
+        cancelling: count(x => x.cancelling), churned: count(x => x.state === 'free' && x.ever_paid), past_due: count(x => x.state === 'past_due'), comp: count(x => x.state === 'comp'), free: count(x => x.state === 'free' && !x.ever_paid),
         monthly: count(x => x.paying && x.interval !== 'yearly'), yearly: count(x => x.paying && x.interval === 'yearly'), manual: count(x => x.paying && x.manual),
         renewing_30d: count(x => x.paying && !x.cancelling && x.renews_at && new Date(x.renews_at) <= in30),
       },
@@ -303,7 +304,7 @@ export default function (r) {
     const date = new Date(`${String(b.date || '').slice(0, 10)}T00:00:00Z`)
     if (isNaN(date)) throw bad('Choose a date.')
     return { name: str(b.name, { max: 120, name: 'Name', required: true }), category: oneOf(b.category, CATS, { fallback: 'other' }), amount: r2(amount),
-      currency: String(b.currency || 'usd').toLowerCase().replace(/[^a-z]/g, '').slice(0, 3) || 'usd', date, vendor: str(b.vendor, { max: 120 }) || null,
+      currency: String(b.currency || 'ngn').toLowerCase().replace(/[^a-z]/g, '').slice(0, 3) || 'ngn', date, vendor: str(b.vendor, { max: 120 }) || null,
       description: str(b.description, { max: 1000 }) || null, recurring: oneOf(b.recurring, ['one_off', 'monthly', 'yearly'], { fallback: 'one_off' }) }
   }
   const expenseOut = (s) => { const x = s.data(); return { id: s.id, ...x, date: plain(x.date)?.slice(0, 10), created_at: plain(x.created_at), updated_at: plain(x.updated_at), receipt: x.receipt ? { name: x.receipt.name, type: x.receipt.type, size: x.receipt.size } : null } }
@@ -539,7 +540,7 @@ export default function (r) {
     const { db } = await fb()
     const b = (await db.collection('platform').doc('billing').get()).data() || {}
     const comms = (await db.collection('platform').doc('comms').get()).data() || {}
-    return { plans: Object.values(PLANS).map(p => ({ key: p.key, name: p.name, monthly: p.monthly, yearly: p.yearly })), currency: 'USD',
+    return { plans: Object.values(PLANS).map(p => ({ key: p.key, name: p.name, monthly: p.monthly, yearly: p.yearly, limit: p.limit })), currency: 'NGN', paystack: paystackEnabled() ? paystackMode() : null,
       stripe: billingEnabled() ? stripeMode() : null, stripe_prices: b.stripe?.[stripeMode()]?.prices || {}, credit_packs: comms.sms?.packs || [10, 25, 50] }
   })
 }

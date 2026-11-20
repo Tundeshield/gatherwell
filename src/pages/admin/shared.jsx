@@ -1,12 +1,13 @@
 import { Badge } from '../../components/ui'
 
-export const money = (n, cents = false) => `$${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 })}`
+export const money = (n) => `₦${Math.round(Number(n || 0)).toLocaleString('en-NG')}`
 
 export function planLabel(b) {
   if (!b) return '—'
-  const plan = b.plan === 'network' ? 'Network' : 'Church'
+  const plan = { growing: 'Growing', established: 'Established', network: 'Network', church: 'Church ($)' }[b.plan] || 'Paid'
   switch (b.state) {
-    case 'free': return 'Free (comp)'
+    case 'comp': return 'Free (comp)'
+    case 'free': return b.lapsed ? 'Plan ended · Free' : 'Free plan'
     case 'trialing': return `Trial · ${b.daysLeft} day${b.daysLeft === 1 ? '' : 's'} left`
     case 'active': return `${plan} · ${b.interval === 'yearly' ? 'yearly' : 'monthly'}${b.manual ? ' (by hand)' : ''}${b.cancelling ? ' · cancelling' : ''}`
     case 'past_due': return `${plan} · payment due`
@@ -16,7 +17,7 @@ export function planLabel(b) {
 }
 
 export function PlanBadge({ billing }) {
-  const tone = { free: 'info', trialing: 'gold', active: 'success', past_due: 'danger', expired: 'neutral' }[billing?.state] || 'neutral'
+  const tone = { comp: 'info', trialing: 'gold', active: 'success', past_due: 'danger', free: billing?.lapsed ? 'warning' : 'neutral' }[billing?.state] || 'neutral'
   return <Badge tone={tone}>{planLabel(billing)}</Badge>
 }
 
@@ -60,8 +61,11 @@ export function actionLabel(a) {
 }
 
 // --- business console helpers ---------------------------------------------------------------
-export function fmtMoney(n, currency = 'usd', cents = true) {
-  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: String(currency || 'usd').toUpperCase(), minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 }).format(Number(n || 0)) }
+// Naira by default (GatherHQ bills in naira); other currencies for expenses and older dollar payments.
+export function fmtMoney(n, currency = 'ngn', cents = true) {
+  const c = String(currency || 'ngn').toLowerCase()
+  const dp = cents && c !== 'ngn' ? 2 : 0
+  try { return new Intl.NumberFormat({ ngn: 'en-NG', gbp: 'en-GB', eur: 'en-IE' }[c] || 'en-US', { style: 'currency', currency: c.toUpperCase(), minimumFractionDigits: dp, maximumFractionDigits: dp }).format(Number(n || 0)) }
   catch { return `${Number(n || 0).toFixed(2)} ${String(currency).toUpperCase()}` }
 }
 export const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')

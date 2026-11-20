@@ -885,7 +885,7 @@ test('data rights: person export, complete deletion, email consent, church expor
   assert.ok(String(r.data).includes('Sade R'), 'the event keeps its registration, without the link')
 })
 
-test('billing: trial, Stripe checkout, webhooks, read-only after expiry, plan changes, network unlocks branches', async () => {
+test('billing: naira plans by size through Paystack, free plan limits, renewals', async () => {
   const crypto = await import('node:crypto')
   const c = client()
   await signup(c, { orgName: 'Pay Church', name: 'Pat Owner', email: 'pat@pay.test', password: 'password123' })
@@ -893,121 +893,145 @@ test('billing: trial, Stripe checkout, webhooks, read-only after expiry, plan ch
   const orgId = me.org.id, branchId = me.branches[0].id
   assert.equal(me.org.billing.state, 'trialing')
   assert.ok(me.org.billing.daysLeft >= 13 && me.org.billing.daysLeft <= 14, 'new churches get 14 days')
-  let r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-  assert.equal(r.status, 400, 'no payments before Stripe is connected')
-
-  // An expired church is never locked out while payments aren't connected
+  let r = await c.post('/billing/checkout', { plan: 'growing', interval: 'yearly' })
+  assert.equal(r.status, 400, 'no payments before Paystack is connected')
   const setOrg = (patch) => { const k = `orgs/${orgId}`; fake.db._store.set(k, { ...fake.db._store.get(k), ...patch }) }
-  setOrg({ billing: { status: 'cancelled', next_payment_date: new Date(Date.now() - 86400e3).toISOString() } })
+  const getOrg = () => fake.db._store.get(`orgs/${orgId}`)
+  // Trial over: the Free plan. Without payments connected, nothing is limited.
+  setOrg({ trial_ends_at: new Date(Date.now() - 86400e3) })
+  assert.equal((await c.get('/me')).data.org.billing.state, 'free')
   r = await c.post('/people', { firstName: 'Free', phone: '08050000001', branchId }); assert.equal(r.status, 200)
 
-  Object.assign(process.env, { STRIPE_SECRET_KEY: 'sk_live_test', STRIPE_WEBHOOK_SECRET: 'whsec_test' })
+  process.env.PAYSTACK_SECRET_KEY = 'sk_test_paystack'
   const calls = []
-  const now = Math.floor(Date.now() / 1000)
-  const sub = { id: 'sub_1', object: 'subscription', status: 'active', customer: 'cus_1', metadata: { org_id: orgId, plan: 'church', interval: 'monthly' },
-    items: { data: [{ id: 'si_1', price: { id: 'price_church_month', lookup_key: 'gatherhq_church_monthly', recurring: { interval: 'month' } } }] },
-    current_period_end: now + 30 * 86400, cancel_at_period_end: false, default_payment_method: { card: { brand: 'visa', last4: '4242', exp_month: 12, exp_year: 2030 } } }
+  let verifyStatus = 'success'
   const realFetch = globalThis.fetch
   globalThis.fetch = async (u, init = {}) => {
-    if (!String(u).startsWith('https://api.stripe.com')) return realFetch(u, init)
-    const url = new URL(u); const path = url.pathname.replace('/v1', ''); const body = Object.fromEntries(new URLSearchParams(init.body || ''))
-    calls.push([init.method || 'GET', path, body, url.search])
-    const ok = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } })
-    if (path === '/prices' && (init.method || 'GET') === 'GET') return ok({ data: [] })
-    if (path.startsWith('/products/')) return ok({ error: { message: 'No such product' } }, 404)
-    if (path === '/products') return ok({ id: body.id })
-    if (path === '/prices') return ok({ id: `price_${body.product.slice(9)}_${body['recurring[interval]']}` })
-    if (path === '/customers') return ok({ id: 'cus_1' })
-    if (path === '/checkout/sessions') return ok({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' })
-    if (path === '/checkout/sessions/cs_1') return ok({ id: 'cs_1', status: 'complete', client_reference_id: orgId, subscription: sub, customer_details: { email: 'pat@pay.test' } })
-    if (path === '/checkout/sessions/cs_other') return ok({ id: 'cs_other', status: 'complete', client_reference_id: 'someone-else', subscription: sub })
-    if (path === '/subscriptions/sub_1' && init.method === 'POST') { sub.items.data[0].price = { id: body['items[0][price]'], lookup_key: 'gatherhq_network_yearly', recurring: { interval: 'year' } }; sub.metadata = { org_id: orgId, plan: 'network', interval: 'yearly' }; sub.cancel_at_period_end = false; return ok(sub) }
-    if (path === '/subscriptions/sub_1') return ok(sub)
-    if (path === '/billing_portal/sessions') return ok({ url: 'https://billing.stripe.com/p/session/1' })
-    return ok({ error: { message: 'not mocked ' + path } }, 404)
+    if (!String(u).startsWith('https://api.paystack.co')) return realFetch(u, init)
+    const path = new URL(u).pathname
+    const body = init.body ? JSON.parse(init.body) : null
+    calls.push([init.method || 'GET', path, body])
+    const ok = (data) => new Response(JSON.stringify({ status: true, data }), { status: 200, headers: { 'content-type': 'application/json' } })
+    if (path === '/transaction/initialize') return ok({ authorization_url: `https://checkout.paystack.com/${body.reference}`, reference: body.reference })
+    if (path.startsWith('/transaction/verify/')) {
+      const ref = decodeURIComponent(path.split('/').pop())
+      const pend = fake.db._store.get(`paystackRefs/${ref}`)
+      return ok({ status: verifyStatus, reference: ref, amount: (pend?.amount || 0) * 100, currency: 'NGN', channel: 'card', paid_at: new Date().toISOString(),
+        customer: { email: 'pat@pay.test', customer_code: 'CUS_1' }, authorization: { authorization_code: 'AUTH_1', channel: 'card', reusable: true, last4: '4081', card_type: 'visa ', exp_month: '12', exp_year: '2030', bank: 'TEST BANK' } })
+    }
+    if (path === '/transaction/charge_authorization') return ok({ status: 'success', reference: body.reference, amount: body.amount, currency: 'NGN', channel: 'card', customer: { email: body.email }, authorization: { authorization_code: body.authorization_code, channel: 'card', reusable: true, last4: '4081' } })
+    return new Response(JSON.stringify({ status: false, message: 'not mocked ' + path }), { status: 404 })
   }
-  const hook = (evt, sign = true, t = Math.floor(Date.now() / 1000)) => {
+  const hook = (evt, sign = true) => {
     const raw = JSON.stringify(evt)
-    const sig = sign ? `t=${t},v1=${crypto.createHmac('sha256', 'whsec_test').update(`${t}.${raw}`).digest('hex')}` : `t=${t},v1=bad`
-    return handle(new Request('http://test.local/api/webhooks/stripe', { method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8', 'stripe-signature': sig }, body: raw }))
+    const sig = sign ? crypto.createHmac('sha512', 'sk_test_paystack').update(raw).digest('hex') : 'bad'
+    return handle(new Request('http://test.local/api/webhooks/paystack', { method: 'POST', headers: { 'content-type': 'application/json', 'x-paystack-signature': sig }, body: raw }))
   }
-  let n = 0
-  const evt = (type, object, created = Math.floor(Date.now() / 1000) + n) => ({ id: `evt_${++n}`, type, created, data: { object } })
   try {
-    // Expired and payments connected: read-only
-    r = await c.post('/people', { firstName: 'Blocked', phone: '08050000002', branchId })
-    assert.equal(r.status, 402); assert.equal(r.data.details.code, 'billing_required')
-    assert.equal((await c.get('/people')).status, 200, 'can still view')
-    const g = Object.entries(Object.fromEntries(fake.db._store)).find(([k]) => k.startsWith(`orgs/${orgId}/people/`))
-    assert.equal((await c.del(`/people/${g[0].split('/').pop()}`)).status, 200, 'can still erase people')
-    // Strict after the trial: children's check-in stops too, but pickup always works
-    assert.equal((await c.post('/children/lookup', { phone: '08035554417' })).status, 402)
-    assert.equal((await c.post('/children/pickup/lookup', { code: 'KXM' })).status, 200, 'pickup still works')
-    assert.equal((await c.post('/gatherings', { name: 'Sunday', branchId, startsAt: new Date().toISOString() })).status, 402, 'no new sessions')
+    // Free plan, now enforced: 50 people. Check-in at the door never blocked; adding by hand and imports are.
+    const people = Object.keys(Object.fromEntries(fake.db._store)).filter(k => k.startsWith(`orgs/${orgId}/people/`)).length
+    for (let i = people; i < 50; i++) fake.db._store.set(`orgs/${orgId}/people/fill${i}`, { first_name: 'P', status: 'active' })
+    r = await c.get('/billing')
+    assert.equal(r.data.people, 50); assert.equal(r.data.limit, 50); assert.equal(r.data.ready, true)
+    r = await c.post('/people', { firstName: 'Over', phone: '08050000002', branchId })
+    assert.equal(r.status, 402); assert.equal(r.data.details.code, 'plan_limit'); assert.equal(r.data.details.suggested, 'growing')
+    assert.match(r.data.error, /Free plan covers up to 50 people/)
+    // Archived people don't count
+    fake.db._store.set(`orgs/${orgId}/people/fill49`, { first_name: 'P', status: 'archived' })
+    assert.equal((await c.post('/people', { firstName: 'Room', phone: '08050000003', branchId })).status, 200)
+    assert.equal((await c.post('/people', { firstName: 'Over', phone: '08050000004', branchId })).status, 402)
+    assert.equal((await c.get('/people')).status, 200, 'never read-only')
+    const { automationPaused } = await import('../server/limits.js')
+    fake.db._store.set(`orgs/${orgId}/people/extra`, { first_name: 'Visitor', status: 'active' }) // a first-timer checked in at the door
+    assert.equal(await automationPaused(fake.db, getOrg() && { id: orgId, ...getOrg() }), true, 'over the Free limit: automations pause')
 
-    // Checkout: product and price created once in Stripe (by lookup key), then reused
-    r = await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
+    // Prices: naira, yearly default; a church too big for a plan can see it's too small
+    r = await c.get('/billing/quote?plan=growing&interval=yearly')
+    assert.deepEqual([r.data.amount, r.data.full, r.data.credit, r.data.kind], [100000, 100000, 0, 'new'])
+
+    // Checkout: Paystack page with card, bank transfer and USSD
+    r = await c.post('/billing/checkout', { plan: 'growing', interval: 'yearly' })
     assert.equal(r.status, 200, JSON.stringify(r.data))
-    assert.equal(r.data.url, 'https://checkout.stripe.com/c/pay/cs_1')
-    const price = calls.find(x => x[0] === 'POST' && x[1] === '/prices')[2]
-    assert.deepEqual([price.unit_amount, price.currency, price['recurring[interval]'], price.lookup_key], ['1900', 'usd', 'month', 'gatherhq_church_monthly'])
-    assert.equal(calls.find(x => x[1] === '/products')[2].tax_code, 'txcd_10103001')
-    const session = calls.find(x => x[1] === '/checkout/sessions')[2]
-    assert.equal(session.mode, 'subscription'); assert.equal(session.client_reference_id, orgId); assert.equal(session.customer, 'cus_1')
-    assert.match(session.success_url, /\/app\/settings\?tab=billing&session_id=\{CHECKOUT_SESSION_ID\}$/)
-    await c.post('/billing/checkout', { plan: 'church', interval: 'monthly' })
-    assert.equal(calls.filter(x => x[0] === 'POST' && x[1] === '/prices').length, 1, 'price reused')
-    assert.equal(calls.filter(x => x[1] === '/customers').length, 1, 'customer reused')
+    const init = calls.find(x => x[1] === '/transaction/initialize')[2]
+    assert.deepEqual([init.amount, init.currency, init.email], [10000000, 'NGN', 'pat@pay.test'])
+    assert.deepEqual(init.channels.sort(), ['bank', 'bank_transfer', 'card', 'ussd'])
+    assert.match(init.callback_url, /\/app\/settings\?tab=billing&reference=ghq_/)
+    const reference = init.reference
 
-    // Back from checkout: confirm the session (only this church's)
-    assert.equal((await c.post('/billing/confirm', { sessionId: 'cs_other' })).data.ok, false)
-    r = await c.post('/billing/confirm', { sessionId: 'cs_1' })
-    assert.equal(r.data.ok, true, JSON.stringify(r.data))
-    me = (await c.get('/me')).data
-    assert.equal(me.org.billing.state, 'active'); assert.equal(me.org.billing.plan, 'church')
-    r = await c.get('/billing'); assert.equal(r.data.card.last4, '4242'); assert.equal(r.data.hasSubscription, true)
-    assert.equal((await c.post('/people', { firstName: 'Paid', phone: '08050000003', branchId })).status, 200, 'unlocked')
-    r = await c.post('/billing/manage'); assert.equal(r.data.url, 'https://billing.stripe.com/p/session/1')
+    // Not paid yet: nothing changes
+    verifyStatus = 'abandoned'
+    r = await c.post('/billing/confirm', { reference })
+    assert.equal(r.data.ok, false); assert.equal(r.data.status, 'abandoned')
+    assert.equal((await c.get('/billing')).data.state, 'free')
 
-    // Webhooks: signed and recent only, each processed once
-    assert.equal((await hook(evt('customer.subscription.updated', sub), false)).status, 401)
-    assert.equal((await hook(evt('customer.subscription.updated', sub), true, Math.floor(Date.now() / 1000) - 3600)).status, 401, 'replayed old notification refused')
-    const failed = evt('invoice.payment_failed', { id: 'in_2', customer: 'cus_1', subscription: 'sub_1', last_payment_error: { message: 'Your card was declined.' } })
-    assert.equal((await hook(failed)).status, 200)
-    assert.equal((await (await hook(failed)).json()).duplicate, true)
-    r = await hook(evt('customer.subscription.updated', { ...sub, status: 'past_due' }))
-    assert.equal(r.status, 200)
-    r = await c.get('/billing'); assert.equal(r.data.state, 'past_due'); assert.match(r.data.lastError, /declined/)
-    assert.equal((await c.post('/people', { firstName: 'Grace', phone: '08050000004', branchId })).status, 200, 'grace period')
-    // An older event arriving late doesn't undo a newer one
-    await hook(evt('customer.subscription.updated', { ...sub, status: 'active' }, Math.floor(Date.now() / 1000) - 86400))
+    // Webhook: signed only; verified with Paystack; applied once
+    verifyStatus = 'success'
+    assert.equal((await hook({ event: 'charge.success', data: { id: 1, reference } }, false)).status, 401)
+    assert.equal((await hook({ event: 'charge.success', data: { id: 1, reference } })).status, 200)
+    r = await c.get('/billing')
+    assert.equal(r.data.state, 'active'); assert.equal(r.data.plan, 'growing'); assert.equal(r.data.interval, 'yearly')
+    assert.equal(r.data.limit, 300); assert.equal(r.data.autoRenew, true); assert.equal(r.data.card.last4, '4081')
+    const until = new Date(r.data.renewsAt)
+    assert.ok(Math.abs(until - Date.now() - 365 * 86400e3) < 2 * 86400e3, 'a year from now')
+    r = await c.post('/billing/confirm', { reference })
+    assert.equal(r.data.ok, true, 'returning from checkout after the webhook is fine')
+    const pays = Object.entries(Object.fromEntries(fake.db._store)).filter(([k, v]) => k.startsWith('payments/ps_') && v.org_id === orgId)
+    assert.equal(pays.length, 1, 'one payment recorded'); assert.equal(pays[0][1].amount, 100000); assert.equal(pays[0][1].currency, 'ngn')
+    assert.equal((await c.post('/people', { firstName: 'Paid', phone: '08050000005', branchId })).status, 200, 'room on Growing')
+    assert.equal(await automationPaused(fake.db, { id: orgId, ...getOrg() }), false)
+
+    // Moving up part-way: the unused part of the current year comes off
+    setOrg({ billing: { ...getOrg().billing, period_start: new Date(Date.now() - 182 * 86400e3), next_payment_date: new Date(Date.now() + 183 * 86400e3) } })
+    r = await c.get('/billing/quote?plan=established&interval=yearly')
+    assert.equal(r.data.kind, 'upgrade'); assert.ok(r.data.credit > 49000 && r.data.credit < 51000, String(r.data.credit))
+    assert.equal(r.data.amount, 250000 - r.data.credit)
+    // Moving down is scheduled for renewal, with no charge now
+    r = await c.post('/billing/checkout', { plan: 'growing', interval: 'monthly' })
+    assert.equal(r.data.scheduled, true)
+    assert.equal((await c.get('/billing')).data.nextPlan, 'growing')
+    await c.post('/billing/cancel-change')
+    assert.equal((await c.get('/billing')).data.nextPlan, null)
+
+    // Renewal day: the saved card is charged once, and the plan runs another year
+    const { runPaystackRenewals } = await import('../server/paystack.js')
+    setOrg({ billing: { ...getOrg().billing, next_payment_date: new Date(Date.now() - 3600e3) } })
+    let res = await runPaystackRenewals({ now: new Date() })
+    assert.equal(res.charged, 1, JSON.stringify(res))
+    assert.equal(calls.filter(x => x[1] === '/transaction/charge_authorization').length, 1)
+    assert.equal(calls.find(x => x[1] === '/transaction/charge_authorization')[2].amount, 10000000)
+    r = await c.get('/billing'); assert.equal(r.data.state, 'active'); assert.ok(new Date(r.data.renewsAt) > new Date(Date.now() + 300 * 86400e3))
+    res = await runPaystackRenewals({ now: new Date() })
+    assert.equal(res.charged, 0, 'not charged twice')
+
+    // Bank-transfer payers (no saved card): reminders, then a week's grace, then the Free plan
+    setOrg({ billing: { ...getOrg().billing, auto_renew: false, authorization_code: null, next_payment_date: new Date(Date.now() + 5 * 86400e3), reminders: {} } })
+    const sent = []
+    res = await runPaystackRenewals({ now: new Date(), send: async (org, stage) => sent.push(stage) })
+    assert.deepEqual(sent, ['d7'])
+    await runPaystackRenewals({ now: new Date(), send: async (org, stage) => sent.push(stage) })
+    assert.deepEqual(sent, ['d7'], 'each reminder once')
+    setOrg({ billing: { ...getOrg().billing, next_payment_date: new Date(Date.now() - 2 * 86400e3) } })
     assert.equal((await c.get('/billing')).data.state, 'past_due')
-    await hook(evt('invoice.paid', { id: 'in_3', customer: 'cus_1', subscription: 'sub_1', status_transitions: { paid_at: Math.floor(Date.now() / 1000) } }))
-    assert.equal((await c.get('/billing')).data.state, 'active')
+    setOrg({ billing: { ...getOrg().billing, next_payment_date: new Date(Date.now() - 9 * 86400e3) } })
+    r = await c.get('/billing'); assert.equal(r.data.state, 'free'); assert.equal(r.data.lapsed, true)
 
-    // Cancelling keeps the plan until the end of the paid period
-    await hook(evt('customer.subscription.updated', { ...sub, cancel_at_period_end: true, current_period_end: now + 10 * 86400 }))
-    r = await c.get('/billing'); assert.equal(r.data.state, 'active'); assert.equal(r.data.cancelling, true)
+    // Auto-renew can be switched off and on (on only with a saved card)
+    assert.equal((await c.post('/billing/auto-renew', { on: true })).status, 400)
 
-    // Switching plan changes the Stripe subscription directly, and the network plan switches on branches
-    r = await c.post('/billing/checkout', { plan: 'network', interval: 'yearly' })
-    assert.equal(r.data.changed, true, JSON.stringify(r.data))
-    const change = calls.find(x => x[0] === 'POST' && x[1] === '/subscriptions/sub_1')[2]
-    assert.equal(change['items[0][id]'], 'si_1'); assert.equal(change['items[0][price]'], 'price_network_year'); assert.equal(change.cancel_at_period_end, 'false', 'undoes the cancellation')
-    me = (await c.get('/me')).data
-    assert.equal(me.org.billing.plan, 'network'); assert.equal(me.org.branchesEnabled, true)
+    // A second branch needs the Network plan
+    setOrg({ features: { branches: true }, billing: { ...getOrg().billing, next_payment_date: new Date(Date.now() + 100 * 86400e3), status: 'active' } })
+    r = await c.post('/branches', { name: 'Second branch' })
+    assert.equal(r.status, 402); assert.equal(r.data.details.code, 'plan_limit_branches')
+    setOrg({ billing: { ...getOrg().billing, plan: 'network' } })
+    assert.equal((await c.post('/branches', { name: 'Second branch' })).status, 200)
 
-    // A cancelled subscription that has ended locks changes again
-    await hook(evt('customer.subscription.deleted', { ...sub, status: 'canceled', ended_at: Math.floor(Date.now() / 1000) - 3600 }))
-    assert.equal((await c.get('/billing')).data.state, 'expired')
-
-    // A free (complimentary) church is never charged
+    // A complimentary church is never limited or charged
     r = await S.ops.patch(`/platform/orgs/${orgId}`, { plan: 'free' })
     assert.equal(r.status, 200, JSON.stringify(r.data))
-    assert.equal((await c.get('/me')).data.org.billing.state, 'free')
+    assert.equal((await c.get('/me')).data.org.billing.state, 'comp')
   } finally {
     globalThis.fetch = realFetch
-    for (const k of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) delete process.env[k]
+    delete process.env.PAYSTACK_SECRET_KEY
   }
 })
 
@@ -1175,9 +1199,9 @@ test('trial reminders: 7, 3 and 1 day before, and on the day it ends', async () 
   const stage = (daysLeft) => trialStage({ state: 'trialing', daysLeft })
   assert.deepEqual([stage(20), stage(7), stage(5), stage(3), stage(2), stage(1)], [null, 'd7', 'd7', 'd3', 'd3', 'd1'])
   const now = new Date()
-  assert.equal(trialStage({ state: 'expired', trialEndsAt: new Date(now - 86400e3).toISOString() }, now), 'ended')
-  assert.equal(trialStage({ state: 'expired', trialEndsAt: new Date(now - 10 * 86400e3).toISOString() }, now), null, 'not nagged forever')
-  assert.equal(trialStage({ state: 'expired', lapsed: true, trialEndsAt: new Date(now - 86400e3).toISOString() }, now), null, 'lapsed paid plans are different')
+  assert.equal(trialStage({ state: 'free', trialEndsAt: new Date(now - 86400e3).toISOString() }, now), 'ended')
+  assert.equal(trialStage({ state: 'free', trialEndsAt: new Date(now - 10 * 86400e3).toISOString() }, now), null, 'not nagged forever')
+  assert.equal(trialStage({ state: 'free', lapsed: true, trialEndsAt: new Date(now - 86400e3).toISOString() }, now), null, 'lapsed paid plans are different')
   const e = trialEmail({ name: 'Grace Chapel', timezone: 'Africa/Lagos' }, 'd3', { trialEndsAt: new Date(now.getTime() + 3 * 86400e3).toISOString() }, 'https://gatherhq.org')
   assert.equal(e.subject, 'Your GatherHQ trial ends in 3 days')
   assert.ok(e.html.includes('https://gatherhq.org/app/settings?tab=billing'))

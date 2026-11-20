@@ -93,7 +93,7 @@ const ALSO = [
 export default function Landing() {
   const { me } = useSession()
   const signedIn = !!me
-  const [interval, setInterval_] = useState('monthly')
+  const [interval, setInterval_] = useState('yearly')
   const playTour = useRef(null)
   const invite = useInvite()
   const primary = signedIn ? '/app' : '/signup'
@@ -118,7 +118,7 @@ export default function Landing() {
                 <Play size={17} fill="currentColor" />Watch the 35-second tour
               </button>
             </div>
-            <p className="mt-5 text-[15px] text-brand-200">No card needed to start · Unlimited people and team members · From $19 a month</p>
+            <p className="mt-5 text-[15px] text-brand-200">Free for up to 50 people · No card needed · Paid plans from ₦10,000 a month</p>
           </div>
         </div>
         <div className="mx-auto max-w-page px-5 sm:px-6">
@@ -218,20 +218,20 @@ export default function Landing() {
 
       {/* Pricing */}
       <section id="pricing" className="scroll-mt-20 border-t border-mist-200 bg-white">
-        <Reveal className="mx-auto max-w-4xl px-5 py-16 sm:px-6 lg:py-24">
+        <Reveal className="mx-auto max-w-6xl px-5 py-16 sm:px-6 lg:py-24">
           <div className="text-center">
-            <h2 className="text-[30px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[36px]">Simple pricing, everything included</h2>
-            <p className="mx-auto mt-3 max-w-xl text-[17px] text-mist-600">Try every feature free for {TRIAL_DAYS} days, no card needed. After that, pay monthly or yearly, and get a full refund if you ask within 30 days of a payment.</p>
+            <h2 className="text-[30px] font-semibold leading-tight tracking-[-0.02em] text-ink sm:text-[36px]">Priced by the size of your church</h2>
+            <p className="mx-auto mt-3 max-w-xl text-[17px] text-mist-600">Free for up to 50 people. Bigger churches try everything free for {TRIAL_DAYS} days, then pay yearly (2 months free) or monthly, with a full refund if you ask within 30 days of a payment.</p>
             <div className="mt-7 flex justify-center"><IntervalToggle value={interval} onChange={setInterval_} /></div>
           </div>
           <div className="mt-8">
             <PlanCards interval={interval} action={(key) => (
-              <Link to={signedIn ? '/app/settings?tab=billing' : '/signup'} className={`block rounded-lg px-4 py-3 text-center text-[15px] font-semibold ${key === 'church' ? 'bg-brand-700 text-white hover:bg-brand-800' : 'border border-mist-300 bg-white text-ink hover:bg-mist-50'}`}>
-                {signedIn ? 'Choose this plan' : `Start your free ${TRIAL_DAYS} days`}
+              <Link to={signedIn ? '/app/settings?tab=billing' : '/signup'} className={`block rounded-lg px-4 py-3 text-center text-[15px] font-semibold ${key === 'growing' ? 'bg-brand-700 text-white hover:bg-brand-800' : 'border border-mist-300 bg-white text-ink hover:bg-mist-50'}`}>
+                {signedIn ? 'Choose this plan' : key === 'free' ? 'Start free' : `Start your free ${TRIAL_DAYS} days`}
               </Link>
             )} />
           </div>
-          <p className="mt-5 text-center text-sm text-mist-500">Prices in US dollars, paid by card through Stripe. <Link to="/pricing" className="link">Full pricing details</Link></p>
+          <p className="mt-5 text-center text-sm text-mist-500">Prices in naira. Pay by card, bank transfer or USSD through Paystack. <Link to="/pricing" className="link">Full pricing details</Link></p>
         </Reveal>
       </section>
 

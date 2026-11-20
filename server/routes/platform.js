@@ -1,7 +1,7 @@
 // The GatherHQ team's console (admin.gatherhq.org). Platform operators only
 // (users.is_platform_admin or PLATFORM_ADMIN_EMAILS). Being a church owner never grants this.
 // Church data stays private: counts, team members and activity names only — never member records or notes.
-import { billingStatus, monthlyValue, PLANS } from '../../shared/plans.js'
+import { billingStatus, monthlyValue, PLANS, PAID_PLANS } from '../../shared/plans.js'
 import { fb, col, plain } from '../firebase.js'
 import { notFound, oneOf, bad } from '../http.js'
 import { audit, platformAudit } from '../util.js'
@@ -75,14 +75,14 @@ export default function (r) {
       orgs: live.length, active_orgs: live.filter(o => o.status === 'active').length, branches: live.reduce((a, o) => a + o.branches, 0),
       people: live.reduce((a, o) => a + o.people, 0), checkins_7d: live.reduce((a, o) => a + o.checkins_7d, 0), users: users.data().count,
       mrr: Math.round(mrr * 100) / 100, arr: Math.round(mrr * 12), paying: by('active').filter(o => o.mrr > 0).length,
-      trialing: by('trialing').length, free: by('free').length, past_due: by('past_due').length, expired: by('expired').length,
+      trialing: by('trialing').length, free: by('free').length, comp: by('comp').length, past_due: by('past_due').length, expired: by('free').filter(o => o.billing.lapsed).length,
       suspended: live.filter(o => o.status === 'suspended').length,
       new_7d: orgs.filter(o => o.created_at && new Date(o.created_at).getTime() >= now - 7 * DAY).length,
       new_30d: orgs.filter(o => o.created_at && new Date(o.created_at).getTime() >= now - 30 * DAY).length,
     }
     const attention = {
       trials_ending: by('trialing').filter(o => o.billing.daysLeft <= 7).sort((a, b) => a.billing.daysLeft - b.billing.daysLeft).map(pick),
-      payment_problems: [...by('past_due'), ...by('expired').filter(o => o.billing.lapsed)].map(pick),
+      payment_problems: [...by('past_due'), ...by('free').filter(o => o.billing.lapsed)].map(pick),
       quiet: live.filter(o => o.status === 'active' && o.created_at && new Date(o.created_at).getTime() < quietCutoff && (!o.last_checkin_at || new Date(o.last_checkin_at).getTime() < quietCutoff)).map(pick),
     }
     return { totals, signups, attention, orgs }
@@ -145,7 +145,7 @@ export default function (r) {
       const trial_ends_at = new Date(from.getTime() + days * DAY)
       const update = { trial_ends_at, updated_at: new Date() }
       // A lapsed paid plan goes back to a trial.
-      if (st.state === 'expired' && d.billing?.status) update.billing = { ...d.billing, status: null, manual: false }
+      if (st.state === 'free' && st.lapsed && d.billing?.status) update.billing = { ...d.billing, status: null, manual: false }
       await ref.update(update)
       await log('platform.trial_extended', { days })
       return { id: o.id, trial_ends_at: trial_ends_at.toISOString() }
@@ -158,7 +158,7 @@ export default function (r) {
         await log('platform.manual_plan_removed')
         return { id: o.id }
       }
-      const plan = oneOf(body.manualPlan.plan, Object.keys(PLANS), { name: 'Plan' })
+      const plan = oneOf(body.manualPlan.plan, PAID_PLANS, { name: 'Plan' })
       const interval = oneOf(body.manualPlan.interval, ['monthly', 'yearly'], { name: 'Billing period' }) || 'monthly'
       const until = new Date(body.manualPlan.until)
       if (!plan) throw bad('Choose a plan.')

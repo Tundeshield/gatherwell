@@ -137,7 +137,7 @@ class Query {
     for (const [p, d] of this.db._store) if (p.startsWith(prefix) && !p.slice(prefix.length).includes('/')) rows.push([p, d])
     for (const f of this.s.filters) {
       rows = rows.filter(([, d]) => {
-        const v = d[f.field]
+        const v = String(f.field).split('.').reduce((o, k) => (o == null ? undefined : o[k]), d) // nested fields, as Firestore does
         switch (f.op) {
           case '==': return compare(v, f.value) === 0 && (v !== undefined || f.value === null)
           case 'in': return f.value.some(x => compare(v, x) === 0 && v !== undefined)

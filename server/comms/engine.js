@@ -18,7 +18,7 @@ import { activeProvider, platformConfig, smsCountries } from './providers.js'
 import { rates, unitPrice, addCredits, balanceOf, money, reserve, settle, release, refundFailed } from './credits.js'
 import { routeFor, sendVia, ROUTE_REASON, SMS_ADAPTERS, errorText, brandSms } from './sms.js'
 import { followupDoc, followupCounters } from '../domain.js'
-import { isExpired } from '../billing.js'
+import { automationPaused } from '../limits.js'
 
 const appOrigin = () => siteOrigin(null) || 'https://gatherhq.org'
 const BATCH = 50
@@ -303,7 +303,7 @@ export async function processMessage(orgId, messageId, { budgetMs = 7000, now = 
   let m = { id: messageId, ...claim.m }
   const release = (patch) => ref.update({ lease_until: null, updated_at: new Date(), ...patch })
   const org = await loadOrg(db, orgId)
-  if (!org || org.status !== 'active' || isExpired(org)) { await release({ status: 'paused', pause_reason: 'subscription' }); return progress({ ...m, status: 'paused', pause_reason: 'subscription' }, { nextAt: null }) }
+  if (!org || org.status !== 'active') { await release({ status: 'paused', pause_reason: 'subscription' }); return progress({ ...m, status: 'paused', pause_reason: 'subscription' }, { nextAt: null }) }
   const sms = m.channel === 'sms'
   let adapter = null
   if (m.channel === 'whatsapp' && !WHATSAPP_AUTOMATION) {
@@ -544,7 +544,7 @@ export async function processEnrolment(orgId, id, { now = new Date() } = {}) {
   const wf = wfSnap.exists ? { id: wfSnap.id, ...wfSnap.data() } : null
   if (!org || !wf || wf.status === 'archived') { log('end', 'The workflow was removed'); await finish({ status: 'exited' }); return { done: true } }
   if (wf.status !== 'active') { await finish({}); return { nextAt: new Date(now.getTime() + 15 * 60e3) } } // paused: hold
-  if (org.status !== 'active' || isExpired(org)) { await finish({}); return { nextAt: new Date(now.getTime() + 6 * 3600e3) } }
+  if (org.status !== 'active' || await automationPaused(db, org)) { await finish({}); return { nextAt: new Date(now.getTime() + 6 * 3600e3) } }
   const ps = await col(db, orgId, 'people').doc(e.person_id).get()
   const person = ps.exists ? { id: ps.id, ...ps.data() } : null
   if (!person || person.status === 'archived') { log('end', 'This person is no longer in your people list'); await finish({ status: 'exited' }); return { done: true } }

@@ -6,7 +6,6 @@ import { rateLimit, normalizePhone, displayPhone, maskName, validateAnswers } fr
 import { recordCheckin } from '../domain.js'
 import { createPerson } from './people.js'
 import { createRegistration, eventStats } from './events.js'
-import { isExpired } from '../billing.js'
 import { referralCode, orgForCode, FREE_MONTH_DAYS } from '../referrals.js'
 
 const fold = (s) => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').trim().toLowerCase()
@@ -39,7 +38,6 @@ async function loadPublicGathering(token) {
 
 // A church whose trial has ended without a plan: public check-in and registration pause.
 function assertActive(org, what = 'Check-in') {
-  if (isExpired(org)) throw bad(`${what} isn’t available right now. Please see someone from the church.`, { code: 'billing_required' })
 }
 
 function assertOpen(g) {

@@ -2,6 +2,7 @@ import { fb, col, docOut, docsOut, plain, getMany } from '../firebase.js'
 import { bad, forbidden, notFound, str, email as emailV, oneOf, int, uuid, isUuid } from '../http.js'
 import { TERMS_VERSION } from './auth.js'
 import { referralCode, referralLink, FREE_MONTH_DAYS } from '../referrals.js'
+import { assertBranchRoom } from '../limits.js'
 
 const plainTime = (v) => (v?.toDate ? v.toDate() : new Date(v || 0)).getTime()
 import { toCsv, csvResponse } from '../domain.js'
@@ -142,6 +143,7 @@ export default function (r) {
     requireCap(ctx, 'branches.create')
     const { db } = await fb()
     if (!branchesEnabled(ctx.org, (await orgBranches(ctx)).length)) throw forbidden('Branches come with the Church network plan. Choose it in Settings › Billing.')
+    await assertBranchRoom(db, ctx.org)
     const data = { name: str(body.name, { required: true, max: 120, name: 'Branch name' }), address: str(body.address, { max: 300 }), phone: str(body.phone, { max: 40 }),
       timezone: str(body.timezone, { max: 64 }), status: 'active', created_at: new Date(), updated_at: new Date() }
     const ref = await col(db, ctx.org.id, 'branches').add(data)

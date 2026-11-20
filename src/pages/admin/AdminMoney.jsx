@@ -38,7 +38,7 @@ export function AdminPayments() {
           {!data.stripe && <Notice tone="warning" className="mb-4">Stripe isn’t connected in this environment.</Notice>}
           {data.synced_at && <p className="mb-2 text-xs text-slate-500">Last synced from Stripe {fmtWhen(data.synced_at)}. New payments also arrive automatically through Stripe’s webhook.</p>}
           <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {(() => { const [c, t] = Object.entries(data.totals)[0] || ['usd', { gross: 0, refunds: 0, net: 0, payments: 0, failed: 0, failed_amount: 0 }]; return [
+            {(() => { const [c, t] = Object.entries(data.totals)[0] || ['ngn', { gross: 0, refunds: 0, net: 0, payments: 0, failed: 0, failed_amount: 0 }]; return [
               <Kpi key="g" label={`Collected (${c.toUpperCase()})`} value={fmtMoney(t.gross, c)} sub={`${t.payments} payments`} />,
               <Kpi key="r" label="Refunded" value={fmtMoney(t.refunds, c)} />,
               <Kpi key="n" label="Net" value={fmtMoney(t.net, c)} />,
